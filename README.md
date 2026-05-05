@@ -1,2 +1,2 @@
-# hive
+# Hive
 AI agents 
