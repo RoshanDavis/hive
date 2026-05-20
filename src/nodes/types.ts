@@ -39,12 +39,26 @@ export interface OutputNodeData {
   [key: string]: unknown;
 }
 
+export interface DatabaseRecord {
+  id: string;
+  timestamp: string;
+  source: string;
+  content: string;
+}
+
+export interface DatabaseNodeData {
+  label: string;
+  records: DatabaseRecord[];
+  [key: string]: unknown;
+}
+
 export type TriggerNode = Node<TriggerNodeData, "trigger">;
 export type NotifyNode = Node<NotifyNodeData, "notify">;
 export type OllamaNode = Node<OllamaNodeData, "ollama">;
 export type ChatNode = Node<ChatNodeData, "chat">;
 export type OutputNode = Node<OutputNodeData, "output">;
-export type HiveNode = TriggerNode | NotifyNode | OllamaNode | ChatNode | OutputNode;
+export type DatabaseNode = Node<DatabaseNodeData, "database">;
+export type HiveNode = TriggerNode | NotifyNode | OllamaNode | ChatNode | OutputNode | DatabaseNode;
 
 import React from "react";
 
@@ -63,7 +77,8 @@ import {
   NotifyInspector,
   OllamaInspector,
   ChatInspector,
-  OutputInspector
+  OutputInspector,
+  DatabaseInspector
 } from "../components/inspectors";
 
 export const NODE_REGISTRY: NodeDefinition[] = [
@@ -113,5 +128,13 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     description: "Displays the output",
     defaultData: { label: "Output", outputContent: "" },
     inspector: OutputInspector,
+  },
+  {
+    type: "database",
+    label: "Database",
+    icon: "🛢️",
+    description: "Structured data storage for messages and execution logs",
+    defaultData: { label: "Database", records: [] },
+    inspector: DatabaseInspector,
   },
 ];

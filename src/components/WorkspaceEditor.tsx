@@ -21,11 +21,13 @@ import { invoke } from "@tauri-apps/api/core";
 import SpacesSidebar, { type SpaceEntry } from "./SpacesSidebar";
 import InspectorPanel from "./InspectorPanel";
 import ContextMenu, { type ContextMenuItem } from "./ContextMenu";
+import { ToastContainer, ToastItem } from "./Toast";
 import TriggerNodeComponent from "../nodes/TriggerNode";
 import NotifyNodeComponent from "../nodes/NotifyNode";
 import OllamaNodeComponent from "../nodes/OllamaNode";
 import ChatNodeComponent from "../nodes/ChatNode";
 import OutputNodeComponent from "../nodes/OutputNode";
+import DatabaseNodeComponent from "../nodes/DatabaseNode";
 import type { NodeDefinition } from "../nodes/types";
 import { executeNode } from "../engine";
 
@@ -43,14 +45,8 @@ const nodeTypes = {
   ollama: OllamaNodeComponent,
   chat: ChatNodeComponent,
   output: OutputNodeComponent,
+  database: DatabaseNodeComponent,
 };
-
-// ─── Toast ──────────────────────────────────────────────────
-interface Toast {
-  id: number;
-  message: string;
-  type: "success" | "error" | "info";
-}
 
 // ─── Context menu state ─────────────────────────────────────
 interface ContextMenuState {
@@ -102,7 +98,7 @@ function WorkspaceEditorInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // Space management
@@ -379,6 +375,23 @@ function WorkspaceEditorInner({
             icon: "🗑️",
             danger: true,
             onClick: () => {
+              if (node.type === "chat") {
+                invoke("delete_chat_history", {
+                  workspacePath,
+                  spaceId: activeSpaceId,
+                  chatNodeId: node.id,
+                }).catch((err) => {
+                  console.error("Failed to delete chat history:", err);
+                });
+              } else if (node.type === "database") {
+                invoke("delete_database_history", {
+                  workspacePath,
+                  spaceId: activeSpaceId,
+                  databaseNodeId: node.id,
+                }).catch((err) => {
+                  console.error("Failed to delete database history:", err);
+                });
+              }
               setNodes((nds) => nds.filter((n) => n.id !== node.id));
               setEdges((eds) =>
                 eds.filter((e) => e.source !== node.id && e.target !== node.id)
@@ -390,7 +403,7 @@ function WorkspaceEditorInner({
         ],
       });
     },
-    [setNodes, setEdges, selectedNode, showToast]
+    [setNodes, setEdges, selectedNode, showToast, workspacePath, activeSpaceId]
   );
 
   // ─── Context menu: right-click edge ────────────────────────
@@ -617,6 +630,8 @@ function WorkspaceEditorInner({
         onRunWorkflow={executeWorkflow}
         onChatSend={handleChatSend}
         isRunning={isRunning}
+        nodes={nodes}
+        edges={edges}
       />
 
       {/* Context Menu */}
@@ -630,20 +645,7 @@ function WorkspaceEditorInner({
       )}
 
       {/* Toasts */}
-      {toasts.length > 0 && (
-        <div className="toast-container">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={`toast ${toast.type}`}>
-              {toast.type === "success"
-                ? "✓ "
-                : toast.type === "error"
-                ? "✕ "
-                : "● "}
-              {toast.message}
-            </div>
-          ))}
-        </div>
-      )}
+      <ToastContainer toasts={toasts} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import type { Node, Edge } from "@xyflow/react";
 import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
-import type { Node } from "@xyflow/react";
 
 // ─── Props ───────────────────────────────────────────────────
 interface InspectorPanelProps {
@@ -10,6 +10,8 @@ interface InspectorPanelProps {
   onRunWorkflow: () => void;
   onChatSend?: (nodeId: string, text: string) => void;
   isRunning: boolean;
+  nodes?: Node[];
+  edges?: Edge[];
 }
 
 // ─── Inspector Panel ─────────────────────────────────────────
@@ -20,13 +22,37 @@ export default function InspectorPanel({
   onRunWorkflow,
   onChatSend,
   isRunning,
+  nodes,
+  edges,
 }: InspectorPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter the node registry by search (only by label to prevent single-character matches on descriptions)
-  const filteredNodes = NODE_REGISTRY.filter(
-    (def) => def.label.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter and rank node registry by search query
+  const filteredNodes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return NODE_REGISTRY;
+
+    return NODE_REGISTRY.map((def) => {
+      const label = def.label.toLowerCase();
+      const desc = def.description.toLowerCase();
+
+      let score = 0;
+      if (label === query) {
+        score = 100; // Exact match
+      } else if (label.startsWith(query)) {
+        score = 80; // Prefix match
+      } else if (label.includes(query)) {
+        score = 60; // Substring match in label
+      } else if (desc.includes(query)) {
+        score = 40; // Substring match in description
+      }
+
+      return { def, score };
+    })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.def);
+  }, [searchQuery]);
 
   // ─── Node Details Mode ───────────────────────────────────
   if (selectedNode) {
@@ -39,6 +65,7 @@ export default function InspectorPanel({
             {selectedNode.type === "ollama" ? "🤖" : ""}
             {selectedNode.type === "chat" ? "💬" : ""}
             {selectedNode.type === "output" ? "📤" : ""}
+            {selectedNode.type === "database" ? "🛢️" : ""}
             {" "}
             {String(selectedNode.data?.label || selectedNode.type)}
           </h2>
@@ -74,6 +101,8 @@ export default function InspectorPanel({
                   isRunning={isRunning}
                   onRun={onRunWorkflow}
                   onChatSend={onChatSend}
+                  nodes={nodes}
+                  edges={edges}
                 />
               );
             }
@@ -117,7 +146,7 @@ export default function InspectorPanel({
           filteredNodes.map((def) => (
             <div
               key={def.type}
-              className="bg-card border border-border-card rounded-lg p-4 cursor-pointer transition-all hover:bg-card-hover hover:border-accent-dim hover:-translate-y-[2px] hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
+              className="bg-card border border-border-card rounded-lg p-4 cursor-pointer transition-all hover:bg-card-hover hover:border-accent-dim hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
               onClick={() => onAddNode(def)}
               id={`add-node-${def.type}`}
             >

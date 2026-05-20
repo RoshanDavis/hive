@@ -5,9 +5,37 @@ export default function ChatInspector({
   node,
   onUpdate,
   isRunning,
-  onChatSend
+  onChatSend,
+  nodes,
+  edges
 }: InspectorProps) {
   const [chatInput, setChatInput] = useState("");
+
+  // Find connected database node if any
+  const connectedDBNode = nodes?.find(
+    (n) =>
+      n.type === "database" &&
+      edges?.some(
+        (e) =>
+          (e.source === node.id && e.target === n.id) ||
+          (e.source === n.id && e.target === node.id)
+      )
+  );
+
+  // Map database records to chat messages if connected, otherwise fallback to local messages
+  const dbRecords = (connectedDBNode?.data?.records as any[]) || [];
+  const displayMessages = connectedDBNode
+    ? dbRecords.map((rec: any) => {
+        const src = (rec.source || "").toLowerCase();
+        let role: "user" | "assistant" | "system" = "assistant";
+        if (src === "user" || src === "you") {
+          role = "user";
+        } else if (src === "system") {
+          role = "system";
+        }
+        return { role, content: rec.content || "" };
+      })
+    : (node.data?.messages as any[]) || [];
 
   const handleSend = () => {
     if (chatInput.trim() && onChatSend) {
@@ -16,17 +44,39 @@ export default function ChatInspector({
     }
   };
 
+  const handleClearHistory = () => {
+    onUpdate(node.id, {
+      ...node.data,
+      messages: [],
+    });
+    if (connectedDBNode) {
+      onUpdate(connectedDBNode.id, {
+        ...connectedDBNode.data,
+        records: [],
+      });
+    }
+  };
+
   return (
-    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 flex-col h-[400px]">
-      <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted mb-2">Chat Conversation</div>
+    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[400px]">
+      <div className="flex justify-between items-center mb-1">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">Chat Conversation</div>
+        {connectedDBNode && (
+          <div className="text-[9px] font-semibold text-accent bg-accent-glow px-2 py-0.5 rounded flex items-center gap-1 border border-accent-dim/20">
+            <span>🛢️</span>
+            <span>Linked: {String(connectedDBNode.data?.label || "Database")}</span>
+          </div>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto bg-primary border border-border-subtle rounded-sm p-3 flex flex-col gap-3 mb-3">
-        {((node.data?.messages as any[]) || []).map((msg, idx) => (
+        {displayMessages.map((msg, idx) => (
           <div key={idx} className={`flex flex-col gap-1 max-w-[90%] ${msg.role === "user" ? "self-end" : "self-start"}`}>
             <div className={`text-[10px] font-semibold text-text-muted uppercase ${msg.role === "user" ? "text-right text-accent-dim" : ""}`}>{msg.role === "user" ? "You" : "Agent"}</div>
             <div className={`bg-card px-3 py-2 rounded-md text-[13px] text-text-main leading-relaxed whitespace-pre-wrap break-words border border-border-subtle ${msg.role === "user" ? "bg-accent-glow border-accent-dim rounded-br-sm" : "bg-input rounded-bl-sm"}`}>{msg.content}</div>
           </div>
         ))}
-        {((node.data?.messages as any[]) || []).length === 0 && (
+        {displayMessages.length === 0 && (
           <div className="text-text-muted text-xs text-center mt-5">No messages yet. Say hello!</div>
         )}
       </div>
@@ -56,12 +106,7 @@ export default function ChatInspector({
       </div>
       <button
         className="w-full rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-[#ff6b6b] hover:text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)] hover:shadow-none"
-        onClick={() =>
-          onUpdate(node.id, {
-            ...node.data,
-            messages: [],
-          })
-        }
+        onClick={handleClearHistory}
       >
         Clear History
       </button>

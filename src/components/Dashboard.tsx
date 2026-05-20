@@ -1,18 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { ToastContainer, ToastItem } from "./Toast";
 
 // ─── Types ───────────────────────────────────────────────────
 interface Workspace {
   name: string;
   path: string;
   is_initialized: boolean;
-}
-
-interface Toast {
-  id: number;
-  message: string;
-  type: "success" | "error";
 }
 
 interface DashboardProps {
@@ -24,7 +19,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [activeNav, setActiveNav] = useState(0);
 
   // Toast helper
@@ -227,16 +222,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
       </main>
 
       {/* ─── Toasts ─── */}
-      {toasts.length > 0 && (
-        <div className="fixed bottom-4 right-4 flex flex-col gap-2 z-50">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={`px-4 py-3 rounded-md text-sm font-medium shadow-[0_4px_12px_rgba(0,0,0,0.5)] flex items-center gap-2 animate-[slideIn_0.2s_ease-out] ${toast.type === "success" ? "bg-card border border-[#34d399] text-[#34d399]" : "bg-card border border-[#ff6b6b] text-[#ff6b6b]"}`}>
-              {toast.type === "success" ? "✓ " : "✕ "}
-              {toast.message}
-            </div>
-          ))}
-        </div>
-      )}
+      <ToastContainer toasts={toasts} />
     </div>
   );
 }

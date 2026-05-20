@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react";
+import type { Node, Edge } from "@xyflow/react";
 
 export interface InspectorProps {
   node: Node;
@@ -6,4 +6,6 @@ export interface InspectorProps {
   isRunning?: boolean;
   onRun?: (nodeId: string) => void;
   onChatSend?: (nodeId: string, text: string) => void;
+  nodes?: Node[];
+  edges?: Edge[];
 }

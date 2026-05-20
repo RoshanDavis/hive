@@ -52,7 +52,7 @@ export default function SpacesSidebar({
   const sortedSpaces = [...spaces].sort((a, b) => a.order - b.order);
 
   return (
-    <div className="w-[56px] flex flex-col items-center py-4 bg-sidebar border-r border-border-subtle z-10 shrink-0 gap-6" id="spaces-sidebar">
+    <div className="w-14 flex flex-col items-center py-4 bg-sidebar border-r border-border-subtle z-10 shrink-0 gap-6" id="spaces-sidebar">
       {/* Logo / Back button */}
       <button className="w-10 h-10 rounded-md flex items-center justify-center text-xl text-text-secondary hover:text-text-main hover:bg-card transition-colors cursor-pointer select-none mb-2 border-none bg-transparent" onClick={onBack} title="Back to Dashboard">
         🐝
@@ -71,7 +71,7 @@ export default function SpacesSidebar({
           >
             {editingId === space.id ? (
               <input
-                className="w-[32px] text-center bg-transparent border-none outline-none text-inherit font-inherit text-[10px] uppercase font-black tracking-wider"
+                className="w-8 text-center bg-transparent border-none outline-none text-inherit font-inherit text-[10px] uppercase font-black tracking-wider"
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 onBlur={commitRename}

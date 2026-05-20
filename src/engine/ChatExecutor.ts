@@ -13,6 +13,32 @@ export class ChatExecutor implements NodeExecutor {
     const currentMessages = (chatNode.data?.messages as any[]) || [];
     const newMessages = [...currentMessages, { role: "user", content: chatInput }];
     
+    // Find connected database node if any
+    const dbNode = nodes.find(
+      (n) =>
+        n.type === "database" &&
+        edges.some(
+          (e) =>
+            (e.source === chatNode.id && e.target === n.id) ||
+            (e.source === n.id && e.target === chatNode.id)
+        )
+    );
+
+    // Save user message to database node if connected
+    if (dbNode) {
+      const dbRecords = (dbNode.data?.records as any[]) || [];
+      const newRecord = {
+        id: Date.now().toString(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        source: "User",
+        content: chatInput
+      };
+      updateNodeData(dbNode.id, {
+        ...dbNode.data,
+        records: [...dbRecords, newRecord]
+      });
+    }
+
     updateNodeData(chatNode.id, {
       ...chatNode.data,
       messages: newMessages
@@ -33,7 +59,32 @@ export class ChatExecutor implements NodeExecutor {
     const temp = Number(ollamaNode.data?.temperature || 0.7);
     const maxT = Number(ollamaNode.data?.maxTokens || 2048);
 
+    // Read history from database records if database node is connected, otherwise use newMessages
     let ollamaApiMessages = [...newMessages];
+    if (dbNode) {
+      const dbRecords = (dbNode.data?.records as any[]) || [];
+      // Include the newly added user message as well
+      const updatedRecords = [
+        ...dbRecords,
+        {
+          id: Date.now().toString(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          source: "User",
+          content: chatInput
+        }
+      ];
+      ollamaApiMessages = updatedRecords.map((rec: any) => {
+        const src = (rec.source || "").toLowerCase();
+        let role: "user" | "assistant" | "system" = "assistant";
+        if (src === "user" || src === "you") {
+          role = "user";
+        } else if (src === "system") {
+          role = "system";
+        }
+        return { role, content: rec.content || "" };
+      });
+    }
+
     if (systemPrompt.trim() !== "") {
       ollamaApiMessages.unshift({ role: "system", content: systemPrompt });
     }
@@ -46,6 +97,23 @@ export class ChatExecutor implements NodeExecutor {
         temperature: temp,
         maxTokens: maxT
       });
+
+      // Save assistant response to database node if connected
+      if (dbNode) {
+        // Fetch fresh dbNode records since it might have updated
+        const currentDbNode = nodes.find(n => n.id === dbNode.id);
+        const freshRecords = (currentDbNode?.data?.records as any[]) || [];
+        const assistantRecord = {
+          id: (Date.now() + 1).toString(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          source: "Agent",
+          content: response
+        };
+        updateNodeData(dbNode.id, {
+          ...dbNode.data,
+          records: [...freshRecords, assistantRecord]
+        });
+      }
 
       updateNodeData(chatNode.id, {
         ...chatNode.data,
