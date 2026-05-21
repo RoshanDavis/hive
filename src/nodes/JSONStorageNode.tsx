@@ -17,7 +17,30 @@ export default function JSONStorageNodeComponent({
       <Handle
         type="target"
         position={Position.Left}
+        id="left"
         className="hive-handle"
+        style={{ backgroundColor: "#38bdf8" }}
+      />
+      <Handle
+        type="target"
+        position={Position.Right}
+        id="right"
+        className="hive-handle"
+        style={{ backgroundColor: "#38bdf8" }}
+      />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top"
+        className="hive-handle"
+        style={{ backgroundColor: "#38bdf8" }}
+      />
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="bottom"
+        className="hive-handle"
+        style={{ backgroundColor: "#38bdf8" }}
       />
     </div>
   );

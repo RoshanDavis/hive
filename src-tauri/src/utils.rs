@@ -29,11 +29,35 @@ pub fn read_workspaces(app: &tauri::AppHandle) -> Result<Vec<Workspace>, String>
     serde_json::from_str(&data).map_err(|e| format!("Failed to parse workspaces: {}", e))
 }
 
+pub fn write_atomic(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Target path has no parent directory".to_string())?;
+    
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "Target path has no file name".to_string())?;
+    
+    let temp_path = parent.join(format!("{}.tmp", file_name.to_string_lossy()));
+    
+    // Write to temp file
+    fs::write(&temp_path, data)
+        .map_err(|e| format!("Failed to write temporary file: {}", e))?;
+    
+    // Atomically replace target file
+    fs::rename(&temp_path, path).map_err(|e| {
+        let _ = fs::remove_file(&temp_path);
+        format!("Failed to atomically replace target file: {}", e)
+    })?;
+    
+    Ok(())
+}
+
 pub fn write_workspaces(app: &tauri::AppHandle, workspaces: &[Workspace]) -> Result<(), String> {
     let file = get_workspaces_file(app)?;
     let data = serde_json::to_string_pretty(workspaces)
         .map_err(|e| format!("Failed to serialize: {}", e))?;
-    fs::write(&file, data).map_err(|e| format!("Failed to write workspaces: {}", e))?;
+    write_atomic(&file, data.as_bytes())?;
     Ok(())
 }
 
@@ -118,8 +142,7 @@ pub fn init_hive_structure(workspace_path: &str, name: &str) -> Result<Workspace
 
     let json = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
-    fs::write(&config_path, json)
-        .map_err(|e| format!("Failed to write config.json: {}", e))?;
+    write_atomic(&config_path, json.as_bytes())?;
 
     // Create default empty space file
     let space_data = SpaceData {
@@ -136,8 +159,7 @@ pub fn init_hive_structure(workspace_path: &str, name: &str) -> Result<Workspace
 
     let space_json = serde_json::to_string_pretty(&space_data)
         .map_err(|e| format!("Failed to serialize space: {}", e))?;
-    fs::write(hive.join("spaces/space_1.json"), space_json)
-        .map_err(|e| format!("Failed to write space file: {}", e))?;
+    write_atomic(&hive.join("spaces/space_1.json"), space_json.as_bytes())?;
 
     Ok(config)
 }

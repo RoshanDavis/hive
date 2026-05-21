@@ -7,7 +7,7 @@ use crate::models::{
 };
 use crate::utils::{
     cleanup_unused_directories, hive_dir, init_hive_structure, now_iso, read_workspaces,
-    write_workspaces,
+    write_workspaces, write_atomic,
 };
 
 #[tauri::command]
@@ -89,7 +89,7 @@ pub fn save_workspace_config(workspace_path: String, config: WorkspaceConfig) ->
     config.updated_at = now_iso();
     let json = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
-    fs::write(&config_path, json).map_err(|e| format!("Failed to write config: {}", e))?;
+    write_atomic(&config_path, json.as_bytes())?;
     Ok(())
 }
 
@@ -169,8 +169,7 @@ pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), St
                     let db_file = space_databases_dir.join(format!("{}.json", node.id));
                     let db_json = serde_json::to_string_pretty(records)
                         .map_err(|e| format!("Failed to serialize database records: {}", e))?;
-                    fs::write(&db_file, db_json)
-                        .map_err(|e| format!("Failed to write database records file: {}", e))?;
+                    write_atomic(&db_file, db_json.as_bytes())?;
                 }
                 // Strip the records from the node data written to space_<id>.json
                 obj.remove("records");
@@ -185,7 +184,7 @@ pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), St
     let path = spaces_dir.join(format!("{}.json", space.id));
     let json = serde_json::to_string_pretty(&space)
         .map_err(|e| format!("Failed to serialize space: {}", e))?;
-    fs::write(&path, json).map_err(|e| format!("Failed to write space: {}", e))?;
+    write_atomic(&path, json.as_bytes())?;
     Ok(())
 }
 
@@ -228,8 +227,7 @@ pub fn create_space(
 
         let json = serde_json::to_string_pretty(&config)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
-        fs::write(&config_path, json)
-            .map_err(|e| format!("Failed to write config.json: {}", e))?;
+        write_atomic(&config_path, json.as_bytes())?;
     }
 
     Ok(space)
@@ -279,8 +277,7 @@ pub fn delete_space(workspace_path: String, space_id: String) -> Result<(), Stri
 
         let json = serde_json::to_string_pretty(&config)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
-        fs::write(&config_path, json)
-            .map_err(|e| format!("Failed to write config: {}", e))?;
+        write_atomic(&config_path, json.as_bytes())?;
     }
 
     Ok(())
