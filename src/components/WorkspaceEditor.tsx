@@ -109,6 +109,22 @@ function WorkspaceEditorInner({
   const reactFlowInstance = useReactFlow();
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoadRef = useRef(true);
+  const rightClickStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 2) {
+      rightClickStartRef.current = { x: e.clientX, y: e.clientY };
+    }
+  }, []);
+
+  const wasRightClickDrag = useCallback((event: MouseEvent | React.MouseEvent) => {
+    if (!rightClickStartRef.current) return false;
+    const dx = event.clientX - rightClickStartRef.current.x;
+    const dy = event.clientY - rightClickStartRef.current.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    rightClickStartRef.current = null; // reset
+    return dist > 5;
+  }, []);
 
   // ─── Toast helper ──────────────────────────────────────────
   const showToast = useCallback(
@@ -421,6 +437,218 @@ function WorkspaceEditorInner({
     []
   );
 
+  // ─── Clipboard Operations ─────────────────────────────────
+
+  const deleteSelected = useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected);
+    const selectedEdges = edges.filter((e) => e.selected);
+
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+
+    // Prune backend history for deleted JSONStorage nodes
+    selectedNodes.forEach((node) => {
+      if (node.type === "jsonStorage") {
+        invoke("delete_database_history", {
+          workspacePath,
+          spaceId: activeSpaceId,
+          databaseNodeId: node.id,
+        }).catch((err) => {
+          console.error("Failed to delete JSON storage history:", err);
+        });
+      }
+    });
+
+    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
+    const selectedEdgeIds = new Set(selectedEdges.map((e) => e.id));
+
+    setNodes((nds) => nds.filter((n) => !selectedNodeIds.has(n.id)));
+    setEdges((eds) =>
+      eds.filter(
+        (e) =>
+          !selectedEdgeIds.has(e.id) &&
+          !selectedNodeIds.has(e.source) &&
+          !selectedNodeIds.has(e.target)
+      )
+    );
+
+    if (selectedNode && selectedNodeIds.has(selectedNode.id)) {
+      setSelectedNode(null);
+    }
+
+    const nodeCount = selectedNodes.length;
+    const edgeCount = selectedEdges.length;
+    let msg = "";
+    if (nodeCount > 0 && edgeCount > 0) {
+      msg = `Deleted ${nodeCount} node(s) and ${edgeCount} edge(s)`;
+    } else if (nodeCount > 0) {
+      msg = `Deleted ${nodeCount} node(s)`;
+    } else if (edgeCount > 0) {
+      msg = `Deleted ${edgeCount} edge(s)`;
+    }
+    if (msg) showToast(msg, "info");
+  }, [nodes, edges, selectedNode, workspacePath, activeSpaceId, setNodes, setEdges, showToast]);
+
+  const copySelection = useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected);
+    if (selectedNodes.length === 0) return;
+
+    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
+    const connectedEdges = edges.filter(
+      (e) => selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
+    );
+
+    const clipboardData = {
+      nodes: selectedNodes,
+      edges: connectedEdges,
+    };
+
+    localStorage.setItem("hive-clipboard", JSON.stringify(clipboardData));
+    showToast(`Copied ${selectedNodes.length} node(s)`, "info");
+  }, [nodes, edges, showToast]);
+
+  const cutSelection = useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected);
+    if (selectedNodes.length === 0) return;
+
+    copySelection();
+    deleteSelected();
+  }, [nodes, copySelection, deleteSelected]);
+
+  const pasteSelection = useCallback((clientX?: number, clientY?: number) => {
+    const raw = localStorage.getItem("hive-clipboard");
+    if (!raw) return;
+
+    try {
+      const clipboardData = JSON.parse(raw);
+      if (!clipboardData || !Array.isArray(clipboardData.nodes)) return;
+
+      const clipboardNodes = clipboardData.nodes as Node[];
+      const clipboardEdges = (clipboardData.edges || []) as Edge[];
+
+      if (clipboardNodes.length === 0) return;
+
+      // Deselect all existing nodes and edges in state
+      setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
+      setEdges((eds) => eds.map((e) => ({ ...e, selected: false })));
+
+      const idMap = new Map<string, string>();
+      
+      let offsetX = 40;
+      let offsetY = 40;
+
+      if (clientX !== undefined && clientY !== undefined && reactFlowInstance) {
+        let minX = Infinity;
+        let minY = Infinity;
+        clipboardNodes.forEach((node) => {
+          const px = node.position?.x || 0;
+          const py = node.position?.y || 0;
+          if (px < minX) minX = px;
+          if (py < minY) minY = py;
+        });
+
+        const flowCoords = reactFlowInstance.screenToFlowPosition({
+          x: clientX,
+          y: clientY,
+        });
+
+        offsetX = flowCoords.x - minX;
+        offsetY = flowCoords.y - minY;
+      }
+
+      const newNodes = clipboardNodes.map((node) => {
+        const newId = `${node.type}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        idMap.set(node.id, newId);
+
+        let newPos = {
+          x: (node.position?.x || 0) + 40,
+          y: (node.position?.y || 0) + 40,
+        };
+
+        if (clientX !== undefined && clientY !== undefined) {
+          newPos = {
+            x: (node.position?.x || 0) + offsetX,
+            y: (node.position?.y || 0) + offsetY,
+          };
+        }
+
+        return {
+          ...node,
+          id: newId,
+          position: newPos,
+          selected: true,
+        };
+      });
+
+      const newEdges = clipboardEdges
+        .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+        .map((edge) => {
+          const newId = `edge_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+          return {
+            ...edge,
+            id: newId,
+            source: idMap.get(edge.source)!,
+            target: idMap.get(edge.target)!,
+            selected: true,
+          };
+        });
+
+      setNodes((nds) => nds.concat(newNodes));
+      setEdges((eds) => eds.concat(newEdges));
+      showToast(`Pasted ${newNodes.length} node(s)`, "info");
+    } catch (err) {
+      console.error("Failed to parse clipboard data:", err);
+    }
+  }, [setNodes, setEdges, reactFlowInstance, showToast]);
+
+  // ─── Keyboard shortcuts listener ──────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (isCmdOrCtrl && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        copySelection();
+      }
+
+      if (isCmdOrCtrl && e.key.toLowerCase() === "x") {
+        e.preventDefault();
+        cutSelection();
+      }
+
+      if (isCmdOrCtrl && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        pasteSelection();
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        deleteSelected();
+      }
+
+      if (isCmdOrCtrl && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
+        setEdges((eds) => eds.map((e) => ({ ...e, selected: true })));
+        showToast("Selected all elements", "info");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [copySelection, cutSelection, pasteSelection, deleteSelected, setNodes, setEdges, showToast]);
+
   const currentSelectedNode = useMemo(() => {
     if (!selectedNode) return null;
     return nodes.find((n) => n.id === selectedNode.id) || null;
@@ -437,10 +665,31 @@ function WorkspaceEditorInner({
       event.preventDefault();
       event.stopPropagation();
 
+      // If the right-click was part of a drag-pan operation, skip the context menu
+      if (wasRightClickDrag(event)) return;
+
+      // Ensure the right-clicked node is selected
+      setNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          selected: n.id === node.id ? true : n.selected,
+        }))
+      );
+
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
         items: [
+          {
+            label: "Copy Node",
+            icon: "📋",
+            onClick: () => copySelection(),
+          },
+          {
+            label: "Cut Node",
+            icon: "✂️",
+            onClick: () => cutSelection(),
+          },
           {
             label: "Delete Node",
             icon: "🗑️",
@@ -466,7 +715,7 @@ function WorkspaceEditorInner({
         ],
       });
     },
-    [setNodes, setEdges, selectedNode, showToast, workspacePath, activeSpaceId]
+    [setNodes, setEdges, selectedNode, showToast, workspacePath, activeSpaceId, copySelection, cutSelection, wasRightClickDrag]
   );
 
   // ─── Context menu: right-click edge ────────────────────────
@@ -474,6 +723,8 @@ function WorkspaceEditorInner({
     (event: React.MouseEvent, edge: Edge) => {
       event.preventDefault();
       event.stopPropagation();
+
+      if (wasRightClickDrag(event)) return;
 
       setContextMenu({
         x: event.clientX,
@@ -491,15 +742,44 @@ function WorkspaceEditorInner({
         ],
       });
     },
-    [setEdges, showToast]
+    [setEdges, showToast, wasRightClickDrag]
   );
 
-  // Suppress browser context menu on the canvas
+  // Canvas background context menu (Paste / Select All)
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
       event.preventDefault();
+
+      if (wasRightClickDrag(event)) return;
+
+      const hasClipboard = !!localStorage.getItem("hive-clipboard");
+      const items: ContextMenuItem[] = [];
+
+      if (hasClipboard) {
+        items.push({
+          label: "Paste Node(s)",
+          icon: "📋",
+          onClick: () => pasteSelection(event.clientX, event.clientY),
+        });
+      }
+
+      items.push({
+        label: "Select All Nodes",
+        icon: "✨",
+        onClick: () => {
+          setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
+          setEdges((eds) => eds.map((e) => ({ ...e, selected: true })));
+          showToast("Selected all elements", "info");
+        },
+      });
+
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items,
+      });
     },
-    []
+    [pasteSelection, setNodes, setEdges, showToast, wasRightClickDrag]
   );
 
   // ─── Add node from palette ─────────────────────────────────
@@ -646,7 +926,7 @@ function WorkspaceEditorInner({
       />
 
       {/* Center — React Flow Canvas */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative" onMouseDown={handleMouseDown}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -666,6 +946,8 @@ function WorkspaceEditorInner({
             animated: true,
             style: { stroke: "#d4e600", strokeWidth: 2 },
           }}
+          panOnDrag={[1, 2]}
+          selectionOnDrag={true}
         >
           <Background
             variant={BackgroundVariant.Dots}

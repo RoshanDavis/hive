@@ -235,3 +235,23 @@
   width: 18px;
   height: 18px;
 }
+
+/* ─── React Flow Canvas Cursors ─── */
+.react-flow__pane {
+  cursor: default !important;
+}
+
+.react-flow__pane.grabbing,
+.react-flow__pane.dragging,
+.react-flow__pane:active {
+  cursor: grabbing !important;
+}
+
+.react-flow__node {
+  cursor: default !important;
+}
+
+.react-flow__handle {
+  cursor: crosshair !important;
+}
+
