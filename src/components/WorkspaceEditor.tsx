@@ -27,7 +27,7 @@ import NotifyNodeComponent from "../nodes/NotifyNode";
 import OllamaNodeComponent from "../nodes/OllamaNode";
 import ChatNodeComponent from "../nodes/ChatNode";
 import OutputNodeComponent from "../nodes/OutputNode";
-import DatabaseNodeComponent from "../nodes/DatabaseNode";
+import JSONStorageNodeComponent from "../nodes/JSONStorageNode";
 import type { NodeDefinition } from "../nodes/types";
 import { executeNode } from "../engine";
 
@@ -45,7 +45,7 @@ const nodeTypes = {
   ollama: OllamaNodeComponent,
   chat: ChatNodeComponent,
   output: OutputNodeComponent,
-  database: DatabaseNodeComponent,
+  jsonStorage: JSONStorageNodeComponent,
 };
 
 // ─── Context menu state ─────────────────────────────────────
@@ -375,21 +375,13 @@ function WorkspaceEditorInner({
             icon: "🗑️",
             danger: true,
             onClick: () => {
-              if (node.type === "chat") {
-                invoke("delete_chat_history", {
-                  workspacePath,
-                  spaceId: activeSpaceId,
-                  chatNodeId: node.id,
-                }).catch((err) => {
-                  console.error("Failed to delete chat history:", err);
-                });
-              } else if (node.type === "database") {
+              if (node.type === "jsonStorage") {
                 invoke("delete_database_history", {
                   workspacePath,
                   spaceId: activeSpaceId,
                   databaseNodeId: node.id,
                 }).catch((err) => {
-                  console.error("Failed to delete database history:", err);
+                  console.error("Failed to delete JSON storage history:", err);
                 });
               }
               setNodes((nds) => nds.filter((n) => n.id !== node.id));
@@ -478,6 +470,15 @@ function WorkspaceEditorInner({
     showToast("Workflow started", "info");
 
     try {
+      const currentNodes = [...nodes];
+      const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>) => {
+        const index = currentNodes.findIndex((n) => n.id === nodeId);
+        if (index !== -1) {
+          currentNodes[index] = { ...currentNodes[index], data: { ...data } };
+        }
+        handleUpdateNodeData(nodeId, data);
+      };
+
       for (const trigger of triggerNodes) {
         const visited = new Set<string>();
         const queue: string[] = [trigger.id];
@@ -487,14 +488,14 @@ function WorkspaceEditorInner({
           if (visited.has(currentId)) continue;
           visited.add(currentId);
 
-          const currentNode = nodes.find((n) => n.id === currentId);
+          const currentNode = currentNodes.find((n) => n.id === currentId);
           if (!currentNode) continue;
 
           await executeNode(currentNode.type || "default", {
             node: currentNode,
-            nodes,
+            nodes: currentNodes,
             edges,
-            updateNodeData: handleUpdateNodeData,
+            updateNodeData: localUpdateNodeData,
             showToast,
           });
 
@@ -520,13 +521,23 @@ function WorkspaceEditorInner({
 
     setIsRunning(true);
     try {
+      const currentNodes = [...nodes];
+      const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>) => {
+        const index = currentNodes.findIndex((n) => n.id === nodeId);
+        if (index !== -1) {
+          currentNodes[index] = { ...currentNodes[index], data: { ...data } };
+        }
+        handleUpdateNodeData(nodeId, data);
+      };
+
       await executeNode("chat", {
         node: chatNode,
-        nodes,
+        nodes: currentNodes,
         edges,
-        updateNodeData: handleUpdateNodeData,
+        updateNodeData: localUpdateNodeData,
         showToast,
         chatInput: text,
+        executeNode,
       });
     } finally {
       setIsRunning(false);
@@ -599,6 +610,7 @@ function WorkspaceEditorInner({
               if (n.type === "ollama") return "#a78bfa";
               if (n.type === "chat") return "#34d399";
               if (n.type === "output") return "#fb923c";
+              if (n.type === "jsonStorage") return "#38bdf8";
               return "#888";
             }}
             maskColor="rgba(0, 0, 0, 0.7)"

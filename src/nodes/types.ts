@@ -39,16 +39,16 @@ export interface OutputNodeData {
   [key: string]: unknown;
 }
 
-export interface DatabaseRecord {
+export interface JSONStorageRecord {
   id: string;
   timestamp: string;
   source: string;
   content: string;
 }
 
-export interface DatabaseNodeData {
+export interface JSONStorageNodeData {
   label: string;
-  records: DatabaseRecord[];
+  records: JSONStorageRecord[];
   [key: string]: unknown;
 }
 
@@ -57,8 +57,8 @@ export type NotifyNode = Node<NotifyNodeData, "notify">;
 export type OllamaNode = Node<OllamaNodeData, "ollama">;
 export type ChatNode = Node<ChatNodeData, "chat">;
 export type OutputNode = Node<OutputNodeData, "output">;
-export type DatabaseNode = Node<DatabaseNodeData, "database">;
-export type HiveNode = TriggerNode | NotifyNode | OllamaNode | ChatNode | OutputNode | DatabaseNode;
+export type JSONStorageNode = Node<JSONStorageNodeData, "jsonStorage">;
+export type HiveNode = TriggerNode | NotifyNode | OllamaNode | ChatNode | OutputNode | JSONStorageNode;
 
 import React from "react";
 
@@ -78,7 +78,7 @@ import {
   OllamaInspector,
   ChatInspector,
   OutputInspector,
-  DatabaseInspector
+  JSONStorageInspector
 } from "../components/inspectors";
 
 export const NODE_REGISTRY: NodeDefinition[] = [
@@ -130,11 +130,11 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     inspector: OutputInspector,
   },
   {
-    type: "database",
-    label: "Database",
-    icon: "🛢️",
-    description: "Structured data storage for messages and execution logs",
-    defaultData: { label: "Database", records: [] },
-    inspector: DatabaseInspector,
+    type: "jsonStorage",
+    label: "JSON Storage",
+    icon: "💾",
+    description: "Structured JSON file storage for messages and execution logs",
+    defaultData: { label: "JSON Storage", records: [] },
+    inspector: JSONStorageInspector,
   },
 ];

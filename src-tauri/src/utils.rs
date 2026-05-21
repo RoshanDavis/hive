@@ -6,7 +6,6 @@ use crate::models::{SpaceData, SpaceEntry, Viewport, Workspace, WorkspaceConfig}
 
 pub const HIVE_SUBDIRS: &[&str] = &[
     "spaces",
-    "chats",
     "databases",
 ];
 

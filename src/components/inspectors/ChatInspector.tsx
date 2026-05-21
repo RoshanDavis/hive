@@ -11,20 +11,17 @@ export default function ChatInspector({
 }: InspectorProps) {
   const [chatInput, setChatInput] = useState("");
 
-  // Find connected database node if any
-  const connectedDBNode = nodes?.find(
-    (n) =>
-      n.type === "database" &&
-      edges?.some(
-        (e) =>
-          (e.source === node.id && e.target === n.id) ||
-          (e.source === n.id && e.target === node.id)
-      )
+  // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
+  const storageEdge = edges?.find(
+    (e) => e.source === node.id && e.sourceHandle === "storage"
   );
+  const connectedStorageNode = storageEdge
+    ? nodes?.find((n) => n.id === storageEdge.target && n.type === "jsonStorage")
+    : null;
 
-  // Map database records to chat messages if connected, otherwise fallback to local messages
-  const dbRecords = (connectedDBNode?.data?.records as any[]) || [];
-  const displayMessages = connectedDBNode
+  // Map storage records to chat messages if connected, otherwise fallback to local messages
+  const dbRecords = (connectedStorageNode?.data?.records as any[]) || [];
+  const displayMessages = connectedStorageNode
     ? dbRecords.map((rec: any) => {
         const src = (rec.source || "").toLowerCase();
         let role: "user" | "assistant" | "system" = "assistant";
@@ -49,9 +46,9 @@ export default function ChatInspector({
       ...node.data,
       messages: [],
     });
-    if (connectedDBNode) {
-      onUpdate(connectedDBNode.id, {
-        ...connectedDBNode.data,
+    if (connectedStorageNode) {
+      onUpdate(connectedStorageNode.id, {
+        ...connectedStorageNode.data,
         records: [],
       });
     }
@@ -61,10 +58,10 @@ export default function ChatInspector({
     <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[400px]">
       <div className="flex justify-between items-center mb-1">
         <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">Chat Conversation</div>
-        {connectedDBNode && (
+        {connectedStorageNode && (
           <div className="text-[9px] font-semibold text-accent bg-accent-glow px-2 py-0.5 rounded flex items-center gap-1 border border-accent-dim/20">
-            <span>🛢️</span>
-            <span>Linked: {String(connectedDBNode.data?.label || "Database")}</span>
+            <span>💾</span>
+            <span>Linked: {String(connectedStorageNode.data?.label || "Storage")}</span>
           </div>
         )}
       </div>

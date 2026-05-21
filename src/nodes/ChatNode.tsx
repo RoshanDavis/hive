@@ -22,6 +22,13 @@ export default function ChatNodeComponent({
         position={Position.Right}
         className="hive-handle"
       />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="storage"
+        className="hive-handle"
+        style={{ bottom: -2, backgroundColor: "#38bdf8" }}
+      />
     </div>
   );
 }

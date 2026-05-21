@@ -119,55 +119,12 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
     let mut space: SpaceData = serde_json::from_str(&data)
         .map_err(|e| format!("Failed to parse space: {}", e))?;
 
-    // Load separate chat histories and database records from their space-specific directories
-    let chats_dir = hive_dir(&workspace_path).join("chats");
-    let space_chats_dir = chats_dir.join(&space_id);
+    // Load separate database records from databases space-specific directories
     let databases_dir = hive_dir(&workspace_path).join("databases");
     let space_databases_dir = databases_dir.join(&space_id);
 
     for node in space.nodes.iter_mut() {
-        if node.node_type == "chat" {
-            let new_chat_file = space_chats_dir.join(format!("{}.json", node.id));
-            let old_chat_file = chats_dir.join(format!("chat_{}.json", node.id));
-
-            let mut loaded_messages = None;
-
-            if new_chat_file.exists() {
-                if let Ok(chat_data) = fs::read_to_string(&new_chat_file) {
-                    if let Ok(messages) = serde_json::from_str::<serde_json::Value>(&chat_data) {
-                        loaded_messages = Some(messages);
-                    }
-                }
-            } else if old_chat_file.exists() {
-                // Seamless auto-migration!
-                if let Ok(chat_data) = fs::read_to_string(&old_chat_file) {
-                    if let Ok(messages) = serde_json::from_str::<serde_json::Value>(&chat_data) {
-                        // Save to the new hierarchical path
-                        let _ = fs::create_dir_all(&space_chats_dir);
-                        if let Ok(chat_json) = serde_json::to_string_pretty(&messages) {
-                            if fs::write(&new_chat_file, chat_json).is_ok() {
-                                // Successfully written to new path, delete old file
-                                let _ = fs::remove_file(&old_chat_file);
-                            }
-                        }
-                        loaded_messages = Some(messages);
-                    }
-                }
-            }
-
-            if let Some(messages) = loaded_messages {
-                if let Some(obj) = node.data.as_object_mut() {
-                    obj.insert("messages".to_string(), messages);
-                }
-            } else {
-                // Default to empty array if no chat file exists yet
-                if let Some(obj) = node.data.as_object_mut() {
-                    if !obj.contains_key("messages") {
-                        obj.insert("messages".to_string(), serde_json::json!([]));
-                    }
-                }
-            }
-        } else if node.node_type == "database" {
+        if node.node_type == "jsonStorage" {
             let db_file = space_databases_dir.join(format!("{}.json", node.id));
             let mut loaded_records = None;
 
@@ -199,31 +156,14 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
 
 #[tauri::command]
 pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), String> {
-    let chats_dir = hive_dir(&workspace_path).join("chats");
-    let space_chats_dir = chats_dir.join(&space.id);
-    fs::create_dir_all(&space_chats_dir)
-        .map_err(|e| format!("Failed to create space chats dir: {}", e))?;
-
     let databases_dir = hive_dir(&workspace_path).join("databases");
     let space_databases_dir = databases_dir.join(&space.id);
     fs::create_dir_all(&space_databases_dir)
         .map_err(|e| format!("Failed to create space databases dir: {}", e))?;
 
-    // Decouple and save chat histories and database records
+    // Decouple and save JSON storage records
     for node in space.nodes.iter_mut() {
-        if node.node_type == "chat" {
-            if let Some(obj) = node.data.as_object_mut() {
-                if let Some(messages) = obj.get("messages") {
-                    let chat_file = space_chats_dir.join(format!("{}.json", node.id));
-                    let chat_json = serde_json::to_string_pretty(messages)
-                        .map_err(|e| format!("Failed to serialize chat history: {}", e))?;
-                    fs::write(&chat_file, chat_json)
-                        .map_err(|e| format!("Failed to write chat history file: {}", e))?;
-                }
-                // Strip the messages from the node data written to space_<id>.json
-                obj.remove("messages");
-            }
-        } else if node.node_type == "database" {
+        if node.node_type == "jsonStorage" {
             if let Some(obj) = node.data.as_object_mut() {
                 if let Some(records) = obj.get("records") {
                     let db_file = space_databases_dir.join(format!("{}.json", node.id));

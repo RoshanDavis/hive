@@ -1,18 +1,18 @@
 import type { InspectorProps } from "./types";
 
-interface DatabaseRecord {
+interface JSONStorageRecord {
   id: string;
   timestamp: string;
   source: string;
   content: string;
 }
 
-export default function DatabaseInspector({
+export default function JSONStorageInspector({
   node,
   onUpdate,
   isRunning,
 }: InspectorProps) {
-  const records = (node.data?.records as DatabaseRecord[]) || [];
+  const records = (node.data?.records as JSONStorageRecord[]) || [];
 
   const handleClear = () => {
     onUpdate(node.id, {
@@ -43,7 +43,7 @@ export default function DatabaseInspector({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `${node.data?.label || "database"}_export.csv`);
+    link.setAttribute("download", `${node.data?.label || "json_storage"}_export.csv`);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
@@ -53,7 +53,7 @@ export default function DatabaseInspector({
   return (
     <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[450px]">
       <div className="flex justify-between items-center mb-1">
-        <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">Data Store</div>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">JSON Storage File</div>
         <div className="text-[11px] font-bold text-accent bg-accent-glow px-2 py-0.5 rounded-sm">
           {records.length} records
         </div>
@@ -89,10 +89,10 @@ export default function DatabaseInspector({
           </table>
         ) : (
           <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2 py-8 text-center px-4">
-            <span className="text-3xl opacity-50">🛢️</span>
-            <span className="text-xs font-medium">Database is empty</span>
+            <span className="text-3xl opacity-50">💾</span>
+            <span className="text-xs font-medium">Storage is empty</span>
             <span className="text-[10px] text-text-muted leading-relaxed max-w-[200px]">
-              Connect other nodes to this Database to log messages and model responses.
+              Connect the Chat node's bottom handle to this JSON Storage node to log conversation histories.
             </span>
           </div>
         )}

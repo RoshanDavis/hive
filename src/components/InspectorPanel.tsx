@@ -65,7 +65,7 @@ export default function InspectorPanel({
             {selectedNode.type === "ollama" ? "🤖" : ""}
             {selectedNode.type === "chat" ? "💬" : ""}
             {selectedNode.type === "output" ? "📤" : ""}
-            {selectedNode.type === "database" ? "🛢️" : ""}
+            {selectedNode.type === "jsonStorage" ? "💾" : ""}
             {" "}
             {String(selectedNode.data?.label || selectedNode.type)}
           </h2>

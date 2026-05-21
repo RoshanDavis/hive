@@ -52,6 +52,12 @@ export class OllamaExecutor implements NodeExecutor {
         }
       }
 
+      // Update Ollama node itself with the response
+      updateNodeData(node.id, {
+        ...node.data,
+        lastResponse: response
+      });
+
       // Send response to downstream output node
       const outgoingEdges = edges.filter(e => e.source === node.id);
       const outgoingOutputNodes = nodes.filter(n =>

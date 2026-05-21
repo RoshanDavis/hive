@@ -3,49 +3,73 @@ import type { ExecutionContext, NodeExecutor } from "./types";
 
 export interface ChatExecutionContext extends ExecutionContext {
   chatInput?: string;
+  executeNode?: (nodeType: string, context: ChatExecutionContext) => Promise<void>;
 }
 
 export class ChatExecutor implements NodeExecutor {
-  async execute({ node, nodes, edges, updateNodeData, showToast, chatInput }: ChatExecutionContext): Promise<void> {
+  async execute({ node, nodes, edges, updateNodeData, showToast, chatInput, executeNode }: ChatExecutionContext): Promise<void> {
     if (!chatInput) return;
 
     const chatNode = node;
-    const currentMessages = (chatNode.data?.messages as any[]) || [];
-    const newMessages = [...currentMessages, { role: "user", content: chatInput }];
     
-    // Find connected database node if any
-    const dbNode = nodes.find(
-      (n) =>
-        n.type === "database" &&
-        edges.some(
-          (e) =>
-            (e.source === chatNode.id && e.target === n.id) ||
-            (e.source === n.id && e.target === chatNode.id)
-        )
+    // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
+    const storageEdge = edges.find(
+      (e) => e.source === chatNode.id && e.sourceHandle === "storage"
     );
+    const storageNode = storageEdge
+      ? nodes.find((n) => n.id === storageEdge.target && n.type === "jsonStorage")
+      : null;
 
-    // Save user message to database node if connected
-    if (dbNode) {
-      const dbRecords = (dbNode.data?.records as any[]) || [];
+    let ollamaApiMessages: { role: "user" | "assistant" | "system"; content: string }[] = [];
+    let storageRecords: any[] = [];
+
+    if (storageNode) {
+      const dbRecords = (storageNode.data?.records as any[]) || [];
       const newRecord = {
         id: Date.now().toString(),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         source: "User",
         content: chatInput
       };
-      updateNodeData(dbNode.id, {
-        ...dbNode.data,
-        records: [...dbRecords, newRecord]
+      
+      storageRecords = [...dbRecords, newRecord];
+      updateNodeData(storageNode.id, {
+        ...storageNode.data,
+        records: storageRecords
       });
+
+      // Update chat messages locally to show the history so far (including the new user message)
+      const currentMessages = (chatNode.data?.messages as any[]) || [];
+      updateNodeData(chatNode.id, {
+        ...chatNode.data,
+        messages: [...currentMessages, { role: "user", content: chatInput }]
+      });
+
+      ollamaApiMessages = storageRecords.map((rec: any) => {
+        const src = (rec.source || "").toLowerCase();
+        let role: "user" | "assistant" | "system" = "assistant";
+        if (src === "user" || src === "you") {
+          role = "user";
+        } else if (src === "system") {
+          role = "system";
+        }
+        return { role, content: rec.content || "" };
+      });
+    } else {
+      // Single-turn chat by default
+      const newMessages = [{ role: "user", content: chatInput }];
+      updateNodeData(chatNode.id, {
+        ...chatNode.data,
+        messages: newMessages
+      });
+      ollamaApiMessages = [{ role: "user", content: chatInput }];
     }
 
-    updateNodeData(chatNode.id, {
-      ...chatNode.data,
-      messages: newMessages
-    });
-
     const outgoingEdges = edges.filter(e => e.source === chatNode.id);
-    const ollamaNodes = nodes.filter(n => n.type === "ollama" && outgoingEdges.some(e => e.target === n.id));
+    // Find ollama node connected via normal source handle (not the storage handle)
+    const ollamaNodes = nodes.filter(
+      n => n.type === "ollama" && outgoingEdges.some(e => e.target === n.id && e.sourceHandle !== "storage")
+    );
     
     if (ollamaNodes.length === 0) {
       showToast("No connected Ollama node found.", "error");
@@ -58,32 +82,6 @@ export class ChatExecutor implements NodeExecutor {
     const systemPrompt = String(ollamaNode.data?.systemPrompt || "");
     const temp = Number(ollamaNode.data?.temperature || 0.7);
     const maxT = Number(ollamaNode.data?.maxTokens || 2048);
-
-    // Read history from database records if database node is connected, otherwise use newMessages
-    let ollamaApiMessages = [...newMessages];
-    if (dbNode) {
-      const dbRecords = (dbNode.data?.records as any[]) || [];
-      // Include the newly added user message as well
-      const updatedRecords = [
-        ...dbRecords,
-        {
-          id: Date.now().toString(),
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          source: "User",
-          content: chatInput
-        }
-      ];
-      ollamaApiMessages = updatedRecords.map((rec: any) => {
-        const src = (rec.source || "").toLowerCase();
-        let role: "user" | "assistant" | "system" = "assistant";
-        if (src === "user" || src === "you") {
-          role = "user";
-        } else if (src === "system") {
-          role = "system";
-        }
-        return { role, content: rec.content || "" };
-      });
-    }
 
     if (systemPrompt.trim() !== "") {
       ollamaApiMessages.unshift({ role: "system", content: systemPrompt });
@@ -98,26 +96,50 @@ export class ChatExecutor implements NodeExecutor {
         maxTokens: maxT
       });
 
-      // Save assistant response to database node if connected
-      if (dbNode) {
-        // Fetch fresh dbNode records since it might have updated
-        const currentDbNode = nodes.find(n => n.id === dbNode.id);
-        const freshRecords = (currentDbNode?.data?.records as any[]) || [];
+      if (storageNode) {
         const assistantRecord = {
           id: (Date.now() + 1).toString(),
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           source: "Agent",
           content: response
         };
-        updateNodeData(dbNode.id, {
-          ...dbNode.data,
-          records: [...freshRecords, assistantRecord]
+        storageRecords = [...storageRecords, assistantRecord];
+        updateNodeData(storageNode.id, {
+          ...storageNode.data,
+          records: storageRecords
+        });
+
+        // Sync ChatNode messages to full history
+        const fullHistory = storageRecords.map((rec: any) => {
+          const src = (rec.source || "").toLowerCase();
+          let role: "user" | "assistant" | "system" = "assistant";
+          if (src === "user" || src === "you") {
+            role = "user";
+          } else if (src === "system") {
+            role = "system";
+          }
+          return { role, content: rec.content || "" };
+        });
+
+        updateNodeData(chatNode.id, {
+          ...chatNode.data,
+          messages: fullHistory
+        });
+      } else {
+        // Single-turn chat - only user input & latest response
+        updateNodeData(chatNode.id, {
+          ...chatNode.data,
+          messages: [
+            { role: "user", content: chatInput },
+            { role: "assistant", content: response }
+          ]
         });
       }
 
-      updateNodeData(chatNode.id, {
-        ...chatNode.data,
-        messages: [...newMessages, { role: "assistant", content: response }]
+      // Update Ollama node itself with the response
+      updateNodeData(ollamaNode.id, {
+        ...ollamaNode.data,
+        lastResponse: response
       });
 
       const ollamaOutgoingEdges = edges.filter(e => e.source === ollamaNode.id);
@@ -128,6 +150,40 @@ export class ChatExecutor implements NodeExecutor {
           ...outNode.data,
           outputContent: response
         });
+      }
+
+      // Propagate execution downstream from the Ollama node
+      if (executeNode) {
+        const visited = new Set<string>();
+        const queue: string[] = ollamaOutgoingEdges
+          .filter(e => {
+            const targetNode = nodes.find(n => n.id === e.target);
+            return targetNode && targetNode.type !== "output";
+          })
+          .map(e => e.target);
+
+        while (queue.length > 0) {
+          const currentId = queue.shift()!;
+          if (visited.has(currentId)) continue;
+          visited.add(currentId);
+
+          const currentNode = nodes.find(n => n.id === currentId);
+          if (!currentNode) continue;
+
+          await executeNode(currentNode.type || "default", {
+            node: currentNode,
+            nodes,
+            edges,
+            updateNodeData,
+            showToast,
+            executeNode
+          });
+
+          const downstream = edges
+            .filter(e => e.source === currentId)
+            .map(e => e.target);
+          queue.push(...downstream);
+        }
       }
 
     } catch (err) {
