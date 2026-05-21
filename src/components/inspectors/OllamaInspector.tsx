@@ -84,6 +84,25 @@ export default function OllamaInspector({
           }
         />
       </div>
+
+      {/* Last Response (Premium visual feedback) */}
+      {!!node.data?.lastResponse && (
+        <div className="flex flex-col gap-2 mt-2 border-t border-border-subtle pt-4">
+          <div className="flex justify-between items-center">
+            <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Last Response</label>
+            <button
+              onClick={() => onUpdate(node.id, { ...node.data, lastResponse: "" })}
+              className="text-[10px] text-text-muted hover:text-[#ff6b6b] transition-colors cursor-pointer border-none bg-transparent"
+              title="Clear response"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="w-full bg-primary border border-border-subtle rounded-md p-3 text-xs text-text-main leading-relaxed font-mono whitespace-pre-wrap max-h-[160px] overflow-y-auto select-text">
+            {String(node.data.lastResponse)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { InspectorProps } from "./types";
 
 export default function ChatInspector({
@@ -10,6 +10,10 @@ export default function ChatInspector({
   edges
 }: InspectorProps) {
   const [chatInput, setChatInput] = useState("");
+  const [visibleCount, setVisibleCount] = useState(5);
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const prevMessagesLength = useRef(0);
 
   // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
   const storageEdge = edges?.find(
@@ -34,6 +38,47 @@ export default function ChatInspector({
       })
     : (node.data?.messages as any[]) || [];
 
+  const slicedMessages = displayMessages.slice(-visibleCount);
+  const hasMore = displayMessages.length > visibleCount;
+
+  // Auto-scroll to bottom on initial load or when a new message is appended
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      if (displayMessages.length > prevMessagesLength.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    }
+    prevMessagesLength.current = displayMessages.length;
+  }, [displayMessages.length]);
+
+  // Initial scroll to bottom on mount
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, []);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    // Check if scrolled near the top and there are older messages to load
+    if (target.scrollTop === 0 && hasMore) {
+      const previousScrollHeight = target.scrollHeight;
+      setVisibleCount((prev) => {
+        const nextCount = Math.min(prev + 5, displayMessages.length);
+        
+        // After DOM updates, restore scroll position relative to previous scrollHeight
+        setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop =
+              chatContainerRef.current.scrollHeight - previousScrollHeight;
+          }
+        }, 0);
+        
+        return nextCount;
+      });
+    }
+  };
+
   const handleSend = () => {
     if (chatInput.trim() && onChatSend) {
       onChatSend(node.id, chatInput.trim());
@@ -52,10 +97,11 @@ export default function ChatInspector({
         records: [],
       });
     }
+    setVisibleCount(5);
   };
 
   return (
-    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[400px]">
+    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[calc(100vh-280px)] min-h-[380px]">
       <div className="flex justify-between items-center mb-1">
         <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">Chat Conversation</div>
         {connectedStorageNode && (
@@ -66,8 +112,17 @@ export default function ChatInspector({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-primary border border-border-subtle rounded-sm p-3 flex flex-col gap-3 mb-3">
-        {displayMessages.map((msg, idx) => (
+      <div
+        ref={chatContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto bg-primary border border-border-subtle rounded-sm p-3 flex flex-col gap-3 mb-3 scroll-smooth"
+      >
+        {hasMore && (
+          <div className="text-[10px] text-text-muted text-center py-1 select-none animate-pulse">
+            ↑ Scroll up to load older messages ({displayMessages.length - visibleCount} more)
+          </div>
+        )}
+        {slicedMessages.map((msg, idx) => (
           <div key={idx} className={`flex flex-col gap-1 max-w-[90%] ${msg.role === "user" ? "self-end" : "self-start"}`}>
             <div className={`text-[10px] font-semibold text-text-muted uppercase ${msg.role === "user" ? "text-right text-accent-dim" : ""}`}>{msg.role === "user" ? "You" : "Agent"}</div>
             <div className={`bg-card px-3 py-2 rounded-md text-[13px] text-text-main leading-relaxed whitespace-pre-wrap break-words border border-border-subtle ${msg.role === "user" ? "bg-accent-glow border-accent-dim rounded-br-sm" : "bg-input rounded-bl-sm"}`}>{msg.content}</div>

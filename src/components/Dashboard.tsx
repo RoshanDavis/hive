@@ -101,18 +101,16 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
     return parts[0] + "/.../" + parts.slice(-2).join("/");
   };
 
-  // Nav items for sidebar
+  // Nav items for sidebar (removed unimplemented Packages and Settings icons)
   const navItems = [
     { icon: "🔲", label: "Dashboard" },
-    { icon: "📦", label: "Packages" },
-    { icon: "⚙️", label: "Settings" },
   ];
 
   return (
     <div className="flex h-full w-full bg-primary text-text-main overflow-hidden">
       {/* ─── Sidebar ─── */}
-      <nav className="w-[56px] flex flex-col items-center py-4 bg-sidebar border-r border-border-subtle z-10 shrink-0" id="sidebar">
-        <div className="text-2xl mb-4 select-none" title="Hive">
+      <nav className="w-[56px] flex flex-col items-center py-4 bg-sidebar border-r border-border-subtle z-10 shrink-0 select-none" id="sidebar">
+        <div className="text-2xl mb-4 select-none filter drop-shadow-[0_0_8px_rgba(212,230,0,0.2)]" title="Hive">
           🐝
         </div>
         {navItems.map((item, i) => (
@@ -129,25 +127,41 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
       </nav>
 
       {/* ─── Main Content ─── */}
-      <main className="flex-1 flex flex-col relative">
-        <div className="flex-1 flex flex-col p-8 overflow-y-auto">
-          {/* Title */}
-          <h1 className="text-3xl font-bold mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-text-main to-text-secondary" id="dashboard-title">
-            Hive
-          </h1>
+      <main className="flex-1 flex flex-col relative w-full overflow-hidden">
+        <div className="flex-1 flex flex-col p-4 sm:p-6 md:p-8 overflow-y-auto w-full">
+          {/* Title / Hero */}
+          <div className="text-center mb-10 mt-4 flex flex-col items-center select-none">
+            <span className="text-5xl mb-4 hover:scale-110 transition-transform duration-300 cursor-default filter drop-shadow-[0_0_12px_rgba(212,230,0,0.35)]">
+              🐝
+            </span>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-accent via-text-main to-text-secondary" id="dashboard-title">
+              Hive
+            </h1>
+            <p className="text-xs sm:text-sm text-text-secondary mt-2 max-w-md mx-auto leading-relaxed">
+              Design, orchestrate, and automate agentic LLM workflows locally
+            </p>
+          </div>
 
           {/* Search */}
-          <div className="w-full max-w-2xl mx-auto mb-8">
-            <div className="flex items-center bg-card rounded-md border border-border-subtle px-4 py-2 focus-within:border-accent-dim focus-within:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] transition-all">
-              <span className="text-text-muted mr-3">🔍</span>
+          <div className="w-full max-w-xl mx-auto mb-10 px-1">
+            <div className="flex items-center bg-card/60 backdrop-blur-md rounded-xl border border-border-subtle px-4 py-2.5 focus-within:border-accent-dim focus-within:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] transition-all duration-300">
+              <span className="text-text-secondary text-base mr-3 select-none">🔍</span>
               <input
-                className="flex-1 bg-transparent border-none outline-none text-text-main text-sm"
+                className="flex-1 bg-transparent border-none outline-none text-text-main text-sm placeholder:text-text-muted"
                 id="workspace-search"
                 type="text"
-                placeholder="Search workspaces..."
+                placeholder="Search workspaces by name or path..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="text-text-secondary hover:text-text-main text-xs px-1 select-none cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
 
@@ -160,7 +174,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
             <>
               {/* Workspace Grid */}
               {filteredWorkspaces.length > 0 || searchQuery === "" ? (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4 max-w-[1200px] w-full mx-auto" id="workspace-grid">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 max-w-[1200px] w-full mx-auto px-1" id="workspace-grid">
                   {filteredWorkspaces.map((ws) => (
                     <div
                       key={ws.path}
@@ -176,7 +190,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
                       >
                         ✕
                       </button>
-                      <span className="text-lg font-semibold mb-2 overflow-hidden text-ellipsis whitespace-nowrap">{ws.name}</span>
+                      <span className="text-base sm:text-lg font-semibold mb-2 overflow-hidden text-ellipsis whitespace-nowrap">{ws.name}</span>
                       <span className="text-xs text-text-muted mb-4 overflow-hidden text-ellipsis whitespace-nowrap">{truncatePath(ws.path)}</span>
                       <span
                         className={`self-start text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${ws.is_initialized ? "text-accent bg-accent-glow" : "text-[#60a5fa] bg-[rgba(96,165,250,0.1)]"}`}
@@ -188,19 +202,20 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
 
                   {/* Add Button — always last in grid */}
                   <div
-                    className="bg-transparent border-2 border-dashed border-border-card rounded-xl p-5 flex items-center justify-center cursor-pointer transition-all duration-250 hover:border-accent hover:bg-accent-glow hover:text-accent group min-h-[140px]"
+                    className="bg-transparent border-2 border-dashed border-border-card rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all duration-250 hover:border-accent hover:bg-accent-glow hover:text-accent group min-h-[140px]"
                     id="add-workspace-btn"
                     onClick={handleAddWorkspace}
                     title="Add workspace"
                   >
-                    <span className="text-4xl text-text-secondary group-hover:text-accent transition-colors">＋</span>
+                    <span className="text-3xl text-text-secondary group-hover:text-accent transition-colors mb-1">＋</span>
+                    <span className="text-xs text-text-secondary group-hover:text-accent font-medium transition-colors">Add Workspace</span>
                   </div>
                 </div>
               ) : (
                 /* No results */
-                <div className="flex-1 flex flex-col items-center justify-center text-text-muted">
-                  <span className="text-4xl mb-4">🔍</span>
-                  <span className="text-lg font-medium">
+                <div className="flex-1 flex flex-col items-center justify-center text-text-muted py-12">
+                  <span className="text-4xl mb-4 select-none">🔍</span>
+                  <span className="text-base font-medium">
                     No workspaces match "{searchQuery}"
                   </span>
                 </div>
@@ -208,10 +223,10 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
 
               {/* Empty state when no workspaces at all */}
               {workspaces.length === 0 && (
-                <div className="flex-1 flex flex-col items-center justify-center text-text-muted">
-                  <span className="text-4xl mb-4">🐝</span>
-                  <span className="text-lg font-medium">No workspaces yet</span>
-                  <span className="text-sm mt-2">
+                <div className="flex-1 flex flex-col items-center justify-center text-text-muted py-12">
+                  <span className="text-4xl mb-4 select-none">🐝</span>
+                  <span className="text-base font-medium">No workspaces yet</span>
+                  <span className="text-sm mt-1">
                     Click the + button above to add your first workspace
                   </span>
                 </div>

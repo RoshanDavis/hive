@@ -51,7 +51,7 @@ export default function JSONStorageInspector({
   };
 
   return (
-    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[450px]">
+    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[calc(100vh-280px)] min-h-[380px]">
       <div className="flex justify-between items-center mb-1">
         <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">JSON Storage File</div>
         <div className="text-[11px] font-bold text-accent bg-accent-glow px-2 py-0.5 rounded-sm">

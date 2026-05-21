@@ -14,6 +14,7 @@ interface SpacesSidebarProps {
   onAddSpace: () => void;
   onRenameSpace: (spaceId: string, newLabel: string) => void;
   onBack: () => void;
+  onSpaceContextMenu?: (spaceId: string, event: React.MouseEvent) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -24,6 +25,7 @@ export default function SpacesSidebar({
   onAddSpace,
   onRenameSpace,
   onBack,
+  onSpaceContextMenu,
 }: SpacesSidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -66,6 +68,11 @@ export default function SpacesSidebar({
             className={`w-10 h-10 rounded-md flex items-center justify-center text-xs font-bold cursor-pointer transition-all border ${activeSpaceId === space.id ? "text-primary bg-accent border-accent shadow-[0_0_12px_rgba(212,230,0,0.3)] hover:bg-accent-dim" : "text-text-muted border-transparent bg-transparent hover:text-text-main hover:bg-card"}`}
             onClick={() => onSwitchSpace(space.id)}
             onDoubleClick={(e) => startRename(space, e)}
+            onContextMenu={(e) => {
+              if (onSpaceContextMenu) {
+                onSpaceContextMenu(space.id, e);
+              }
+            }}
             title={`Space: ${space.label} (double-click to rename)`}
             id={`space-${space.id}`}
           >

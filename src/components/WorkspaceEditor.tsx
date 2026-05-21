@@ -326,6 +326,77 @@ function WorkspaceEditorInner({
     [workspacePath]
   );
 
+  // ─── Delete space ──────────────────────────────────────────
+  const handleDeleteSpace = useCallback(
+    async (spaceId: string) => {
+      if (spaces.length <= 1) {
+        showToast("Cannot delete the only remaining space", "error");
+        return;
+      }
+
+      try {
+        await invoke("delete_space", { workspacePath, spaceId });
+
+        const updatedSpaces = spaces.filter((s) => s.id !== spaceId);
+        setSpaces(updatedSpaces);
+
+        // If we deleted the active space, switch to the first remaining one
+        if (activeSpaceId === spaceId) {
+          const nextSpace = updatedSpaces[0];
+          if (nextSpace) {
+            isInitialLoadRef.current = true;
+            setActiveSpaceId(nextSpace.id);
+            setSelectedNode(null);
+            await loadSpaceData(nextSpace.id);
+
+            // Update active_space in config
+            try {
+              const config = await invoke<WorkspaceConfig>("load_workspace_config", {
+                workspacePath,
+              });
+              config.active_space = nextSpace.id;
+              await invoke("save_workspace_config", { workspacePath, config });
+            } catch (_err) {}
+
+            setTimeout(() => {
+              isInitialLoadRef.current = false;
+            }, 500);
+          }
+        }
+
+        showToast("Space deleted", "info");
+      } catch (err) {
+        showToast(`Failed to delete space: ${err}`, "error");
+      }
+    },
+    [spaces, activeSpaceId, workspacePath, showToast, loadSpaceData]
+  );
+
+  const onSpaceContextMenu = useCallback(
+    (spaceId: string, event: React.MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const spaceLabel = spaces.find((s) => s.id === spaceId)?.label || "Space";
+
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: [
+          {
+            label: `Delete Space ${spaceLabel}`,
+            icon: "🗑️",
+            danger: true,
+            onClick: () => {
+              handleDeleteSpace(spaceId);
+            },
+          },
+        ],
+      });
+    },
+    [spaces, handleDeleteSpace]
+  );
+
   // ─── Connection handling ───────────────────────────────────
   const onConnect: OnConnect = useCallback(
     (params) =>
@@ -571,6 +642,7 @@ function WorkspaceEditorInner({
         onAddSpace={handleAddSpace}
         onRenameSpace={handleRenameSpace}
         onBack={handleBack}
+        onSpaceContextMenu={onSpaceContextMenu}
       />
 
       {/* Center — React Flow Canvas */}
