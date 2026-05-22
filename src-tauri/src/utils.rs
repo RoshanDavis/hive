@@ -6,7 +6,7 @@ use crate::models::{SpaceData, SpaceEntry, Viewport, Workspace, WorkspaceConfig}
 
 pub const HIVE_SUBDIRS: &[&str] = &[
     "spaces",
-    "databases",
+    "storage",
 ];
 
 // ─── App-level workspace registry ────────────────────────────

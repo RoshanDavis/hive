@@ -7,11 +7,13 @@ interface InspectorPanelProps {
   selectedNode: Node | null;
   onAddNode: (definition: NodeDefinition) => void;
   onUpdateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
-  onRunWorkflow: () => void;
+  onRunWorkflow: (triggerNodeId?: string) => void;
   onChatSend?: (nodeId: string, text: string) => void;
   isRunning: boolean;
   nodes?: Node[];
   edges?: Edge[];
+  onDragStartNode?: (type: string) => void;
+  onDragEndNode?: () => void;
 }
 
 // ─── Inspector Panel ─────────────────────────────────────────
@@ -24,6 +26,8 @@ export default function InspectorPanel({
   isRunning,
   nodes,
   edges,
+  onDragStartNode,
+  onDragEndNode,
 }: InspectorPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [width, setWidth] = useState(() => {
@@ -70,6 +74,21 @@ export default function InspectorPanel({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isResizing]);
+
+  const handleDragStart = (event: React.DragEvent, nodeType: string) => {
+    if (event.dataTransfer) {
+      event.dataTransfer.setData("application/reactflow", nodeType);
+      event.dataTransfer.effectAllowed = "move";
+
+      // Hide the browser's default semi-transparent drag ghost image completely
+      const img = new Image();
+      img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+      event.dataTransfer.setDragImage(img, 0, 0);
+    }
+    if (onDragStartNode) {
+      onDragStartNode(nodeType);
+    }
+  };
 
   // Filter and rank node registry by search query
   const filteredNodes = useMemo(() => {
@@ -206,8 +225,13 @@ export default function InspectorPanel({
               filteredNodes.map((def) => (
                 <div
                   key={def.type}
-                  className="bg-card border border-border-card rounded-lg p-4 cursor-pointer transition-all hover:bg-card-hover hover:border-accent-dim hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
+                  className="bg-card border border-border-card rounded-lg p-4 cursor-grab active:cursor-grabbing transition-all hover:bg-card-hover hover:border-accent-dim hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
                   onClick={() => onAddNode(def)}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, def.type)}
+                  onDragEnd={() => {
+                    if (onDragEndNode) onDragEndNode();
+                  }}
                   id={`add-node-${def.type}`}
                 >
                   <div className="flex items-center gap-2 mb-2">

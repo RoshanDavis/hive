@@ -21,7 +21,7 @@ pub fn run() {
             commands::create_space,
             commands::delete_space,
             commands::delete_chat_history,
-            commands::delete_database_history,
+            commands::delete_storage_history,
             commands::ollama_chat,
         ])
         .run(tauri::generate_context!())

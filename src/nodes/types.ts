@@ -100,11 +100,11 @@ export const NODE_REGISTRY: NodeDefinition[] = [
   },
   {
     type: "ollama",
-    label: "Ollama Agent",
+    label: "Ollama",
     icon: "🤖",
-    description: "LLM Agent using Ollama",
+    description: "LLM inference node using Ollama",
     defaultData: {
-      label: "Ollama Agent",
+      label: "Ollama",
       model: "llama3",
       systemPrompt: "You are a helpful AI assistant.",
       temperature: 0.7,

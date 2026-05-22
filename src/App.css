@@ -93,13 +93,13 @@
     @apply bg-[#d4e600]! border-primary!;
   }
 
-  /* Override React Flow's default output node styling which creates an unwanted box */
   .react-flow__node-output {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
     border-radius: 0 !important;
+    width: auto !important;
   }
 
   /* ─── Toast Notifications ─── */
@@ -253,5 +253,15 @@
 
 .react-flow__handle {
   cursor: crosshair !important;
+}
+
+/* Drag Ghost Styling for Node Card Palette */
+.dragging-ghost-active {
+  background-color: #1e1e1e !important;
+  opacity: 1 !important;
+  border: 2px solid #d4e600 !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.9) !important;
+  transform: scale(1.02) !important;
 }
 

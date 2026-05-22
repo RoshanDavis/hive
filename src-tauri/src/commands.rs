@@ -65,10 +65,45 @@ pub fn add_workspace(app: tauri::AppHandle, path: String) -> Result<Workspace, S
 
 #[tauri::command]
 pub fn load_workspace_config(workspace_path: String) -> Result<WorkspaceConfig, String> {
+    // Migrate legacy 'databases' folder to 'storage' if present
+    let hive_path = hive_dir(&workspace_path);
+    let legacy_db_dir = hive_path.join("databases");
+    let storage_dir = hive_path.join("storage");
+    if legacy_db_dir.exists() && legacy_db_dir.is_dir() {
+        if !storage_dir.exists() {
+            fs::rename(&legacy_db_dir, &storage_dir)
+                .map_err(|e| format!("Failed to migrate legacy 'databases' folder to 'storage': {}", e))?;
+        } else {
+            // Merging contents in case both directories exist
+            if let Ok(entries) = fs::read_dir(&legacy_db_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    let path = entry.path();
+                    if let Some(name) = path.file_name() {
+                        let target = storage_dir.join(name);
+                        if path.is_dir() {
+                            let _ = fs::create_dir_all(&target);
+                            if let Ok(sub_entries) = fs::read_dir(&path) {
+                                for sub_entry in sub_entries.filter_map(Result::ok) {
+                                    let sub_path = sub_entry.path();
+                                    if let Some(sub_name) = sub_path.file_name() {
+                                        let _ = fs::rename(&sub_path, target.join(sub_name));
+                                    }
+                                }
+                            }
+                        } else {
+                            let _ = fs::rename(&path, &target);
+                        }
+                    }
+                }
+            }
+            let _ = fs::remove_dir_all(&legacy_db_dir);
+        }
+    }
+
     // Auto-clean any empty legacy directories
     cleanup_unused_directories(&workspace_path);
 
-    let config_path = hive_dir(&workspace_path).join("config.json");
+    let config_path = hive_path.join("config.json");
     if !config_path.exists() {
         // Auto-init if opened for the first time
         let name = PathBuf::from(&workspace_path)
@@ -119,13 +154,13 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
     let mut space: SpaceData = serde_json::from_str(&data)
         .map_err(|e| format!("Failed to parse space: {}", e))?;
 
-    // Load separate database records from databases space-specific directories
-    let databases_dir = hive_dir(&workspace_path).join("databases");
-    let space_databases_dir = databases_dir.join(&space_id);
+    // Load separate database records from storage space-specific directories
+    let storage_dir = hive_dir(&workspace_path).join("storage");
+    let space_storage_dir = storage_dir.join(&space_id);
 
     for node in space.nodes.iter_mut() {
         if node.node_type == "jsonStorage" {
-            let db_file = space_databases_dir.join(format!("{}.json", node.id));
+            let db_file = space_storage_dir.join(format!("{}.json", node.id));
             let mut loaded_records = None;
 
             if db_file.exists() {
@@ -148,6 +183,20 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
                     }
                 }
             }
+        } else if node.node_type == "chat" {
+            // Guarantee messages array exists in loaded frontend state
+            if let Some(obj) = node.data.as_object_mut() {
+                if !obj.contains_key("messages") {
+                    obj.insert("messages".to_string(), serde_json::json!([]));
+                }
+            }
+        } else if node.node_type == "output" {
+            // Guarantee outputContent string exists in loaded frontend state
+            if let Some(obj) = node.data.as_object_mut() {
+                if !obj.contains_key("outputContent") {
+                    obj.insert("outputContent".to_string(), serde_json::json!(""));
+                }
+            }
         }
     }
 
@@ -156,23 +205,33 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
 
 #[tauri::command]
 pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), String> {
-    let databases_dir = hive_dir(&workspace_path).join("databases");
-    let space_databases_dir = databases_dir.join(&space.id);
-    fs::create_dir_all(&space_databases_dir)
-        .map_err(|e| format!("Failed to create space databases dir: {}", e))?;
+    let storage_dir = hive_dir(&workspace_path).join("storage");
+    let space_storage_dir = storage_dir.join(&space.id);
+    fs::create_dir_all(&space_storage_dir)
+        .map_err(|e| format!("Failed to create space storage dir: {}", e))?;
 
-    // Decouple and save JSON storage records
+    // Decouple and save JSON storage records, and strip dynamic fields for pristine space JSON
     for node in space.nodes.iter_mut() {
         if node.node_type == "jsonStorage" {
             if let Some(obj) = node.data.as_object_mut() {
                 if let Some(records) = obj.get("records") {
-                    let db_file = space_databases_dir.join(format!("{}.json", node.id));
+                    let db_file = space_storage_dir.join(format!("{}.json", node.id));
                     let db_json = serde_json::to_string_pretty(records)
                         .map_err(|e| format!("Failed to serialize database records: {}", e))?;
                     write_atomic(&db_file, db_json.as_bytes())?;
                 }
                 // Strip the records from the node data written to space_<id>.json
                 obj.remove("records");
+            }
+        } else if node.node_type == "chat" {
+            if let Some(obj) = node.data.as_object_mut() {
+                // Strip large messages history from workspace json files
+                obj.remove("messages");
+            }
+        } else if node.node_type == "output" {
+            if let Some(obj) = node.data.as_object_mut() {
+                // Strip outputContent history from workspace json files
+                obj.remove("outputContent");
             }
         }
     }
@@ -250,11 +309,11 @@ pub fn delete_space(workspace_path: String, space_id: String) -> Result<(), Stri
             .map_err(|e| format!("Failed to delete space chats directory: {}", e))?;
     }
 
-    // Delete the entire databases folder for this space
-    let space_databases_dir = hive_dir(&workspace_path).join("databases").join(&space_id);
-    if space_databases_dir.exists() && space_databases_dir.is_dir() {
-        fs::remove_dir_all(&space_databases_dir)
-            .map_err(|e| format!("Failed to delete space databases directory: {}", e))?;
+    // Delete the entire storage folder for this space
+    let space_storage_dir = hive_dir(&workspace_path).join("storage").join(&space_id);
+    if space_storage_dir.exists() && space_storage_dir.is_dir() {
+        fs::remove_dir_all(&space_storage_dir)
+            .map_err(|e| format!("Failed to delete space storage directory: {}", e))?;
     }
 
     // Remove from config
@@ -301,18 +360,18 @@ pub fn delete_chat_history(
 }
 
 #[tauri::command]
-pub fn delete_database_history(
+pub fn delete_storage_history(
     workspace_path: String,
     space_id: String,
     database_node_id: String,
 ) -> Result<(), String> {
     let db_file = hive_dir(&workspace_path)
-        .join("databases")
+        .join("storage")
         .join(&space_id)
         .join(format!("{}.json", database_node_id));
     if db_file.exists() {
         fs::remove_file(&db_file)
-            .map_err(|e| format!("Failed to delete database history: {}", e))?;
+            .map_err(|e| format!("Failed to delete storage history: {}", e))?;
     }
     Ok(())
 }

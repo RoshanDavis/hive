@@ -28,7 +28,7 @@ import OllamaNodeComponent from "../nodes/OllamaNode";
 import ChatNodeComponent from "../nodes/ChatNode";
 import OutputNodeComponent from "../nodes/OutputNode";
 import JSONStorageNodeComponent from "../nodes/JSONStorageNode";
-import type { NodeDefinition } from "../nodes/types";
+import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
 import { executeNode } from "../engine";
 
 // ─── Props ───────────────────────────────────────────────────
@@ -105,6 +105,37 @@ function WorkspaceEditorInner({
   const [spaces, setSpaces] = useState<SpaceEntry[]>([]);
   const [activeSpaceId, setActiveSpaceId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+
+  // Custom 100% opaque drag-and-drop state & events
+  const [activeDragNode, setActiveDragNode] = useState<{
+    type: string;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+
+  const handleDragStartNode = useCallback((type: string) => {
+    setActiveDragNode({ type, clientX: 0, clientY: 0 });
+  }, []);
+
+  const handleDragEndNode = useCallback(() => {
+    setActiveDragNode(null);
+  }, []);
+
+  // Window-level mouse tracking for the custom opaque drag ghost card
+  useEffect(() => {
+    if (!activeDragNode) return;
+
+    const handleWindowDragOver = (e: DragEvent) => {
+      setActiveDragNode((prev) =>
+        prev ? { ...prev, clientX: e.clientX, clientY: e.clientY } : null
+      );
+    };
+
+    window.addEventListener("dragover", handleWindowDragOver);
+    return () => {
+      window.removeEventListener("dragover", handleWindowDragOver);
+    };
+  }, [activeDragNode]);
 
   const reactFlowInstance = useReactFlow();
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -467,7 +498,7 @@ function WorkspaceEditorInner({
     // Prune backend history for deleted JSONStorage nodes
     selectedNodes.forEach((node) => {
       if (node.type === "jsonStorage") {
-        invoke("delete_database_history", {
+        invoke("delete_storage_history", {
           workspacePath,
           spaceId: activeSpaceId,
           databaseNodeId: node.id,
@@ -724,7 +755,7 @@ function WorkspaceEditorInner({
                 deleteSelected();
               } else {
                 if (node.type === "jsonStorage") {
-                  invoke("delete_database_history", {
+                  invoke("delete_storage_history", {
                     workspacePath,
                     spaceId: activeSpaceId,
                     databaseNodeId: node.id,
@@ -843,16 +874,18 @@ function WorkspaceEditorInner({
       const selectedNodes = nodes.filter((n) => n.selected);
       const count = selectedNodes.length;
 
-      if (count > 1) {
+      if (count >= 1) {
         event.preventDefault();
         event.stopPropagation();
 
         if (wasRightClickDrag(event)) return;
 
+        const singleNode = selectedNodes[0];
+
         setContextMenu({
           x: event.clientX,
           y: event.clientY,
-          items: [
+          items: count > 1 ? [
             {
               label: `Copy Selection (${count})`,
               icon: "📋",
@@ -878,11 +911,44 @@ function WorkspaceEditorInner({
                 showToast("Selected all elements", "info");
               },
             },
+          ] : [
+            {
+              label: "Copy Node",
+              icon: "📋",
+              onClick: () => copySelection(),
+            },
+            {
+              label: "Cut Node",
+              icon: "✂️",
+              onClick: () => cutSelection(),
+            },
+            {
+              label: "Delete Node",
+              icon: "🗑️",
+              danger: true,
+              onClick: () => {
+                if (singleNode.type === "jsonStorage") {
+                  invoke("delete_storage_history", {
+                    workspacePath,
+                    spaceId: activeSpaceId,
+                    databaseNodeId: singleNode.id,
+                  }).catch((err) => {
+                    console.error("Failed to delete JSON storage history:", err);
+                  });
+                }
+                setNodes((nds) => nds.filter((n) => n.id !== singleNode.id));
+                setEdges((eds) =>
+                  eds.filter((e) => e.source !== singleNode.id && e.target !== singleNode.id)
+                );
+                if (selectedNode?.id === singleNode.id) setSelectedNode(null);
+                showToast("Node deleted", "info");
+              },
+            },
           ],
         });
       }
     },
-    [nodes, copySelection, cutSelection, deleteSelected, setNodes, setEdges, showToast, wasRightClickDrag]
+    [nodes, copySelection, cutSelection, deleteSelected, setNodes, setEdges, showToast, wasRightClickDrag, workspacePath, activeSpaceId, selectedNode]
   );
 
   // ─── Add node from palette ─────────────────────────────────
@@ -902,6 +968,71 @@ function WorkspaceEditorInner({
     [nodes.length, setNodes, showToast]
   );
 
+  // ─── Drag and drop node creation ───────────────────────────
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    if (activeDragNode) {
+      setActiveDragNode((prev) =>
+        prev ? { ...prev, clientX: event.clientX, clientY: event.clientY } : null
+      );
+    }
+  }, [activeDragNode]);
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      if (!event.dataTransfer) {
+        setActiveDragNode(null);
+        return;
+      }
+      const type = event.dataTransfer.getData("application/reactflow");
+
+      // Check if dropped element is valid
+      if (!type) {
+        setActiveDragNode(null);
+        return;
+      }
+
+      // Dynamically measure the actual screen size of the floating drag ghost card
+      const ghostEl = document.getElementById("drag-ghost-card");
+      let offsetX = 45; // Safe default fallback
+      let offsetY = 40; // Safe default fallback
+      if (ghostEl) {
+        const rect = ghostEl.getBoundingClientRect();
+        offsetX = rect.width / 2;
+        offsetY = rect.height / 2;
+      }
+
+      setActiveDragNode(null);
+
+      // Project client coordinates to flow coordinates, centered under cursor
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX - offsetX,
+        y: event.clientY - offsetY,
+      });
+
+      // Find corresponding node definition from NODE_REGISTRY
+      const definition = NODE_REGISTRY.find((d) => d.type === type);
+      if (!definition) return;
+
+      const id = `${type}_${Date.now()}`;
+      const newNode: Node = {
+        id,
+        type,
+        position,
+        data: { ...definition.defaultData },
+      };
+
+      setNodes((nds) => [...nds, newNode]);
+      showToast(`Added ${definition.label} node`, "info");
+    },
+    [reactFlowInstance, setNodes, showToast]
+  );
+
   // ─── Update node data ─────────────────────────────────────
   const handleUpdateNodeData = useCallback(
     (nodeId: string, data: Record<string, unknown>) => {
@@ -913,8 +1044,11 @@ function WorkspaceEditorInner({
   );
 
   // ─── Workflow execution ────────────────────────────────────
-  const executeWorkflow = useCallback(async () => {
-    const triggerNodes = nodes.filter((n) => n.type === "trigger");
+  const executeWorkflow = useCallback(async (triggerNodeId?: string) => {
+    let triggerNodes = nodes.filter((n) => n.type === "trigger");
+    if (triggerNodeId && typeof triggerNodeId === "string") {
+      triggerNodes = triggerNodes.filter((n) => n.id === triggerNodeId);
+    }
     if (triggerNodes.length === 0) {
       showToast("No Trigger node found", "error");
       return;
@@ -1029,7 +1163,13 @@ function WorkspaceEditorInner({
       />
 
       {/* Center — React Flow Canvas */}
-      <div className="flex-1 relative" onMouseDown={handleMouseDown} onContextMenu={handleWrapperContextMenu}>
+      <div
+        className="flex-1 relative"
+        onMouseDown={handleMouseDown}
+        onContextMenu={handleWrapperContextMenu}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1101,6 +1241,8 @@ function WorkspaceEditorInner({
         isRunning={isRunning}
         nodes={nodes}
         edges={edges}
+        onDragStartNode={handleDragStartNode}
+        onDragEndNode={handleDragEndNode}
       />
 
       {/* Context Menu */}
@@ -1115,6 +1257,26 @@ function WorkspaceEditorInner({
 
       {/* Toasts */}
       <ToastContainer toasts={toasts} />
+
+      {/* Custom 100% Opaque Floating Ghost Card (Bypasses browser transparency limitations) */}
+      {activeDragNode && activeDragNode.clientX > 0 && activeDragNode.clientY > 0 && (() => {
+        const def = NODE_REGISTRY.find((d) => d.type === activeDragNode.type);
+        if (!def) return null;
+        return (
+          <div
+            id="drag-ghost-card"
+            className="fixed pointer-events-none z-[99999] bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center gap-1.5 min-w-[90px] max-w-[150px] transition-transform duration-75 select-none"
+            style={{
+              left: activeDragNode.clientX,
+              top: activeDragNode.clientY,
+              transform: "translate(-50%, -50%) scale(1.05)",
+            }}
+          >
+            <span className="text-2xl select-none">{def.icon}</span>
+            <span className="font-semibold text-text-main text-xs select-none w-full text-center whitespace-nowrap overflow-hidden text-ellipsis">{def.label}</span>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -6,10 +6,10 @@ export default function JSONStorageNodeComponent({
   selected,
 }: NodeProps & { data: JSONStorageNodeData }) {
   return (
-    <div className={`flex items-center gap-3 bg-card border-2 rounded-lg px-4 py-3 min-w-[200px] shadow-[0_2px_8px_rgba(0,0,0,0.4)] transition-all duration-200 text-text-main relative ${selected ? "border-[#38bdf8] shadow-[0_0_0_2px_rgba(56,189,248,0.2)]" : "border-border-card"}`}>
-      <div className="text-xl">💾</div>
-      <div className="text-sm font-semibold tracking-wide flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{data.label}</div>
-      <div className="text-[10px] text-text-muted absolute -bottom-5 left-0 whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">
+    <div className={`flex flex-col items-center justify-center gap-1.5 bg-card border-2 rounded-lg px-3 py-2.5 min-w-[90px] max-w-[150px] shadow-[0_2px_8px_rgba(0,0,0,0.4)] transition-all duration-200 text-text-main relative ${selected ? "border-[#38bdf8] shadow-[0_0_0_2px_rgba(56,189,248,0.2)]" : "border-border-card"}`}>
+      <div className="text-2xl">💾</div>
+      <div className="text-xs font-semibold tracking-wide text-center w-full whitespace-nowrap overflow-hidden text-ellipsis">{data.label}</div>
+      <div className="text-[9px] text-text-muted absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
         {data.records && data.records.length > 0 
           ? `${data.records.length} records stored`
           : "Empty storage"}
