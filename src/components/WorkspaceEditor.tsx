@@ -38,13 +38,13 @@ interface WorkspaceEditorProps {
   onBack: () => void;
 }
 
-// ─── Custom node type registry ──────────────────────────────
 const nodeTypes = {
   trigger: TriggerNodeComponent,
   notify: NotifyNodeComponent,
   ollama: OllamaNodeComponent,
   chat: ChatNodeComponent,
   output: OutputNodeComponent,
+  outputNode: OutputNodeComponent,
   jsonStorage: JSONStorageNodeComponent,
 };
 
@@ -204,7 +204,7 @@ function WorkspaceEditorInner({
 
       const loadedNodes: Node[] = data.nodes.map((n) => ({
         id: n.id,
-        type: n.type,
+        type: n.type === "output" ? "outputNode" : n.type,
         position: n.position,
         data: n.data,
       }));
@@ -606,7 +606,8 @@ function WorkspaceEditorInner({
       }
 
       const newNodes = clipboardNodes.map((node) => {
-        const newId = `${node.type}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        const nodeType = node.type === "output" ? "outputNode" : (node.type || "unknown");
+        const newId = `${nodeType}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
         idMap.set(node.id, newId);
 
         let newPos = {
@@ -624,6 +625,7 @@ function WorkspaceEditorInner({
         return {
           ...node,
           id: newId,
+          type: nodeType,
           position: newPos,
           selected: true,
         };
@@ -1206,7 +1208,7 @@ function WorkspaceEditorInner({
               if (n.type === "notify") return "#60a5fa";
               if (n.type === "ollama") return "#a78bfa";
               if (n.type === "chat") return "#34d399";
-              if (n.type === "output") return "#fb923c";
+              if (n.type === "output" || n.type === "outputNode") return "#fb923c";
               if (n.type === "jsonStorage") return "#38bdf8";
               return "#888";
             }}

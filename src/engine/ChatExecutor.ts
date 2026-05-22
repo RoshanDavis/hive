@@ -12,6 +12,25 @@ export class ChatExecutor implements NodeExecutor {
 
     const chatNode = node;
     
+    // Find connected Ollama node connected via normal source handle (not the storage handle)
+    const outgoingEdges = edges.filter(e => e.source === chatNode.id);
+    const ollamaNodes = nodes.filter(
+      n => n.type === "ollama" && outgoingEdges.some(e => e.target === n.id && e.sourceHandle !== "storage")
+    );
+    
+    if (ollamaNodes.length === 0) {
+      showToast("No connected Ollama node found.", "error");
+      return;
+    }
+
+    const ollamaNode = ollamaNodes[0];
+    const url = String(ollamaNode.data?.ollamaUrl || "http://localhost:11434");
+    const model = String(ollamaNode.data?.model || "llama3");
+    const systemPrompt = String(ollamaNode.data?.systemPrompt || "");
+    const temp = Number(ollamaNode.data?.temperature || 0.7);
+    const maxT = Number(ollamaNode.data?.maxTokens || 2048);
+    const historyLimit = Number(ollamaNode.data?.chatHistoryLimit || 0);
+
     // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
     const storageEdge = edges.find(
       (e) => e.source === chatNode.id && e.sourceHandle === "storage"
@@ -45,7 +64,13 @@ export class ChatExecutor implements NodeExecutor {
         messages: [...currentMessages, { role: "user", content: chatInput }]
       });
 
-      ollamaApiMessages = storageRecords.map((rec: any) => {
+      // Apply the sliding window context history limit if configured
+      let activeRecords = storageRecords;
+      if (historyLimit > 0 && activeRecords.length > historyLimit) {
+        activeRecords = activeRecords.slice(-historyLimit);
+      }
+
+      ollamaApiMessages = activeRecords.map((rec: any) => {
         const src = (rec.source || "").toLowerCase();
         let role: "user" | "assistant" | "system" = "assistant";
         if (src === "user" || src === "you") {
@@ -64,24 +89,6 @@ export class ChatExecutor implements NodeExecutor {
       });
       ollamaApiMessages = [{ role: "user", content: chatInput }];
     }
-
-    const outgoingEdges = edges.filter(e => e.source === chatNode.id);
-    // Find ollama node connected via normal source handle (not the storage handle)
-    const ollamaNodes = nodes.filter(
-      n => n.type === "ollama" && outgoingEdges.some(e => e.target === n.id && e.sourceHandle !== "storage")
-    );
-    
-    if (ollamaNodes.length === 0) {
-      showToast("No connected Ollama node found.", "error");
-      return;
-    }
-
-    const ollamaNode = ollamaNodes[0];
-    const url = String(ollamaNode.data?.ollamaUrl || "http://localhost:11434");
-    const model = String(ollamaNode.data?.model || "llama3");
-    const systemPrompt = String(ollamaNode.data?.systemPrompt || "");
-    const temp = Number(ollamaNode.data?.temperature || 0.7);
-    const maxT = Number(ollamaNode.data?.maxTokens || 2048);
 
     if (systemPrompt.trim() !== "") {
       ollamaApiMessages.unshift({ role: "system", content: systemPrompt });
@@ -143,7 +150,7 @@ export class ChatExecutor implements NodeExecutor {
       });
 
       const ollamaOutgoingEdges = edges.filter(e => e.source === ollamaNode.id);
-      const outputNodes = nodes.filter(n => n.type === "output" && ollamaOutgoingEdges.some(e => e.target === n.id));
+      const outputNodes = nodes.filter(n => (n.type === "output" || n.type === "outputNode") && ollamaOutgoingEdges.some(e => e.target === n.id));
       
       for (const outNode of outputNodes) {
         updateNodeData(outNode.id, {
@@ -158,7 +165,7 @@ export class ChatExecutor implements NodeExecutor {
         const queue: string[] = ollamaOutgoingEdges
           .filter(e => {
             const targetNode = nodes.find(n => n.id === e.target);
-            return targetNode && targetNode.type !== "output";
+            return !!targetNode;
           })
           .map(e => e.target);
 

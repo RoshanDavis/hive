@@ -9,6 +9,8 @@ export class OllamaExecutor implements NodeExecutor {
     const temp = Number(node.data?.temperature || 0.7);
     const maxT = Number(node.data?.maxTokens || 2048);
 
+    const historyLimit = Number(node.data?.chatHistoryLimit || 0);
+
     // Find incoming chat node
     const incomingEdges = edges.filter(e => e.target === node.id);
     const incomingChatNodes = nodes.filter(n => 
@@ -20,7 +22,10 @@ export class OllamaExecutor implements NodeExecutor {
     
     if (incomingChatNodes.length > 0) {
       chatNodeId = incomingChatNodes[0].id;
-      const rawMessages = incomingChatNodes[0].data?.messages as any[] || [];
+      let rawMessages = incomingChatNodes[0].data?.messages as any[] || [];
+      if (historyLimit > 0 && rawMessages.length > historyLimit) {
+        rawMessages = rawMessages.slice(-historyLimit);
+      }
       ollamaMessages = [...rawMessages];
     } else {
       showToast("Ollama node needs a connected Chat node for input", "error");
@@ -61,7 +66,7 @@ export class OllamaExecutor implements NodeExecutor {
       // Send response to downstream output node
       const outgoingEdges = edges.filter(e => e.source === node.id);
       const outgoingOutputNodes = nodes.filter(n =>
-        n.type === "output" && outgoingEdges.some(e => e.target === n.id)
+        (n.type === "output" || n.type === "outputNode") && outgoingEdges.some(e => e.target === n.id)
       );
 
       if (outgoingOutputNodes.length > 0) {

@@ -102,6 +102,17 @@
     width: auto !important;
   }
 
+  .react-flow__node-output .react-flow__handle,
+  .react-flow__node-output .react-flow__handle-right,
+  .react-flow__node-output .react-flow__handle-left,
+  .react-flow__node-output .react-flow__handle-top,
+  .react-flow__node-output .react-flow__handle-bottom {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: all !important;
+  }
+
   /* ─── Toast Notifications ─── */
   @keyframes toastSlideIn {
     from {

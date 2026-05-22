@@ -19,6 +19,7 @@ export interface OllamaNodeData {
   temperature: number;
   maxTokens: number;
   ollamaUrl: string;
+  chatHistoryLimit: number;
   [key: string]: unknown;
 }
 
@@ -56,7 +57,7 @@ export type TriggerNode = Node<TriggerNodeData, "trigger">;
 export type NotifyNode = Node<NotifyNodeData, "notify">;
 export type OllamaNode = Node<OllamaNodeData, "ollama">;
 export type ChatNode = Node<ChatNodeData, "chat">;
-export type OutputNode = Node<OutputNodeData, "output">;
+export type OutputNode = Node<OutputNodeData, "output" | "outputNode">;
 export type JSONStorageNode = Node<JSONStorageNodeData, "jsonStorage">;
 export type HiveNode = TriggerNode | NotifyNode | OllamaNode | ChatNode | OutputNode | JSONStorageNode;
 
@@ -110,6 +111,7 @@ export const NODE_REGISTRY: NodeDefinition[] = [
       temperature: 0.7,
       maxTokens: 2048,
       ollamaUrl: "http://localhost:11434",
+      chatHistoryLimit: 0,
     },
     inspector: OllamaInspector,
   },
@@ -120,6 +122,14 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     description: "Provides chat input to an agent",
     defaultData: { label: "Chat Input", messages: [] },
     inspector: ChatInspector,
+  },
+  {
+    type: "outputNode",
+    label: "Output",
+    icon: "📤",
+    description: "Displays the output",
+    defaultData: { label: "Output", outputContent: "" },
+    inspector: OutputInspector,
   },
   {
     type: "output",

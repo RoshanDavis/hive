@@ -90,12 +90,12 @@ export default function InspectorPanel({
     }
   };
 
-  // Filter and rank node registry by search query
   const filteredNodes = useMemo(() => {
+    const baseList = NODE_REGISTRY.filter(d => d.type !== "output");
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return NODE_REGISTRY;
+    if (!query) return baseList;
 
-    return NODE_REGISTRY.map((def) => {
+    return baseList.map((def) => {
       const label = def.label.toLowerCase();
       const desc = def.description.toLowerCase();
 
@@ -147,7 +147,7 @@ export default function InspectorPanel({
               {selectedNode.type === "notify" ? "🔔" : ""}
               {selectedNode.type === "ollama" ? "🤖" : ""}
               {selectedNode.type === "chat" ? "💬" : ""}
-              {selectedNode.type === "output" ? "📤" : ""}
+              {selectedNode.type === "output" || selectedNode.type === "outputNode" ? "📤" : ""}
               {selectedNode.type === "jsonStorage" ? "💾" : ""}
               {" "}
               {String(selectedNode.data?.label || selectedNode.type)}

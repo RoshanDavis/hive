@@ -1,31 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ExecutionContext, NodeExecutor } from "./types";
+import { getUpstreamNodeData } from "./utils";
 
 export class NotifyExecutor implements NodeExecutor {
-  async execute({ node, nodes, edges, showToast }: ExecutionContext): Promise<void> {
+  async execute({ node, nodes, edges, updateNodeData, showToast }: ExecutionContext): Promise<void> {
     try {
       let resolvedMessage = "";
-      
+
       const incomingEdges = edges.filter(e => e.target === node.id);
       if (incomingEdges.length > 0) {
         const upstreamNodes = nodes.filter(n => incomingEdges.some(e => e.source === n.id));
-        
+
         for (const upstream of upstreamNodes) {
-          if (upstream.type === "ollama" && upstream.data?.lastResponse) {
-            resolvedMessage = String(upstream.data.lastResponse);
+          const val = getUpstreamNodeData(upstream);
+          if (val !== null) {
+            resolvedMessage = val;
             break;
-          } else if (upstream.type === "output" && upstream.data?.outputContent) {
-            resolvedMessage = String(upstream.data.outputContent);
-            break;
-          } else if (upstream.type === "chat") {
-            const messages = (upstream.data?.messages as any[]) || [];
-            if (messages.length > 0) {
-              const lastMessage = messages[messages.length - 1];
-              if (lastMessage?.content) {
-                resolvedMessage = String(lastMessage.content);
-                break;
-              }
-            }
           }
         }
       }
@@ -51,6 +41,12 @@ export class NotifyExecutor implements NodeExecutor {
           }
         }
       }
+
+      // Store resolved notification body in node state so downstream nodes can read it
+      updateNodeData(node.id, {
+        ...node.data,
+        lastResponse: finalBody
+      });
 
       const label = String(node.data?.label || "Hive");
       await invoke("send_notification", { title: label, body: finalBody });

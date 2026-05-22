@@ -17,6 +17,11 @@ export default function OutputNodeComponent({
       <div className="text-[9px] text-text-muted absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
         {data.outputContent ? "Has output" : "Waiting for output..."}
       </div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="hive-handle"
+      />
     </div>
   );
 }
