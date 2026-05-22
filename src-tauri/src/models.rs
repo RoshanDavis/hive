@@ -54,6 +54,8 @@ pub struct FlowEdge {
     pub source_handle: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_handle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

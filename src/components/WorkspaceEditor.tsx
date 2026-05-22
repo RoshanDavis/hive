@@ -14,6 +14,7 @@ import {
   BackgroundVariant,
   useReactFlow,
   ReactFlowProvider,
+  MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { invoke } from "@tauri-apps/api/core";
@@ -28,9 +29,11 @@ import OllamaNodeComponent from "../nodes/OllamaNode";
 import ChatNodeComponent from "../nodes/ChatNode";
 import OutputNodeComponent from "../nodes/OutputNode";
 import JSONStorageNodeComponent from "../nodes/JSONStorageNode";
+import CustomConnectionEdge from "./CustomConnectionEdge";
 import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
 import { executeNode } from "../engine";
 import { useWorkspaceClipboard } from "../hooks/useWorkspaceClipboard";
+import { getConnectionBehavior } from "../engine/connectivity";
 
 // ─── Props ───────────────────────────────────────────────────
 interface WorkspaceEditorProps {
@@ -47,6 +50,10 @@ const nodeTypes = {
   output: OutputNodeComponent,
   outputNode: OutputNodeComponent,
   jsonStorage: JSONStorageNodeComponent,
+};
+
+const edgeTypes = {
+  custom: CustomConnectionEdge,
 };
 
 // ─── Context menu state ─────────────────────────────────────
@@ -70,6 +77,7 @@ interface FlowEdge {
   target: string;
   source_handle?: string;
   target_handle?: string;
+  edge_type?: string;
 }
 
 interface SpaceData {
@@ -98,6 +106,7 @@ function WorkspaceEditorInner({
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -212,12 +221,27 @@ function WorkspaceEditorInner({
       }));
 
       const loadedEdges: Edge[] = data.edges.map((e) => {
-        const isStorage = e.source_handle === "storage";
         // Backward compatibility: map empty targetHandle to "left" for JSON Storage nodes
         const targetNode = data.nodes.find((n) => n.id === e.target);
         const targetHandle = (targetNode && targetNode.type === "jsonStorage" && !e.target_handle)
           ? "left"
           : e.target_handle || undefined;
+
+        const sourceNode = data.nodes.find((n) => n.id === e.source);
+        const { allowedOption } = getConnectionBehavior(
+          sourceNode?.type,
+          targetNode?.type,
+          e.source_handle || undefined,
+          targetHandle
+        );
+
+        // Custom edge type serialization
+        // e.edge_type will be loaded from backend JSON
+        // @ts-ignore
+        let edgeType = e.edge_type || "one-way";
+        if (edgeType === "bi-directional" && allowedOption === "one-way") {
+          edgeType = "one-way";
+        }
 
         return {
           id: e.id,
@@ -225,9 +249,24 @@ function WorkspaceEditorInner({
           target: e.target,
           sourceHandle: e.source_handle || undefined,
           targetHandle,
-          animated: true,
+          type: "custom",
+          data: {
+            edgeType,
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: "#d4e600",
+            width: 16,
+            height: 16,
+          },
+          markerStart: edgeType === "bi-directional" ? {
+            type: MarkerType.ArrowClosed,
+            color: "#d4e600",
+            width: 16,
+            height: 16,
+          } : undefined,
           style: {
-            stroke: isStorage ? "#38bdf8" : "#d4e600",
+            stroke: "#d4e600",
             strokeWidth: 2,
           },
         };
@@ -268,6 +307,7 @@ function WorkspaceEditorInner({
         target: e.target,
         source_handle: e.sourceHandle || undefined,
         target_handle: e.targetHandle || undefined,
+        edge_type: (e.data?.edgeType as string) || undefined,
       })),
       viewport,
     };
@@ -479,29 +519,58 @@ function WorkspaceEditorInner({
   // ─── Connection handling ───────────────────────────────────
   const onConnect: OnConnect = useCallback(
     (params) =>
-      setEdges((eds) =>
-        addEdge(
+      setEdges((eds) => {
+        const sourceNode = nodes.find((n) => n.id === params.source);
+        const targetNode = nodes.find((n) => n.id === params.target);
+        const { defaultFlow } = getConnectionBehavior(
+          sourceNode?.type,
+          targetNode?.type,
+          params.sourceHandle,
+          params.targetHandle
+        );
+
+        return addEdge(
           {
             ...params,
-            animated: true,
+            type: "custom",
+            data: {
+              edgeType: defaultFlow,
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "#d4e600",
+              width: 16,
+              height: 16,
+            },
+            markerStart: defaultFlow === "bi-directional" ? {
+              type: MarkerType.ArrowClosed,
+              color: "#d4e600",
+              width: 16,
+              height: 16,
+            } : undefined,
             style: {
-              stroke: params.sourceHandle === "storage" ? "#38bdf8" : "#d4e600",
+              stroke: "#d4e600",
               strokeWidth: 2,
             },
           },
           eds
-        )
-      ),
-    [setEdges]
+        );
+      }),
+    [setEdges, nodes]
   );
 
   // ─── Selection tracking ───────────────────────────────────
   const onSelectionChange: OnSelectionChangeFunc = useCallback(
-    ({ nodes: selectedNodes }) => {
+    ({ nodes: selectedNodes, edges: selectedEdges }) => {
       if (selectedNodes.length === 1) {
         setSelectedNode(selectedNodes[0]);
+        setSelectedEdge(null);
+      } else if (selectedEdges.length === 1) {
+        setSelectedEdge(selectedEdges[0]);
+        setSelectedNode(null);
       } else {
         setSelectedNode(null);
+        setSelectedEdge(null);
       }
     },
     []
@@ -527,6 +596,7 @@ function WorkspaceEditorInner({
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
+    setSelectedEdge(null);
     setContextMenu(null);
   }, []);
 
@@ -884,33 +954,74 @@ function WorkspaceEditorInner({
     [setNodes]
   );
 
-  // ─── Workflow execution ────────────────────────────────────
-  const executeWorkflow = useCallback(async (triggerNodeId?: string) => {
-    let triggerNodes = nodes.filter((n) => n.type === "trigger");
-    if (triggerNodeId && typeof triggerNodeId === "string") {
-      triggerNodes = triggerNodes.filter((n) => n.id === triggerNodeId);
-    }
-    if (triggerNodes.length === 0) {
-      showToast("No Trigger node found", "error");
-      return;
-    }
+  // ─── Update edge type ──────────────────────────────────────
+  const handleUpdateEdgeData = useCallback(
+    (edgeId: string, edgeType: string) => {
+      setEdges((eds) =>
+        eds.map((e) => {
+          if (e.id === edgeId) {
+            return {
+              ...e,
+              data: {
+                ...e.data,
+                edgeType,
+              },
+              markerStart: edgeType === "bi-directional" ? {
+                type: MarkerType.ArrowClosed,
+                color: "#d4e600",
+                width: 16,
+                height: 16,
+              } : undefined,
+            };
+          }
+          return e;
+        })
+      );
+      setSelectedEdge((prev) =>
+        prev && prev.id === edgeId
+          ? {
+              ...prev,
+              data: {
+                ...prev.data,
+                edgeType,
+              },
+            }
+          : prev
+      );
+    },
+    [setEdges]
+  );
 
-    setIsRunning(true);
-    showToast("Workflow started", "info");
+  const handleDeleteEdge = useCallback(
+    (edgeId: string) => {
+      setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+      setSelectedEdge(null);
+      showToast("Connection deleted", "info");
+    },
+    [setEdges, showToast]
+  );
 
-    try {
-      const currentNodes = [...nodes];
-      const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>) => {
-        const index = currentNodes.findIndex((n) => n.id === nodeId);
-        if (index !== -1) {
-          currentNodes[index] = { ...currentNodes[index], data: { ...data } };
-        }
-        handleUpdateNodeData(nodeId, data);
-      };
+  // ─── Centralized Workflow execution ────────────────────────
+  const runWorkflow = useCallback(
+    async (startNodeIds: string[], chatInput?: string) => {
+      setIsRunning(true);
+      if (!chatInput) {
+        showToast("Workflow started", "info");
+      }
 
-      for (const trigger of triggerNodes) {
+      try {
+        const currentNodes = [...nodes];
+        const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>) => {
+          const index = currentNodes.findIndex((n) => n.id === nodeId);
+          if (index !== -1) {
+            currentNodes[index] = { ...currentNodes[index], data: { ...data } };
+          }
+          handleUpdateNodeData(nodeId, data);
+        };
+
         const visited = new Set<string>();
-        const queue: string[] = [trigger.id];
+        const queue = [...startNodeIds];
+        let haltedAtChat = false;
 
         while (queue.length > 0) {
           const currentId = queue.shift()!;
@@ -920,58 +1031,85 @@ function WorkspaceEditorInner({
           const currentNode = currentNodes.find((n) => n.id === currentId);
           if (!currentNode) continue;
 
+          // 1. Execute the current node
+          const isStartingChatNode = currentNode.type === "chat" && startNodeIds.includes(currentNode.id);
+          
           await executeNode(currentNode.type || "default", {
             node: currentNode,
             nodes: currentNodes,
             edges,
             updateNodeData: localUpdateNodeData,
             showToast,
+            chatInput: isStartingChatNode ? chatInput : undefined,
+            visited,
           });
 
-          const downstream = edges
-            .filter((e) => e.source === currentId)
-            .map((e) => e.target);
-          queue.push(...downstream);
+          // 2. Decide propagation downstream
+          // If the node is a chat node and is NOT a starting node, pause execution downstream
+          if (currentNode.type === "chat" && !isStartingChatNode) {
+            haltedAtChat = true;
+            continue;
+          }
+
+          // Propagate to logic downstream targets
+          const downstreamTargets = edges
+            .filter((e) => {
+              // Ignore storage connections
+              if (e.sourceHandle === "storage" || e.targetHandle === "storage") return false;
+              
+              // Exclude connections to/from jsonStorage nodes
+              const srcNode = currentNodes.find(n => n.id === e.source);
+              const tgtNode = currentNodes.find(n => n.id === e.target);
+              if (srcNode?.type === "jsonStorage" || tgtNode?.type === "jsonStorage") return false;
+
+              // Propagate if normal forward edge OR bi-directional edge from target back to source
+              return e.source === currentId || (e.target === currentId && e.data?.edgeType === "bi-directional");
+            })
+            .map((e) => (e.source === currentId ? e.target : e.source));
+
+          queue.push(...downstreamTargets);
         }
+
+        if (haltedAtChat) {
+          showToast("Workflow paused at Chat. Awaiting message...", "info");
+        } else {
+          showToast("Workflow completed ✓", "success");
+        }
+      } catch (err) {
+        showToast(`Workflow failed: ${err}`, "error");
+      } finally {
+        setIsRunning(false);
+      }
+    },
+    [nodes, edges, showToast, handleUpdateNodeData]
+  );
+
+  const executeWorkflow = useCallback(
+    async (triggerNodeId?: string) => {
+      let triggerNodes = nodes.filter((n) => n.type === "trigger");
+      if (triggerNodeId && typeof triggerNodeId === "string") {
+        triggerNodes = triggerNodes.filter((n) => n.id === triggerNodeId);
+      }
+      if (triggerNodes.length === 0) {
+        showToast("No Trigger node found", "error");
+        return;
       }
 
-      showToast("Workflow completed ✓", "success");
-    } catch (err) {
-      showToast(`Workflow failed: ${err}`, "error");
-    } finally {
-      setIsRunning(false);
-    }
-  }, [nodes, edges, showToast, handleUpdateNodeData]);
+      const startNodeIds = triggerNodes.map((n) => n.id);
+      await runWorkflow(startNodeIds);
+    },
+    [nodes, runWorkflow, showToast]
+  );
 
-  // ─── Chat execution ────────────────────────────────────────
-  const handleChatSend = useCallback(async (nodeId: string, text: string) => {
-    const chatNode = nodes.find(n => n.id === nodeId);
-    if (!chatNode) return;
+  const handleChatSend = useCallback(
+    async (nodeId: string, text: string) => {
+      const chatNode = nodes.find((n) => n.id === nodeId);
+      if (!chatNode) return;
 
-    setIsRunning(true);
-    try {
-      const currentNodes = [...nodes];
-      const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>) => {
-        const index = currentNodes.findIndex((n) => n.id === nodeId);
-        if (index !== -1) {
-          currentNodes[index] = { ...currentNodes[index], data: { ...data } };
-        }
-        handleUpdateNodeData(nodeId, data);
-      };
-
-      await executeNode("chat", {
-        node: chatNode,
-        nodes: currentNodes,
-        edges,
-        updateNodeData: localUpdateNodeData,
-        showToast,
-        chatInput: text,
-        executeNode,
-      });
-    } finally {
-      setIsRunning(false);
-    }
-  }, [nodes, edges, handleUpdateNodeData, showToast]);
+      await runWorkflow([nodeId], text);
+    },
+    [nodes, runWorkflow]
+  );
 
   // ─── Back handler (save before leaving) ────────────────────
   const handleBack = useCallback(async () => {
@@ -1025,11 +1163,12 @@ function WorkspaceEditorInner({
           onEdgeContextMenu={onEdgeContextMenu}
           onPaneContextMenu={onPaneContextMenu}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           fitView
           proOptions={{ hideAttribution: true }}
           colorMode="dark"
           defaultEdgeOptions={{
-            animated: true,
+            type: "custom",
             style: { stroke: "#d4e600", strokeWidth: 2 },
           }}
           panOnDrag={[1, 2]}
@@ -1086,6 +1225,9 @@ function WorkspaceEditorInner({
         edges={edges}
         onDragStartNode={handleDragStartNode}
         onDragEndNode={handleDragEndNode}
+        selectedEdge={selectedEdge}
+        onUpdateEdgeData={handleUpdateEdgeData}
+        onDeleteEdge={handleDeleteEdge}
       />
 
       {/* Context Menu */}

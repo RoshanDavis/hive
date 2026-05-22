@@ -1,35 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
 import type { ExecutionContext, NodeExecutor } from "./types";
-
-export interface ChatExecutionContext extends ExecutionContext {
-  chatInput?: string;
-  executeNode?: (nodeType: string, context: ChatExecutionContext) => Promise<void>;
-}
+import { getUpstreamNodeData } from "./utils";
 
 export class ChatExecutor implements NodeExecutor {
-  async execute({ node, nodes, edges, updateNodeData, showToast, chatInput, executeNode }: ChatExecutionContext): Promise<void> {
-    if (!chatInput) return;
-
-    const chatNode = node;
-    
-    // Find connected Ollama node connected via normal source handle (not the storage handle)
-    const outgoingEdges = edges.filter(e => e.source === chatNode.id);
-    const ollamaNodes = nodes.filter(
-      n => n.type === "ollama" && outgoingEdges.some(e => e.target === n.id && e.sourceHandle !== "storage")
-    );
-    
-    if (ollamaNodes.length === 0) {
-      showToast("No connected Ollama node found.", "error");
-      return;
-    }
-
-    const ollamaNode = ollamaNodes[0];
-    const url = String(ollamaNode.data?.ollamaUrl || "http://localhost:11434");
-    const model = String(ollamaNode.data?.model || "llama3");
-    const systemPrompt = String(ollamaNode.data?.systemPrompt || "");
-    const temp = Number(ollamaNode.data?.temperature || 0.7);
-    const maxT = Number(ollamaNode.data?.maxTokens || 2048);
-    const historyLimit = Number(ollamaNode.data?.chatHistoryLimit || 0);
+  async execute(context: ExecutionContext): Promise<void> {
+    const { node: chatNode, nodes, edges, updateNodeData, chatInput, visited } = context;
 
     // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
     const storageEdge = edges.find(
@@ -39,162 +13,147 @@ export class ChatExecutor implements NodeExecutor {
       ? nodes.find((n) => n.id === storageEdge.target && n.type === "jsonStorage")
       : null;
 
-    let ollamaApiMessages: { role: "user" | "assistant" | "system"; content: string }[] = [];
-    let storageRecords: any[] = [];
+    if (chatInput !== undefined && chatInput !== null) {
+      // ─── Case A: User sent a message (Input Mode) ───
+      const storageEdgeType = (storageEdge?.data?.edgeType as string) || "read-write";
+      const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
+      const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
 
-    if (storageNode) {
-      const dbRecords = (storageNode.data?.records as any[]) || [];
-      const newRecord = {
-        id: Date.now().toString(),
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        source: "User",
-        content: chatInput
-      };
-      
-      storageRecords = [...dbRecords, newRecord];
-      updateNodeData(storageNode.id, {
-        ...storageNode.data,
-        records: storageRecords
-      });
+      let updatedLocalMessages = (chatNode.data?.messages as any[]) || [];
 
-      // Update chat messages locally to show the history so far (including the new user message)
-      const currentMessages = (chatNode.data?.messages as any[]) || [];
-      updateNodeData(chatNode.id, {
-        ...chatNode.data,
-        messages: [...currentMessages, { role: "user", content: chatInput }]
-      });
-
-      // Apply the sliding window context history limit if configured
-      let activeRecords = storageRecords;
-      if (historyLimit > 0 && activeRecords.length > historyLimit) {
-        activeRecords = activeRecords.slice(-historyLimit);
-      }
-
-      ollamaApiMessages = activeRecords.map((rec: any) => {
-        const src = (rec.source || "").toLowerCase();
-        let role: "user" | "assistant" | "system" = "assistant";
-        if (src === "user" || src === "you") {
-          role = "user";
-        } else if (src === "system") {
-          role = "system";
-        }
-        return { role, content: rec.content || "" };
-      });
-    } else {
-      // Single-turn chat by default
-      const newMessages = [{ role: "user", content: chatInput }];
-      updateNodeData(chatNode.id, {
-        ...chatNode.data,
-        messages: newMessages
-      });
-      ollamaApiMessages = [{ role: "user", content: chatInput }];
-    }
-
-    if (systemPrompt.trim() !== "") {
-      ollamaApiMessages.unshift({ role: "system", content: systemPrompt });
-    }
-
-    try {
-      const response = await invoke<string>("ollama_chat", {
-        ollamaUrl: url,
-        model,
-        messages: ollamaApiMessages,
-        temperature: temp,
-        maxTokens: maxT
-      });
-
-      if (storageNode) {
-        const assistantRecord = {
-          id: (Date.now() + 1).toString(),
+      if (storageNode && hasWritePermission) {
+        const dbRecords = (storageNode.data?.records as any[]) || [];
+        const newRecord = {
+          id: Date.now().toString(),
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          source: "Agent",
-          content: response
+          source: "User",
+          content: chatInput
         };
-        storageRecords = [...storageRecords, assistantRecord];
+        const storageRecords = [...dbRecords, newRecord];
         updateNodeData(storageNode.id, {
           ...storageNode.data,
           records: storageRecords
         });
 
-        // Sync ChatNode messages to full history
-        const fullHistory = storageRecords.map((rec: any) => {
-          const src = (rec.source || "").toLowerCase();
-          let role: "user" | "assistant" | "system" = "assistant";
-          if (src === "user" || src === "you") {
-            role = "user";
-          } else if (src === "system") {
-            role = "system";
-          }
-          return { role, content: rec.content || "" };
-        });
-
-        updateNodeData(chatNode.id, {
-          ...chatNode.data,
-          messages: fullHistory
-        });
-      } else {
-        // Single-turn chat - only user input & latest response
-        updateNodeData(chatNode.id, {
-          ...chatNode.data,
-          messages: [
-            { role: "user", content: chatInput },
-            { role: "assistant", content: response }
-          ]
-        });
-      }
-
-      // Update Ollama node itself with the response
-      updateNodeData(ollamaNode.id, {
-        ...ollamaNode.data,
-        lastResponse: response
-      });
-
-      const ollamaOutgoingEdges = edges.filter(e => e.source === ollamaNode.id);
-      const outputNodes = nodes.filter(n => (n.type === "output" || n.type === "outputNode") && ollamaOutgoingEdges.some(e => e.target === n.id));
-      
-      for (const outNode of outputNodes) {
-        updateNodeData(outNode.id, {
-          ...outNode.data,
-          outputContent: response
-        });
-      }
-
-      // Propagate execution downstream from the Ollama node
-      if (executeNode) {
-        const visited = new Set<string>();
-        const queue: string[] = ollamaOutgoingEdges
-          .filter(e => {
-            const targetNode = nodes.find(n => n.id === e.target);
-            return !!targetNode;
-          })
-          .map(e => e.target);
-
-        while (queue.length > 0) {
-          const currentId = queue.shift()!;
-          if (visited.has(currentId)) continue;
-          visited.add(currentId);
-
-          const currentNode = nodes.find(n => n.id === currentId);
-          if (!currentNode) continue;
-
-          await executeNode(currentNode.type || "default", {
-            node: currentNode,
-            nodes,
-            edges,
-            updateNodeData,
-            showToast,
-            executeNode
+        if (hasReadPermission) {
+          // Sync ChatNode messages to full history
+          updatedLocalMessages = storageRecords.map((rec: any) => {
+            const src = (rec.source || "").toLowerCase();
+            let role: "user" | "assistant" | "system" = "assistant";
+            if (src === "user" || src === "you") {
+              role = "user";
+            } else if (src === "system") {
+              role = "system";
+            }
+            return { role, content: rec.content || "", sender: rec.source };
           });
+        } else {
+          // Write-only: just append to local messages independently
+          updatedLocalMessages = [...updatedLocalMessages, { role: "user" as const, content: chatInput, sender: "You" }];
+        }
+      } else {
+        // No storage node, or no write permission - append to local state only
+        updatedLocalMessages = [...updatedLocalMessages, { role: "user" as const, content: chatInput, sender: "You" }];
+      }
 
-          const downstream = edges
-            .filter(e => e.source === currentId)
-            .map(e => e.target);
-          queue.push(...downstream);
+      updateNodeData(chatNode.id, {
+        ...chatNode.data,
+        messages: updatedLocalMessages,
+        lastResponse: chatInput
+      });
+    } else {
+      // ─── Case B: Triggered Downstream (Output/Receiver Mode) ───
+      let resolvedMessage = "";
+      let senderLabel = "Agent";
+      
+      // Find all upstream edges where Chat is target, OR where Chat is source but edge is bi-directional
+      // Exclude storage connections (sourceHandle === "storage" or targetHandle === "storage")
+      const upstreamEdges = edges.filter(e => 
+        e.sourceHandle !== "storage" &&
+        e.targetHandle !== "storage" &&
+        (e.target === chatNode.id || 
+         (e.source === chatNode.id && e.data?.edgeType === "bi-directional"))
+      );
+
+      if (upstreamEdges.length > 0) {
+        // Find upstream nodes (the other end of these edges)
+        const upstreamNodes = nodes.filter(n => 
+          upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== chatNode.id
+        );
+
+        for (const upstream of upstreamNodes) {
+          if (visited && !visited.has(upstream.id)) {
+            continue;
+          }
+          const val = getUpstreamNodeData(upstream);
+          if (val !== null) {
+            resolvedMessage = val;
+            senderLabel = String(upstream.data?.label || upstream.type || "Agent");
+            break;
+          }
         }
       }
 
-    } catch (err) {
-      showToast(`Ollama error: ${err}`, "error");
+      if (!resolvedMessage) {
+        if (upstreamEdges.length > 0) {
+          // If there are upstream edges but no data is resolved (like a Trigger node connection),
+          // treat it as a system message that the workflow has reached the Chat node.
+          resolvedMessage = "Workflow reached Chat. Awaiting message...";
+        } else {
+          // If triggered downstream but no upstream data could be resolved and no upstream edges, do nothing.
+          return;
+        }
+      }
+
+      const storageEdgeType = (storageEdge?.data?.edgeType as string) || "read-write";
+      const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
+      const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
+
+      let updatedLocalMessages = (chatNode.data?.messages as any[]) || [];
+      const isSystemMsg = resolvedMessage === "Workflow reached Chat. Awaiting message...";
+      const role = isSystemMsg ? ("system" as const) : ("assistant" as const);
+      const dbSource = isSystemMsg ? "System" : senderLabel;
+
+      if (storageNode && hasWritePermission) {
+        const dbRecords = (storageNode.data?.records as any[]) || [];
+        const assistantRecord = {
+          id: Date.now().toString(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          source: dbSource,
+          content: resolvedMessage
+        };
+        const storageRecords = [...dbRecords, assistantRecord];
+        updateNodeData(storageNode.id, {
+          ...storageNode.data,
+          records: storageRecords
+        });
+
+        if (hasReadPermission) {
+          // Sync ChatNode messages to full history
+          updatedLocalMessages = storageRecords.map((rec: any) => {
+            const src = (rec.source || "").toLowerCase();
+            let r: "user" | "assistant" | "system" = "assistant";
+            if (src === "user" || src === "you") {
+              r = "user";
+            } else if (src === "system") {
+              r = "system";
+            }
+            return { role: r, content: rec.content || "", sender: rec.source };
+          });
+        } else {
+          // Write-only: just append to local messages independently
+          updatedLocalMessages = [...updatedLocalMessages, { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel }];
+        }
+      } else {
+        // No storage node, or read-only connection
+        updatedLocalMessages = [...updatedLocalMessages, { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel }];
+      }
+
+      updateNodeData(chatNode.id, {
+        ...chatNode.data,
+        messages: updatedLocalMessages,
+        lastResponse: isSystemMsg ? undefined : resolvedMessage // Clear lastResponse for system triggers so downstream nodes don't receive stale/placeholder values
+      });
     }
   }
 }

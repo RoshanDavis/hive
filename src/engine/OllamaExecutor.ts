@@ -1,37 +1,62 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ExecutionContext, NodeExecutor } from "./types";
+import { getUpstreamNodeData } from "./utils";
 
 export class OllamaExecutor implements NodeExecutor {
-  async execute({ node, nodes, edges, updateNodeData, showToast }: ExecutionContext): Promise<void> {
+  async execute(context: ExecutionContext): Promise<void> {
+    const { node, nodes, edges, updateNodeData, showToast, visited } = context;
+
     const url = String(node.data?.ollamaUrl || "http://localhost:11434");
     const model = String(node.data?.model || "llama3");
     const systemPrompt = String(node.data?.systemPrompt || "");
     const temp = Number(node.data?.temperature || 0.7);
     const maxT = Number(node.data?.maxTokens || 2048);
-
     const historyLimit = Number(node.data?.chatHistoryLimit || 0);
 
-    // Find incoming chat node
-    const incomingEdges = edges.filter(e => e.target === node.id);
-    const incomingChatNodes = nodes.filter(n => 
-      n.type === "chat" && incomingEdges.some(e => e.source === n.id)
+    // Find all upstream edges where Ollama is target, OR where Ollama is source but edge is bi-directional
+    const upstreamEdges = edges.filter(e => 
+      e.target === node.id || 
+      (e.source === node.id && e.data?.edgeType === "bi-directional")
     );
-    
+    const upstreamNodes = nodes.filter(n => 
+      upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== node.id
+    );
+
+    // Filter to only allow upstream nodes that are in the active run path (visited Set)
+    const visitedNodes = upstreamNodes.filter(n => !visited || visited.has(n.id));
+
     let ollamaMessages: any[] = [];
-    let chatNodeId = "";
-    
-    if (incomingChatNodes.length > 0) {
-      chatNodeId = incomingChatNodes[0].id;
-      let rawMessages = incomingChatNodes[0].data?.messages as any[] || [];
+
+    // 1. If an upstream Chat node exists on the active run path, load the full conversation log
+    const chatNode = visitedNodes.find(n => n.type === "chat");
+    if (chatNode) {
+      let rawMessages = chatNode.data?.messages as any[] || [];
       if (historyLimit > 0 && rawMessages.length > historyLimit) {
         rawMessages = rawMessages.slice(-historyLimit);
       }
       ollamaMessages = [...rawMessages];
-    } else {
-      showToast("Ollama node needs a connected Chat node for input", "error");
-      return;
     }
 
+    // 2. If no Chat node or empty chat, resolve input generically from visited upstream nodes
+    if (ollamaMessages.length === 0) {
+      let resolvedText = "";
+      for (const upstream of visitedNodes) {
+        const val = getUpstreamNodeData(upstream);
+        if (val !== null) {
+          resolvedText = val;
+          break;
+        }
+      }
+
+      if (resolvedText) {
+        ollamaMessages = [{ role: "user" as const, content: resolvedText }];
+      } else {
+        showToast("Ollama node: No upstream input data found.", "error");
+        return;
+      }
+    }
+
+    // 3. Prepend system prompt if configured
     if (systemPrompt.trim() !== "") {
       ollamaMessages.unshift({ role: "system", content: systemPrompt });
     }
@@ -45,38 +70,11 @@ export class OllamaExecutor implements NodeExecutor {
         maxTokens: maxT
       });
 
-      // Update Chat Node with response
-      if (chatNodeId) {
-        const chatNode = nodes.find(n => n.id === chatNodeId);
-        if (chatNode) {
-          const currentMessages = (chatNode.data?.messages as any[]) || [];
-          updateNodeData(chatNodeId, {
-            ...chatNode.data,
-            messages: [...currentMessages, { role: "assistant", content: response }]
-          });
-        }
-      }
-
-      // Update Ollama node itself with the response
+      // 4. Update the Ollama node with the response
       updateNodeData(node.id, {
         ...node.data,
         lastResponse: response
       });
-
-      // Send response to downstream output node
-      const outgoingEdges = edges.filter(e => e.source === node.id);
-      const outgoingOutputNodes = nodes.filter(n =>
-        (n.type === "output" || n.type === "outputNode") && outgoingEdges.some(e => e.target === n.id)
-      );
-
-      if (outgoingOutputNodes.length > 0) {
-        updateNodeData(outgoingOutputNodes[0].id, {
-          ...outgoingOutputNodes[0].data,
-          outputContent: response
-        });
-      } else {
-        showToast("Ollama finished, but no Output node connected", "info");
-      }
     } catch (err) {
       showToast(`Ollama error: ${err}`, "error");
     }

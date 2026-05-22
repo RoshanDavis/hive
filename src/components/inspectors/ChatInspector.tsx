@@ -23,9 +23,13 @@ export default function ChatInspector({
     ? nodes?.find((n) => n.id === storageEdge.target && n.type === "jsonStorage")
     : null;
 
-  // Map storage records to chat messages if connected, otherwise fallback to local messages
+  const storageEdgeType = (storageEdge?.data?.edgeType as string) || "read-write";
+  const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
+  const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
+
+  // Map storage records to chat messages if connected and read permission is granted, otherwise fallback to local messages
   const dbRecords = (connectedStorageNode?.data?.records as any[]) || [];
-  const displayMessages = connectedStorageNode
+  const displayMessages = (connectedStorageNode && hasReadPermission)
     ? dbRecords.map((rec: any) => {
         const src = (rec.source || "").toLowerCase();
         let role: "user" | "assistant" | "system" = "assistant";
@@ -34,7 +38,7 @@ export default function ChatInspector({
         } else if (src === "system") {
           role = "system";
         }
-        return { role, content: rec.content || "" };
+        return { role, content: rec.content || "", sender: rec.source };
       })
     : (node.data?.messages as any[]) || [];
 
@@ -91,7 +95,7 @@ export default function ChatInspector({
       ...node.data,
       messages: [],
     });
-    if (connectedStorageNode) {
+    if (connectedStorageNode && hasWritePermission) {
       onUpdate(connectedStorageNode.id, {
         ...connectedStorageNode.data,
         records: [],
@@ -105,9 +109,17 @@ export default function ChatInspector({
       <div className="flex justify-between items-center mb-1">
         <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">Chat Conversation</div>
         {connectedStorageNode && (
-          <div className="text-[9px] font-semibold text-accent bg-accent-glow px-2 py-0.5 rounded flex items-center gap-1 border border-accent-dim/20">
+          <div className="text-[9px] font-semibold text-[#38bdf8] bg-[#38bdf8]/10 px-2 py-0.5 rounded flex items-center gap-1 border border-[#38bdf8]/20 select-none">
             <span>💾</span>
-            <span>Linked: {String(connectedStorageNode.data?.label || "Storage")}</span>
+            <span>
+              Linked: {String(connectedStorageNode.data?.label || "Storage")} (
+              {storageEdgeType === "read-write"
+                ? "Sync"
+                : storageEdgeType === "read-only"
+                ? "Read-Only"
+                : "Write-Only"}
+              )
+            </span>
           </div>
         )}
       </div>
@@ -122,12 +134,24 @@ export default function ChatInspector({
             ↑ Scroll up to load older messages ({displayMessages.length - visibleCount} more)
           </div>
         )}
-        {slicedMessages.map((msg, idx) => (
-          <div key={idx} className={`flex flex-col gap-1 max-w-[90%] ${msg.role === "user" ? "self-end" : "self-start"}`}>
-            <div className={`text-[10px] font-semibold text-text-muted uppercase ${msg.role === "user" ? "text-right text-accent-dim" : ""}`}>{msg.role === "user" ? "You" : "Agent"}</div>
-            <div className={`bg-card px-3 py-2 rounded-md text-[13px] text-text-main leading-relaxed whitespace-pre-wrap break-words border border-border-subtle ${msg.role === "user" ? "bg-accent-glow border-accent-dim rounded-br-sm" : "bg-input rounded-bl-sm"}`}>{msg.content}</div>
-          </div>
-        ))}
+        {slicedMessages.map((msg, idx) => {
+          if (msg.role === "system") {
+            return (
+              <div
+                key={idx}
+                className="self-center bg-black/35 border border-border-subtle/60 px-3 py-1 rounded text-[11px] text-text-secondary italic max-w-[85%] text-center my-1 select-none shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]"
+              >
+                {msg.content}
+              </div>
+            );
+          }
+          return (
+            <div key={idx} className={`flex flex-col gap-1 max-w-[90%] ${msg.role === "user" ? "self-end" : "self-start"}`}>
+              <div className={`text-[10px] font-semibold text-text-muted uppercase ${msg.role === "user" ? "text-right text-accent-dim" : ""}`}>{msg.role === "user" ? "You" : (msg.sender || "Agent")}</div>
+              <div className={`bg-card px-3 py-2 rounded-md text-[13px] text-text-main leading-relaxed whitespace-pre-wrap break-words border border-border-subtle ${msg.role === "user" ? "bg-accent-glow border-accent-dim rounded-br-sm" : "bg-input rounded-bl-sm"}`}>{msg.content}</div>
+            </div>
+          );
+        })}
         {displayMessages.length === 0 && (
           <div className="text-text-muted text-xs text-center mt-5">No messages yet. Say hello!</div>
         )}

@@ -27,6 +27,7 @@ export interface OllamaNodeData {
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  sender?: string;
 }
 
 export interface ChatNodeData {
@@ -121,7 +122,7 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     label: "Chat",
     icon: "💬",
     description: "Provides chat input to an agent",
-    defaultData: { label: "Chat Input", messages: [] },
+    defaultData: { label: "Chat", messages: [] },
     inspector: ChatInspector,
   },
   {

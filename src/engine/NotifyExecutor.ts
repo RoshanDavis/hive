@@ -3,7 +3,8 @@ import type { ExecutionContext, NodeExecutor } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class NotifyExecutor implements NodeExecutor {
-  async execute({ node, nodes, edges, updateNodeData, showToast }: ExecutionContext): Promise<void> {
+  async execute(context: ExecutionContext): Promise<void> {
+    const { node, nodes, edges, updateNodeData, showToast, visited } = context;
     try {
       let resolvedMessage = "";
 
@@ -12,6 +13,9 @@ export class NotifyExecutor implements NodeExecutor {
         const upstreamNodes = nodes.filter(n => incomingEdges.some(e => e.source === n.id));
 
         for (const upstream of upstreamNodes) {
+          if (visited && !visited.has(upstream.id)) {
+            continue;
+          }
           const val = getUpstreamNodeData(upstream);
           if (val !== null) {
             resolvedMessage = val;

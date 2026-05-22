@@ -276,3 +276,34 @@
   transform: scale(1.02) !important;
 }
 
+/* Edge Animations */
+@keyframes edge-flow-forward {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes edge-flow-backward {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 24;
+  }
+}
+
+.animated-edge-forward {
+  stroke-dasharray: 6, 6;
+  animation: edge-flow-forward 1.2s linear infinite;
+  pointer-events: none;
+}
+
+.animated-edge-backward {
+  stroke-dasharray: 6, 6;
+  animation: edge-flow-backward 1.2s linear infinite;
+  pointer-events: none;
+}
+
