@@ -216,7 +216,6 @@ export default function InspectorPanel({
               placeholder="Search nodes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
             />
           </div>
 

@@ -25,7 +25,12 @@ export function getUpstreamNodeData(upstreamNode: Node): string | null {
     }
   }
 
-  // 4. Check message (commonly used by Notify)
+  // 4. Check output (commonly used by Notify)
+  if (upstreamNode.data.output !== undefined && upstreamNode.data.output !== null) {
+    return String(upstreamNode.data.output);
+  }
+
+  // 5. Check message (commonly used by Notify fallback)
   if (upstreamNode.data.message !== undefined && upstreamNode.data.message !== null) {
     return String(upstreamNode.data.message);
   }

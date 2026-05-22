@@ -30,6 +30,7 @@ import OutputNodeComponent from "../nodes/OutputNode";
 import JSONStorageNodeComponent from "../nodes/JSONStorageNode";
 import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
 import { executeNode } from "../engine";
+import { useWorkspaceClipboard } from "../hooks/useWorkspaceClipboard";
 
 // ─── Props ───────────────────────────────────────────────────
 interface WorkspaceEditorProps {
@@ -487,219 +488,18 @@ function WorkspaceEditorInner({
     []
   );
 
-  // ─── Clipboard Operations ─────────────────────────────────
-
-  const deleteSelected = useCallback(() => {
-    const selectedNodes = nodes.filter((n) => n.selected);
-    const selectedEdges = edges.filter((e) => e.selected);
-
-    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
-
-    // Prune backend history for deleted JSONStorage nodes
-    selectedNodes.forEach((node) => {
-      if (node.type === "jsonStorage") {
-        invoke("delete_storage_history", {
-          workspacePath,
-          spaceId: activeSpaceId,
-          databaseNodeId: node.id,
-        }).catch((err) => {
-          console.error("Failed to delete JSON storage history:", err);
-        });
-      }
-    });
-
-    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
-    const selectedEdgeIds = new Set(selectedEdges.map((e) => e.id));
-
-    setNodes((nds) => nds.filter((n) => !selectedNodeIds.has(n.id)));
-    setEdges((eds) =>
-      eds.filter(
-        (e) =>
-          !selectedEdgeIds.has(e.id) &&
-          !selectedNodeIds.has(e.source) &&
-          !selectedNodeIds.has(e.target)
-      )
-    );
-
-    if (selectedNode && selectedNodeIds.has(selectedNode.id)) {
-      setSelectedNode(null);
-    }
-
-    const nodeCount = selectedNodes.length;
-    const edgeCount = selectedEdges.length;
-    let msg = "";
-    if (nodeCount > 0 && edgeCount > 0) {
-      msg = `Deleted ${nodeCount} node(s) and ${edgeCount} edge(s)`;
-    } else if (nodeCount > 0) {
-      msg = `Deleted ${nodeCount} node(s)`;
-    } else if (edgeCount > 0) {
-      msg = `Deleted ${edgeCount} edge(s)`;
-    }
-    if (msg) showToast(msg, "info");
-  }, [nodes, edges, selectedNode, workspacePath, activeSpaceId, setNodes, setEdges, showToast]);
-
-  const copySelection = useCallback(() => {
-    const selectedNodes = nodes.filter((n) => n.selected);
-    if (selectedNodes.length === 0) return;
-
-    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
-    const connectedEdges = edges.filter(
-      (e) => selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
-    );
-
-    const clipboardData = {
-      nodes: selectedNodes,
-      edges: connectedEdges,
-    };
-
-    localStorage.setItem("hive-clipboard", JSON.stringify(clipboardData));
-    showToast(`Copied ${selectedNodes.length} node(s)`, "info");
-  }, [nodes, edges, showToast]);
-
-  const cutSelection = useCallback(() => {
-    const selectedNodes = nodes.filter((n) => n.selected);
-    if (selectedNodes.length === 0) return;
-
-    copySelection();
-    deleteSelected();
-  }, [nodes, copySelection, deleteSelected]);
-
-  const pasteSelection = useCallback((clientX?: number, clientY?: number) => {
-    const raw = localStorage.getItem("hive-clipboard");
-    if (!raw) return;
-
-    try {
-      const clipboardData = JSON.parse(raw);
-      if (!clipboardData || !Array.isArray(clipboardData.nodes)) return;
-
-      const clipboardNodes = clipboardData.nodes as Node[];
-      const clipboardEdges = (clipboardData.edges || []) as Edge[];
-
-      if (clipboardNodes.length === 0) return;
-
-      // Deselect all existing nodes and edges in state
-      setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
-      setEdges((eds) => eds.map((e) => ({ ...e, selected: false })));
-
-      const idMap = new Map<string, string>();
-      
-      let offsetX = 40;
-      let offsetY = 40;
-
-      if (clientX !== undefined && clientY !== undefined && reactFlowInstance) {
-        let minX = Infinity;
-        let minY = Infinity;
-        clipboardNodes.forEach((node) => {
-          const px = node.position?.x || 0;
-          const py = node.position?.y || 0;
-          if (px < minX) minX = px;
-          if (py < minY) minY = py;
-        });
-
-        const flowCoords = reactFlowInstance.screenToFlowPosition({
-          x: clientX,
-          y: clientY,
-        });
-
-        offsetX = flowCoords.x - minX;
-        offsetY = flowCoords.y - minY;
-      }
-
-      const newNodes = clipboardNodes.map((node) => {
-        const nodeType = node.type === "output" ? "outputNode" : (node.type || "unknown");
-        const newId = `${nodeType}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-        idMap.set(node.id, newId);
-
-        let newPos = {
-          x: (node.position?.x || 0) + 40,
-          y: (node.position?.y || 0) + 40,
-        };
-
-        if (clientX !== undefined && clientY !== undefined) {
-          newPos = {
-            x: (node.position?.x || 0) + offsetX,
-            y: (node.position?.y || 0) + offsetY,
-          };
-        }
-
-        return {
-          ...node,
-          id: newId,
-          type: nodeType,
-          position: newPos,
-          selected: true,
-        };
-      });
-
-      const newEdges = clipboardEdges
-        .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
-        .map((edge) => {
-          const newId = `edge_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-          return {
-            ...edge,
-            id: newId,
-            source: idMap.get(edge.source)!,
-            target: idMap.get(edge.target)!,
-            selected: true,
-          };
-        });
-
-      setNodes((nds) => nds.concat(newNodes));
-      setEdges((eds) => eds.concat(newEdges));
-      showToast(`Pasted ${newNodes.length} node(s)`, "info");
-    } catch (err) {
-      console.error("Failed to parse clipboard data:", err);
-    }
-  }, [setNodes, setEdges, reactFlowInstance, showToast]);
-
-  // ─── Keyboard shortcuts listener ──────────────────────────
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
-
-      if (isCmdOrCtrl && e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        copySelection();
-      }
-
-      if (isCmdOrCtrl && e.key.toLowerCase() === "x") {
-        e.preventDefault();
-        cutSelection();
-      }
-
-      if (isCmdOrCtrl && e.key.toLowerCase() === "v") {
-        e.preventDefault();
-        pasteSelection();
-      }
-
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        deleteSelected();
-      }
-
-      if (isCmdOrCtrl && e.key.toLowerCase() === "a") {
-        e.preventDefault();
-        setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
-        setEdges((eds) => eds.map((e) => ({ ...e, selected: true })));
-        showToast("Selected all elements", "info");
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [copySelection, cutSelection, pasteSelection, deleteSelected, setNodes, setEdges, showToast]);
+  // ─── Clipboard & Deletion Operations (Modular Custom Hook) ─────────────
+  const { copySelection, cutSelection, pasteSelection, deleteSelected } = useWorkspaceClipboard({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    selectedNode,
+    setSelectedNode,
+    workspacePath,
+    activeSpaceId,
+    showToast,
+  });
 
   const currentSelectedNode = useMemo(() => {
     if (!selectedNode) return null;
@@ -741,12 +541,17 @@ function WorkspaceEditorInner({
           {
             label: count > 1 ? `Copy Selection (${count})` : "Copy Node",
             icon: "📋",
-            onClick: () => copySelection(),
+            onClick: () => copySelection(false),
+          },
+          {
+            label: count > 1 ? `Copy Selection with Data (${count})` : "Copy Node with Data",
+            icon: "🗂️",
+            onClick: () => copySelection(true),
           },
           {
             label: count > 1 ? `Cut Selection (${count})` : "Cut Node",
             icon: "✂️",
-            onClick: () => cutSelection(),
+            onClick: () => cutSelection(false),
           },
           {
             label: count > 1 ? `Delete Selection (${count})` : "Delete Node",
@@ -825,12 +630,17 @@ function WorkspaceEditorInner({
         items.push({
           label: count > 1 ? `Copy Selection (${count})` : "Copy Node",
           icon: "📋",
-          onClick: () => copySelection(),
+          onClick: () => copySelection(false),
+        });
+        items.push({
+          label: count > 1 ? `Copy Selection with Data (${count})` : "Copy Node with Data",
+          icon: "🗂️",
+          onClick: () => copySelection(true),
         });
         items.push({
           label: count > 1 ? `Cut Selection (${count})` : "Cut Node",
           icon: "✂️",
-          onClick: () => cutSelection(),
+          onClick: () => cutSelection(false),
         });
         items.push({
           label: count > 1 ? `Delete Selection (${count})` : "Delete Node",
@@ -891,12 +701,17 @@ function WorkspaceEditorInner({
             {
               label: `Copy Selection (${count})`,
               icon: "📋",
-              onClick: () => copySelection(),
+              onClick: () => copySelection(false),
+            },
+            {
+              label: `Copy Selection with Data (${count})`,
+              icon: "🗂️",
+              onClick: () => copySelection(true),
             },
             {
               label: `Cut Selection (${count})`,
               icon: "✂️",
-              onClick: () => cutSelection(),
+              onClick: () => cutSelection(false),
             },
             {
               label: `Delete Selection (${count})`,
@@ -917,12 +732,17 @@ function WorkspaceEditorInner({
             {
               label: "Copy Node",
               icon: "📋",
-              onClick: () => copySelection(),
+              onClick: () => copySelection(false),
+            },
+            {
+              label: "Copy Node with Data",
+              icon: "🗂️",
+              onClick: () => copySelection(true),
             },
             {
               label: "Cut Node",
               icon: "✂️",
-              onClick: () => cutSelection(),
+              onClick: () => cutSelection(false),
             },
             {
               label: "Delete Node",

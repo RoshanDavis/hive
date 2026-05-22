@@ -9,6 +9,7 @@ export interface TriggerNodeData {
 export interface NotifyNodeData {
   label: string;
   message: string;
+  output: string;
   [key: string]: unknown;
 }
 
@@ -96,7 +97,7 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     label: "Notify",
     icon: "🔔",
     description: "Sends an OS notification",
-    defaultData: { label: "Notify", message: "Hello from Hive!" },
+    defaultData: { label: "Notify", message: "Hello from Hive!", output: "{input}" },
     inspector: NotifyInspector,
   },
   {

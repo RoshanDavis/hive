@@ -20,36 +20,22 @@ export class NotifyExecutor implements NodeExecutor {
         }
       }
 
-      const customMessage = String(node.data?.message || "Notification from Hive");
-      let finalBody = customMessage;
+      // 1. Resolve notification body: message field (defaults to "Hello from Hive!")
+      const customMessage = String(node.data?.message !== undefined ? node.data.message : "Hello from Hive!");
+      const finalNotificationBody = customMessage.replace(/{input}/gi, resolvedMessage || "");
 
-      if (resolvedMessage) {
-        const placeholders = [/{input}/gi, /{output}/gi, /{message}/gi, /{response}/gi];
-        let hasPlaceholder = false;
-        for (const ph of placeholders) {
-          ph.lastIndex = 0;
-          if (ph.test(customMessage)) {
-            hasPlaceholder = true;
-            break;
-          }
-        }
+      // 2. Resolve output template field (defaults to "{input}")
+      const outputTemplate = String(node.data?.output !== undefined ? node.data.output : "{input}");
+      const finalOutputBody = outputTemplate.replace(/{input}/gi, resolvedMessage || "");
 
-        if (hasPlaceholder) {
-          for (const ph of placeholders) {
-            ph.lastIndex = 0;
-            finalBody = finalBody.replace(ph, resolvedMessage);
-          }
-        }
-      }
-
-      // Store resolved notification body in node state so downstream nodes can read it
+      // Store fully evaluated output body in node state so downstream nodes can read it
       updateNodeData(node.id, {
         ...node.data,
-        lastResponse: finalBody
+        lastResponse: finalOutputBody
       });
 
       const label = String(node.data?.label || "Hive");
-      await invoke("send_notification", { title: label, body: finalBody });
+      await invoke("send_notification", { title: label, body: finalNotificationBody });
     } catch (err) {
       showToast(`Notify error: ${err}`, "error");
     }
