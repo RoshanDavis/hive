@@ -105,6 +105,7 @@ function WorkspaceEditorInner({
   // Space management
   const [spaces, setSpaces] = useState<SpaceEntry[]>([]);
   const [activeSpaceId, setActiveSpaceId] = useState<string>("");
+  const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Custom 100% opaque drag-and-drop state & events
@@ -330,7 +331,18 @@ function WorkspaceEditorInner({
 
   // ─── Add new space ─────────────────────────────────────────
   const handleAddSpace = useCallback(async () => {
-    const newId = `space_${Date.now()}`;
+    // Find the next available numeric suffix for space ID to keep consistency with space_1
+    let maxIdNum = 0;
+    spaces.forEach((s) => {
+      const match = s.id.match(/^space_(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxIdNum) {
+          maxIdNum = num;
+        }
+      }
+    });
+    const newId = `space_${maxIdNum + 1}`;
     const nextOrder = spaces.length > 0 ? Math.max(...spaces.map((s) => s.order)) + 1 : 0;
     const newLabel = String(nextOrder + 1);
 
@@ -444,6 +456,13 @@ function WorkspaceEditorInner({
         y: event.clientY,
         items: [
           {
+            label: "Rename Space",
+            icon: "✏️",
+            onClick: () => {
+              setEditingSpaceId(spaceId);
+            },
+          },
+          {
             label: `Delete Space ${spaceLabel}`,
             icon: "🗑️",
             danger: true,
@@ -454,7 +473,7 @@ function WorkspaceEditorInner({
         ],
       });
     },
-    [spaces, handleDeleteSpace]
+    [spaces, handleDeleteSpace, setEditingSpaceId]
   );
 
   // ─── Connection handling ───────────────────────────────────
@@ -982,6 +1001,8 @@ function WorkspaceEditorInner({
         onRenameSpace={handleRenameSpace}
         onBack={handleBack}
         onSpaceContextMenu={onSpaceContextMenu}
+        editingSpaceId={editingSpaceId}
+        setEditingSpaceId={setEditingSpaceId}
       />
 
       {/* Center — React Flow Canvas */}

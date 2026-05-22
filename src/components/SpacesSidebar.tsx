@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ─── Types ───────────────────────────────────────────────────
 export interface SpaceEntry {
@@ -15,6 +15,8 @@ interface SpacesSidebarProps {
   onRenameSpace: (spaceId: string, newLabel: string) => void;
   onBack: () => void;
   onSpaceContextMenu?: (spaceId: string, event: React.MouseEvent) => void;
+  editingSpaceId?: string | null;
+  setEditingSpaceId?: (id: string | null) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -26,14 +28,29 @@ export default function SpacesSidebar({
   onRenameSpace,
   onBack,
   onSpaceContextMenu,
+  editingSpaceId,
+  setEditingSpaceId,
 }: SpacesSidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+
+  useEffect(() => {
+    if (editingSpaceId !== undefined) {
+      setEditingId(editingSpaceId);
+      if (editingSpaceId) {
+        const space = spaces.find((s) => s.id === editingSpaceId);
+        setEditValue(space ? space.label : "");
+      }
+    }
+  }, [editingSpaceId, spaces]);
 
   const startRename = (space: SpaceEntry, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingId(space.id);
     setEditValue(space.label);
+    if (setEditingSpaceId) {
+      setEditingSpaceId(space.id);
+    }
   };
 
   const commitRename = () => {
@@ -43,11 +60,19 @@ export default function SpacesSidebar({
       onRenameSpace(editingId, trimmed);
     }
     setEditingId(null);
+    if (setEditingSpaceId) {
+      setEditingSpaceId(null);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") commitRename();
-    if (e.key === "Escape") setEditingId(null);
+    if (e.key === "Escape") {
+      setEditingId(null);
+      if (setEditingSpaceId) {
+        setEditingSpaceId(null);
+      }
+    }
   };
 
   // Sort spaces by order
