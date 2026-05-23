@@ -1,14 +1,13 @@
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useReactFlow, MarkerType, type Node, type Edge } from "@xyflow/react";
-import { invoke } from "@tauri-apps/api/core";
-import { getConnectionBehavior } from "../engine/connectivity";
+import { api } from "@/services/api";
+import { getConnectionBehavior } from "@/engine/connectivity";
 import {
   type SpaceEntry,
   type SpaceData,
-  type WorkspaceConfig,
   type ContextMenuState,
   type ShowToastFunc,
-} from "../types/workspace";
+} from "@/types/workspace";
 
 interface UseWorkspaceSpacesParams {
   workspacePath: string;
@@ -45,9 +44,7 @@ export function useWorkspaceSpaces({
     const loadConfig = async () => {
       try {
         setIsLoading(true);
-        const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-          workspacePath,
-        });
+        const config = await api.loadWorkspaceConfig(workspacePath);
         setSpaces(config.spaces);
         const spaceToLoad = config.active_space || config.spaces[0]?.id || "space_1";
         setActiveSpaceId(spaceToLoad);
@@ -68,10 +65,7 @@ export function useWorkspaceSpaces({
   // ─── Load space data ───────────────────────────────────────
   const loadSpaceData = async (spaceId: string) => {
     try {
-      const data = await invoke<SpaceData>("load_space", {
-        workspacePath,
-        spaceId,
-      });
+      const data = await api.loadSpace(workspacePath, spaceId);
 
       const loadedNodes: Node[] = data.nodes.map((n) => ({
         id: n.id,
@@ -175,7 +169,7 @@ export function useWorkspaceSpaces({
     };
 
     try {
-      await invoke("save_space", { workspacePath, space: spaceData });
+      await api.saveSpace(workspacePath, spaceData);
     } catch (err) {
       console.error("Auto-save failed:", err);
     }
@@ -215,11 +209,9 @@ export function useWorkspaceSpaces({
 
       // Update active_space in config
       try {
-        const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-          workspacePath,
-        });
+        const config = await api.loadWorkspaceConfig(workspacePath);
         config.active_space = newSpaceId;
-        await invoke("save_workspace_config", { workspacePath, config });
+        await api.saveWorkspaceConfig(workspacePath, config);
       } catch (_err) {
         // Non-critical
       }
@@ -250,11 +242,7 @@ export function useWorkspaceSpaces({
     try {
       await saveCurrentSpace();
 
-      await invoke("create_space", {
-        workspacePath,
-        spaceId: newId,
-        label: newLabel,
-      });
+      await api.createSpace(workspacePath, newId, newLabel);
 
       const newEntry: SpaceEntry = { id: newId, label: newLabel, order: nextOrder };
       setSpaces((prev) => [...prev, newEntry]);
@@ -284,13 +272,11 @@ export function useWorkspaceSpaces({
 
       // Update config
       try {
-        const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-          workspacePath,
-        });
+        const config = await api.loadWorkspaceConfig(workspacePath);
         const space = config.spaces.find((s: SpaceEntry) => s.id === spaceId);
         if (space) {
           space.label = newLabel;
-          await invoke("save_workspace_config", { workspacePath, config });
+          await api.saveWorkspaceConfig(workspacePath, config);
         }
       } catch (_err) {
         // Non-critical
@@ -308,7 +294,7 @@ export function useWorkspaceSpaces({
       }
 
       try {
-        await invoke("delete_space", { workspacePath, spaceId });
+        await api.deleteSpace(workspacePath, spaceId);
 
         const updatedSpaces = spaces.filter((s) => s.id !== spaceId);
         setSpaces(updatedSpaces);
@@ -324,11 +310,9 @@ export function useWorkspaceSpaces({
 
             // Update active_space in config
             try {
-              const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-                workspacePath,
-              });
+              const config = await api.loadWorkspaceConfig(workspacePath);
               config.active_space = nextSpace.id;
-              await invoke("save_workspace_config", { workspacePath, config });
+              await api.saveWorkspaceConfig(workspacePath, config);
             } catch (_err) {}
 
             setTimeout(() => {

@@ -1,4 +1,4 @@
-import { type ContextMenuItem } from "../components/ContextMenu";
+import { type ContextMenuItem } from "@/components/ContextMenu";
 
 export interface SpaceEntry {
   id: string;

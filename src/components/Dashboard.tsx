@@ -1,14 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ToastContainer, ToastItem } from "./Toast";
-
-// ─── Types ───────────────────────────────────────────────────
-interface Workspace {
-  name: string;
-  path: string;
-  is_initialized: boolean;
-}
+import { ToastContainer } from "@/components/Toast";
+import { api, type Workspace } from "@/services/api";
+import { useToast } from "@/hooks/useToast";
 
 interface DashboardProps {
   onOpenWorkspace: (ws: Workspace) => void;
@@ -19,17 +13,10 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [activeNav, setActiveNav] = useState(0);
 
-  // Toast helper
-  const showToast = useCallback((message: string, type: "success" | "error") => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
-  }, []);
+  // Unified custom hook toast helper
+  const { toasts, showToast } = useToast(3000);
 
   // Load workspaces on mount
   useEffect(() => {
@@ -39,7 +26,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const loadWorkspaces = async () => {
     try {
       setLoading(true);
-      const ws = await invoke<Workspace[]>("get_workspaces");
+      const ws = await api.getWorkspaces();
       setWorkspaces(ws);
     } catch (err) {
       showToast(`Failed to load workspaces: ${err}`, "error");
@@ -60,7 +47,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
       if (selected === null) return; // User cancelled
 
       const path = typeof selected === "string" ? selected : String(selected);
-      const ws = await invoke<Workspace>("add_workspace", { path });
+      const ws = await api.addWorkspace(path);
       setWorkspaces((prev) => [...prev, ws]);
 
       if (ws.is_initialized) {
@@ -77,7 +64,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const handleRemoveWorkspace = async (path: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await invoke("remove_workspace", { path });
+      await api.removeWorkspace(path);
       setWorkspaces((prev) => prev.filter((ws) => ws.path !== path));
       showToast("Workspace removed", "success");
     } catch (err) {

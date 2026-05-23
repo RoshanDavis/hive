@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/services/api";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
@@ -62,13 +62,13 @@ export class OllamaExecutor implements NodeExecutor {
     }
 
     try {
-      const response = await invoke<string>("ollama_chat", {
-        ollamaUrl: url,
+      const response = await api.ollamaChat(
+        url,
         model,
-        messages: ollamaMessages,
-        temperature: temp,
-        maxTokens: maxT
-      });
+        ollamaMessages,
+        temp,
+        maxT
+      );
 
       // 4. Create standard JSON envelope
       const outputEnvelope: NodeOutputEnvelope = {

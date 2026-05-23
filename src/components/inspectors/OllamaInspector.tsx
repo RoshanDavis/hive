@@ -1,4 +1,5 @@
 import type { InspectorProps } from "./types";
+import DataConsole from "./shared/DataConsole";
 
 export default function OllamaInspector({
   node,
@@ -148,9 +149,7 @@ export default function OllamaInspector({
               Clear
             </button>
           </div>
-          <div className="w-full bg-primary border border-border-subtle rounded-md p-3 text-xs text-text-main leading-relaxed font-mono whitespace-pre-wrap max-h-[160px] overflow-y-auto select-text">
-            {String(node.data.lastResponse)}
-          </div>
+          <DataConsole content={String(node.data.lastResponse)} />
         </div>
       )}
     </div>

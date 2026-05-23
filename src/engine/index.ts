@@ -1,27 +1,17 @@
-import type { NodeExecutor, ExecutionContext } from "./types";
-import { NotifyExecutor } from "./NotifyExecutor";
-import { OllamaExecutor } from "./OllamaExecutor";
-import { ChatExecutor } from "./ChatExecutor";
-import { OutputExecutor } from "./OutputExecutor";
+import type { ExecutionContext } from "./types";
+import { executorRegistry } from "./registry";
 import { getUpstreamNodeData, getUpstreamNodeEnvelope } from "./utils";
 import type { NodeOutputEnvelope } from "./types";
 
 export * from "./types";
 export * from "./ChatExecutor";
-
-const executors: Record<string, NodeExecutor> = {
-  notify: new NotifyExecutor(),
-  ollama: new OllamaExecutor(),
-  chat: new ChatExecutor(),
-  output: new OutputExecutor(),
-  outputNode: new OutputExecutor(),
-};
+export { executorRegistry };
 
 export const executeNode = async (
   nodeType: string,
   context: ExecutionContext
 ): Promise<void> => {
-  const executor = executors[nodeType];
+  const executor = executorRegistry.get(nodeType);
   if (executor) {
     await executor.execute(context);
   } else {

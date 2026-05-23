@@ -82,7 +82,7 @@
 /* Base Node Utilities that are complex */
 @layer components {
   .hive-handle {
-    @apply w-[10px]! h-[10px]! bg-[#444]! border-2! border-primary!;
+    @apply w-2.5! h-2.5! bg-[#444]! border-2! border-primary!;
   }
   
   .hive-handle:hover {

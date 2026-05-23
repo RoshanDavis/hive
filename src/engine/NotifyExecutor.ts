@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/services/api";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
@@ -54,7 +54,7 @@ export class NotifyExecutor implements NodeExecutor {
         outputEnvelope
       });
 
-      await invoke("send_notification", { title: label, body: finalNotificationBody });
+      await api.sendNotification(label, finalNotificationBody);
     } catch (err) {
       showToast(`Notify error: ${err}`, "error");
       throw err;

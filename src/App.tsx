@@ -1,6 +1,6 @@
 import { useState } from "react";
-import Dashboard from "./components/Dashboard";
-import WorkspaceEditor from "./components/WorkspaceEditor";
+import Dashboard from "@/components/Dashboard";
+import WorkspaceEditor from "@/components/WorkspaceEditor";
 import "./App.css";
 
 // ─── Types ───────────────────────────────────────────────────

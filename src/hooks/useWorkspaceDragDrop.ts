@@ -1,7 +1,7 @@
 import { useCallback, useState, useEffect } from "react";
 import { useReactFlow, type Node } from "@xyflow/react";
-import { NODE_REGISTRY } from "../nodes/types";
-import { type ShowToastFunc } from "../types/workspace";
+import { NODE_REGISTRY } from "@/nodes/registry";
+import { type ShowToastFunc } from "@/types/workspace";
 
 interface UseWorkspaceDragDropParams {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;

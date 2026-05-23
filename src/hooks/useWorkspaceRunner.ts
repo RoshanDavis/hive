@@ -1,7 +1,7 @@
 import { useCallback, useState, useRef } from "react";
 import { type Node, type Edge } from "@xyflow/react";
-import { executeNode } from "../engine";
-import { type ShowToastFunc } from "../types/workspace";
+import { executeNode } from "@/engine";
+import { type ShowToastFunc } from "@/types/workspace";
 
 // Helper to find all reachable downstream nodes on the active workflow execution path
 function getReachableNodeIds(startNodeIds: string[], edges: Edge[]): Set<string> {

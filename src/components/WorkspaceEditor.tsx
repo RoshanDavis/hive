@@ -16,31 +16,33 @@ import {
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/services/api";
 
-import SpacesSidebar from "./SpacesSidebar";
-import InspectorPanel from "./InspectorPanel";
-import ContextMenu, { type ContextMenuItem } from "./ContextMenu";
-import { ToastContainer } from "./Toast";
-import TriggerNodeComponent from "../nodes/TriggerNode";
-import NotifyNodeComponent from "../nodes/NotifyNode";
-import OllamaNodeComponent from "../nodes/OllamaNode";
-import ChatNodeComponent from "../nodes/ChatNode";
-import OutputNodeComponent from "../nodes/OutputNode";
-import JSONStorageNodeComponent from "../nodes/JSONStorageNode";
-import CustomConnectionEdge from "./CustomConnectionEdge";
-import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
-import { useWorkspaceClipboard } from "../hooks/useWorkspaceClipboard";
-import { getConnectionBehavior } from "../engine/connectivity";
+import SpacesSidebar from "@/components/SpacesSidebar";
+import InspectorPanel from "@/components/InspectorPanel";
+import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
+import { ToastContainer } from "@/components/Toast";
+import { useToast } from "@/hooks/useToast";
+import { storage } from "@/services/storage";
+import TriggerNodeComponent from "@/nodes/TriggerNode";
+import NotifyNodeComponent from "@/nodes/NotifyNode";
+import OllamaNodeComponent from "@/nodes/OllamaNode";
+import ChatNodeComponent from "@/nodes/ChatNode";
+import OutputNodeComponent from "@/nodes/OutputNode";
+import JSONStorageNodeComponent from "@/nodes/JSONStorageNode";
+import CustomConnectionEdge from "@/components/CustomConnectionEdge";
+import { type NodeDefinition } from "@/nodes/types";
+import { NODE_REGISTRY } from "@/nodes/registry";
+import { useWorkspaceClipboard } from "@/hooks/useWorkspaceClipboard";
+import { getConnectionBehavior } from "@/engine/connectivity";
 
 // Import consolidated types & custom hooks
 import {
   type ContextMenuState,
-  type ToastItem,
-} from "../types/workspace";
-import { useWorkspaceSpaces } from "../hooks/useWorkspaceSpaces";
-import { useWorkspaceDragDrop } from "../hooks/useWorkspaceDragDrop";
-import { useWorkspaceRunner } from "../hooks/useWorkspaceRunner";
+} from "@/types/workspace";
+import { useWorkspaceSpaces } from "@/hooks/useWorkspaceSpaces";
+import { useWorkspaceDragDrop } from "@/hooks/useWorkspaceDragDrop";
+import { useWorkspaceRunner } from "@/hooks/useWorkspaceRunner";
 
 // ─── Props ───────────────────────────────────────────────────
 interface WorkspaceEditorProps {
@@ -73,8 +75,9 @@ function WorkspaceEditorInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  const { toasts, showToast } = useToast(3500);
 
   const rightClickStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -92,18 +95,6 @@ function WorkspaceEditorInner({
     rightClickStartRef.current = null; // reset
     return dist > 5;
   }, []);
-
-  // ─── Toast helper ──────────────────────────────────────────
-  const showToast = useCallback(
-    (message: string, type: "success" | "error" | "info") => {
-      const id = Date.now();
-      setToasts((prev) => [...prev, { id, message, type }]);
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 3500);
-    },
-    []
-  );
 
   // ─── Spaces custom hook ────────────────────────────────────
   const {
@@ -299,11 +290,7 @@ function WorkspaceEditorInner({
                 deleteSelected();
               } else {
                 if (node.type === "jsonStorage") {
-                  invoke("delete_storage_history", {
-                    workspacePath,
-                    spaceId: activeSpaceId,
-                    databaseNodeId: node.id,
-                  }).catch((err) => {
+                  api.deleteStorageHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
                     console.error("Failed to delete JSON storage history:", err);
                   });
                 }
@@ -360,7 +347,7 @@ function WorkspaceEditorInner({
       const selectedNodes = nodes.filter((n) => n.selected);
       const count = selectedNodes.length;
 
-      const hasClipboard = !!localStorage.getItem("hive-clipboard");
+      const hasClipboard = storage.hasClipboard();
       const items: ContextMenuItem[] = [];
 
       if (count > 0) {
@@ -486,11 +473,7 @@ function WorkspaceEditorInner({
               danger: true,
               onClick: () => {
                 if (singleNode.type === "jsonStorage") {
-                  invoke("delete_storage_history", {
-                    workspacePath,
-                    spaceId: activeSpaceId,
-                    databaseNodeId: singleNode.id,
-                  }).catch((err) => {
+                  api.deleteStorageHistory(workspacePath, activeSpaceId, singleNode.id).catch((err) => {
                     console.error("Failed to delete JSON storage history:", err);
                   });
                 }

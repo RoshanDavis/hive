@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { type SpaceEntry } from "../types/workspace";
+import { type SpaceEntry } from "@/types/workspace";
+import { storage } from "@/services/storage";
 
 
 interface SpacesSidebarProps {
@@ -29,10 +30,7 @@ export default function SpacesSidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  const [width, setWidth] = useState(() => {
-    const saved = localStorage.getItem("hive-sidebar-width");
-    return saved ? parseInt(saved, 10) : 56;
-  });
+  const [width, setWidth] = useState(() => storage.getSidebarWidth(56));
   const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
@@ -83,7 +81,7 @@ export default function SpacesSidebar({
 
   const handleDoubleClick = () => {
     setWidth(56);
-    localStorage.setItem("hive-sidebar-width", "56");
+    storage.setSidebarWidth(56);
   };
 
   useEffect(() => {
@@ -93,7 +91,7 @@ export default function SpacesSidebar({
       const newWidth = e.clientX;
       const boundedWidth = Math.max(56, Math.min(newWidth, 380));
       setWidth(boundedWidth);
-      localStorage.setItem("hive-sidebar-width", String(boundedWidth));
+      storage.setSidebarWidth(boundedWidth);
     };
 
     const handleMouseUp = () => {
@@ -130,11 +128,11 @@ export default function SpacesSidebar({
       <div
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
-        className="absolute top-0 bottom-0 right-0 w-1.5 -mr-[3px] cursor-col-resize select-none z-50 group"
+        className="absolute top-0 bottom-0 right-0 w-1.5 -mr-0.75 cursor-col-resize select-none z-50 group"
         title="Double-click to reset width"
       >
         <div
-          className={`absolute top-0 bottom-0 right-[2px] w-[2px] transition-colors duration-150 h-full ${
+          className={`absolute top-0 bottom-0 right-0.5 w-0.5 transition-colors duration-150 h-full ${
             isResizing
               ? "bg-accent shadow-[0_0_8px_rgba(212,230,0,0.8)]"
               : "bg-transparent group-hover:bg-accent-dim/60"
@@ -252,7 +250,7 @@ export default function SpacesSidebar({
                 {/* Space Name */}
                 {editingId === space.id ? (
                   <input
-                    className="flex-grow min-w-0 bg-transparent border-none outline-none text-[11.5px] tracking-wide text-text-main p-0 m-0"
+                    className="grow min-w-0 bg-transparent border-none outline-none text-[11.5px] tracking-wide text-text-main p-0 m-0"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     onBlur={commitRename}
@@ -261,7 +259,7 @@ export default function SpacesSidebar({
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span className="truncate flex-grow text-[11.5px] tracking-wide">{space.label}</span>
+                  <span className="truncate grow text-[11.5px] tracking-wide">{space.label}</span>
                 )}
               </button>
             );

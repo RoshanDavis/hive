@@ -1,7 +1,8 @@
 import { useCallback, useEffect } from "react";
 import { type Node, type Edge, useReactFlow } from "@xyflow/react";
-import { invoke } from "@tauri-apps/api/core";
-import { type ShowToastFunc } from "../types/workspace";
+import { api } from "@/services/api";
+import { storage } from "@/services/storage";
+import { type ShowToastFunc } from "@/types/workspace";
 
 interface UseWorkspaceClipboardProps {
   nodes: Node[];
@@ -35,11 +36,7 @@ export function useWorkspaceClipboard({
 
     selectedNodes.forEach((node) => {
       if (node.type === "jsonStorage") {
-        invoke("delete_storage_history", {
-          workspacePath,
-          spaceId: activeSpaceId,
-          databaseNodeId: node.id,
-        }).catch((err) => {
+        api.deleteStorageHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
           console.error("Failed to delete JSON storage history:", err);
         });
       }
@@ -114,7 +111,7 @@ export function useWorkspaceClipboard({
       copiedWithData: withData,
     };
 
-    localStorage.setItem("hive-clipboard", JSON.stringify(clipboardData));
+    storage.setClipboard(clipboardData);
     showToast(
       `Copied ${selectedNodes.length} node(s) as ${withData ? "complete copy" : "template"}`,
       "info"
@@ -130,13 +127,10 @@ export function useWorkspaceClipboard({
   }, [nodes, copySelection, deleteSelected]);
 
   const pasteSelection = useCallback((clientX?: number, clientY?: number) => {
-    const raw = localStorage.getItem("hive-clipboard");
-    if (!raw) return;
+    const clipboardData = storage.getClipboard();
+    if (!clipboardData || !Array.isArray(clipboardData.nodes)) return;
 
     try {
-      const clipboardData = JSON.parse(raw);
-      if (!clipboardData || !Array.isArray(clipboardData.nodes)) return;
-
       const clipboardNodes = clipboardData.nodes as Node[];
       const clipboardEdges = (clipboardData.edges || []) as Edge[];
 
