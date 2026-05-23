@@ -3,6 +3,12 @@ import { type Node, type Edge } from "@xyflow/react";
 import { executeNode } from "@/engine";
 import { type ShowToastFunc } from "@/types/workspace";
 
+interface WorkflowController {
+  isPaused: boolean;
+  isAborted: boolean;
+  resumePromiseResolve?: () => void;
+}
+
 // Helper to find all reachable downstream nodes on the active workflow execution path
 function getReachableNodeIds(startNodeIds: string[], edges: Edge[]): Set<string> {
   const reachable = new Set<string>();
@@ -53,6 +59,8 @@ export function useWorkspaceRunner({
   const [runningStartNodeIds, setRunningStartNodeIds] = useState<Set<string>>(new Set<string>());
   const successTimeoutsRef = useRef<Map<string, number>>(new Map());
   const executedNodeIdsMapRef = useRef<Map<string, Set<string>>>(new Map());
+  const workflowControllersRef = useRef<Map<string, WorkflowController>>(new Map());
+  const activeNodeToStartKeyRef = useRef<Map<string, string>>(new Map());
 
   const isRunning = runningStartNodeIds.size > 0;
 
@@ -90,6 +98,19 @@ export function useWorkspaceRunner({
           startingStorageNodeIds.add(e.target);
         });
       });
+
+      const nodesToClear = new Set<string>([
+        ...startNodeIds,
+        ...Array.from(startingStorageNodeIds),
+        ...Array.from(reachableDownstreamIds)
+      ]);
+
+      nodesToClear.forEach((nodeId) => {
+        activeNodeToStartKeyRef.current.set(nodeId, startKey);
+      });
+
+      const newController: WorkflowController = { isPaused: false, isAborted: false };
+      workflowControllersRef.current.set(startKey, newController);
 
       console.log("[RUNWORKFLOW] reachableDownstreamIds:", Array.from(reachableDownstreamIds));
       console.log("[RUNWORKFLOW] startingStorageNodeIds:", Array.from(startingStorageNodeIds));
@@ -212,6 +233,26 @@ export function useWorkspaceRunner({
           }
           visited.add(currentId);
 
+          // Check execution control signals
+          const controller = workflowControllersRef.current.get(startKey);
+          if (controller) {
+            // 1. Abort Check
+            if (controller.isAborted) {
+              console.log(`[RUNWORKFLOW] Workflow ${startKey} aborted before executing ${currentId}.`);
+              break;
+            }
+
+            // 2. Pause Check
+            if (controller.isPaused) {
+              console.log(`[RUNWORKFLOW] Workflow ${startKey} paused. Yielding execution before ${currentId}.`);
+              localUpdateNodeData(currentId, { ...currentNode.data, status: "waiting" });
+              await new Promise<void>((resolve) => {
+                controller.resumePromiseResolve = resolve;
+              });
+              console.log(`[RUNWORKFLOW] Workflow ${startKey} resumed. Continuing execution for ${currentId}.`);
+            }
+          }
+
           // Set status to executing
           localUpdateNodeData(currentId, { ...currentNode.data, status: "executing" });
           const updatedNode = currentNodes.find((n) => n.id === currentId)!;
@@ -316,13 +357,36 @@ export function useWorkspaceRunner({
         showToast(`Workflow failed: ${err}`, "error");
       } finally {
         console.log("[RUNWORKFLOW] finally block reached. haltedAtChat:", haltedAtChat);
-        if (!haltedAtChat) {
-          const nodesToClear = new Set<string>([
-            ...startNodeIds,
-            ...Array.from(startingStorageNodeIds),
-            ...Array.from(reachableDownstreamIds)
-          ]);
 
+        const controller = workflowControllersRef.current.get(startKey);
+        const wasAborted = controller?.isAborted || false;
+
+        // Clean up active mapping and controllers
+        workflowControllersRef.current.delete(startKey);
+        nodesToClear.forEach((nodeId) => {
+          activeNodeToStartKeyRef.current.delete(nodeId);
+        });
+
+        if (wasAborted) {
+          console.log("[RUNWORKFLOW] Clearing statuses for aborted workflow nodes:", startKey);
+          currentNodes.forEach((n) => {
+            if (nodesToClear.has(n.id)) {
+              const latest = currentNodes.find((latestNode) => latestNode.id === n.id);
+              if (
+                latest &&
+                (latest.data.status === "success" ||
+                  latest.data.status === "pending" ||
+                  latest.data.status === "executing" ||
+                  latest.data.status === "waiting")
+              ) {
+                console.log(`[RUNWORKFLOW] Clearing status for node ${n.id} (${latest.data.status} -> undefined)`);
+                localUpdateNodeData(n.id, { ...latest.data, status: undefined });
+              }
+            }
+          });
+        }
+
+        if (!haltedAtChat && !wasAborted) {
           // Keep the green borders visible for 1.5 seconds after the entire workflow completes/fails, then clear success and pending states for this cluster
           const timeoutId = window.setTimeout(() => {
             console.log("[RUNWORKFLOW] Clearing success/pending node statuses for starting cluster:", startKey);
@@ -390,11 +454,79 @@ export function useWorkspaceRunner({
     [nodes, runWorkflow, showToast]
   );
 
+  const pauseWorkflow = useCallback((nodeId: string) => {
+    const startKey = activeNodeToStartKeyRef.current.get(nodeId);
+    if (!startKey) return;
+    const controller = workflowControllersRef.current.get(startKey);
+    if (controller) {
+      controller.isPaused = true;
+      showToast("Workflow execution paused", "info");
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (activeNodeToStartKeyRef.current.get(n.id) === startKey && n.data.status === "executing") {
+            return { ...n, data: { ...n.data, status: "waiting" } };
+          }
+          return n;
+        })
+      );
+    }
+  }, [showToast, setNodes]);
+
+  const resumeWorkflow = useCallback((nodeId: string) => {
+    const startKey = activeNodeToStartKeyRef.current.get(nodeId);
+    if (!startKey) return;
+    const controller = workflowControllersRef.current.get(startKey);
+    if (controller && controller.isPaused) {
+      controller.isPaused = false;
+      if (controller.resumePromiseResolve) {
+        controller.resumePromiseResolve();
+        controller.resumePromiseResolve = undefined;
+      }
+    }
+  }, []);
+
+  const stopWorkflow = useCallback((nodeId: string) => {
+    const startKey = activeNodeToStartKeyRef.current.get(nodeId);
+    if (!startKey) return;
+    const controller = workflowControllersRef.current.get(startKey);
+    if (controller) {
+      controller.isAborted = true;
+      if (controller.isPaused && controller.resumePromiseResolve) {
+        controller.resumePromiseResolve();
+        controller.resumePromiseResolve = undefined;
+      }
+      showToast("Workflow execution stopped", "info");
+    }
+  }, [showToast]);
+
+  const getWorkflowControlState = useCallback((nodeId: string) => {
+    const startKey = activeNodeToStartKeyRef.current.get(nodeId);
+    const node = nodes.find((n) => n.id === nodeId);
+    const hasError = node?.data?.status === "error";
+
+    if (!startKey) {
+      return { isRunning: false, isPaused: false, hasError };
+    }
+    const controller = workflowControllersRef.current.get(startKey);
+    if (!controller) {
+      return { isRunning: false, isPaused: false, hasError };
+    }
+    return {
+      isRunning: true,
+      isPaused: controller.isPaused,
+      hasError
+    };
+  }, [nodes]);
+
   return {
     isRunning,
     runningStartNodeIds,
     executeWorkflow,
     handleChatSend,
     retryWorkflow,
+    pauseWorkflow,
+    resumeWorkflow,
+    stopWorkflow,
+    getWorkflowControlState,
   };
 }
