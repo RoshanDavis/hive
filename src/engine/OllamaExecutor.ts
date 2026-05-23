@@ -77,6 +77,7 @@ export class OllamaExecutor implements NodeExecutor {
       });
     } catch (err) {
       showToast(`Ollama error: ${err}`, "error");
+      throw err;
     }
   }
 }

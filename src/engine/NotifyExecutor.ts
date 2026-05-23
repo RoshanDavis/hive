@@ -42,6 +42,7 @@ export class NotifyExecutor implements NodeExecutor {
       await invoke("send_notification", { title: label, body: finalNotificationBody });
     } catch (err) {
       showToast(`Notify error: ${err}`, "error");
+      throw err;
     }
   }
 }

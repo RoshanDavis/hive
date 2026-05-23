@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { type Node, type Edge, useReactFlow } from "@xyflow/react";
 import { invoke } from "@tauri-apps/api/core";
+import { type ShowToastFunc } from "../types/workspace";
 
 interface UseWorkspaceClipboardProps {
   nodes: Node[];
@@ -11,7 +12,7 @@ interface UseWorkspaceClipboardProps {
   setSelectedNode: (node: Node | null) => void;
   workspacePath: string;
   activeSpaceId: string;
-  showToast: (message: string, type: "success" | "error" | "info") => void;
+  showToast: ShowToastFunc;
 }
 
 export function useWorkspaceClipboard({

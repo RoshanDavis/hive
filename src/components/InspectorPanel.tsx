@@ -10,6 +10,7 @@ interface InspectorPanelProps {
   onUpdateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   onRunWorkflow: (triggerNodeId?: string) => void;
   onChatSend?: (nodeId: string, text: string) => void;
+  onRetryWorkflow?: (nodeId: string) => void;
   isRunning: boolean;
   nodes?: Node[];
   edges?: Edge[];
@@ -27,6 +28,7 @@ export default function InspectorPanel({
   onUpdateNodeData,
   onRunWorkflow,
   onChatSend,
+  onRetryWorkflow,
   isRunning,
   nodes,
   edges,
@@ -185,6 +187,31 @@ export default function InspectorPanel({
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+            {/* Error Message & Retry Action Banner */}
+            {selectedNode.data?.status === "error" && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3.5 flex flex-col gap-3 relative overflow-hidden backdrop-blur-md">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-lg leading-none select-none">⚠️</span>
+                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                    <span className="text-xs uppercase tracking-widest text-red-400 font-bold">Node Execution Failed</span>
+                    <p className="text-[11px] text-text-secondary leading-relaxed break-words mt-1 mb-0 whitespace-pre-wrap">
+                      {String(selectedNode.data?.error || "An unknown execution error occurred.")}
+                    </p>
+                  </div>
+                </div>
+                {onRetryWorkflow && (
+                  <button
+                    onClick={() => onRetryWorkflow(selectedNode.id)}
+                    disabled={isRunning}
+                    className="w-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed select-none mt-1 shadow-sm"
+                  >
+                    <span>🔄</span>
+                    <span>Retry Execution from Node</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Common fields */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Label</label>

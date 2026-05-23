@@ -24,10 +24,40 @@ export const executeNode = async (
   if (executor) {
     await executor.execute(context);
   } else {
-    // Passive nodes or nodes without executors (trigger, etc.)
-    if (!["trigger"].includes(nodeType)) {
-      console.warn(`No executor found for node type: ${nodeType}`);
+    // Passive nodes or nodes without specialized executors (trigger, router, etc.)
+    let upstreamData = "";
+
+    // Find all incoming edges (excluding storage connections)
+    const incomingEdges = context.edges.filter(
+      (e) =>
+        e.target === context.node.id &&
+        e.sourceHandle !== "storage" &&
+        e.targetHandle !== "storage"
+    );
+
+    if (incomingEdges.length > 0) {
+      const upstreamNodes = context.nodes.filter((n) =>
+        incomingEdges.some((e) => e.source === n.id)
+      );
+
+      for (const upstream of upstreamNodes) {
+        // Only allow upstream nodes in the active run path (visited Set)
+        if (context.visited && !context.visited.has(upstream.id)) {
+          continue;
+        }
+        const val = getUpstreamNodeData(upstream);
+        if (val !== null) {
+          upstreamData = val;
+          break;
+        }
+      }
     }
+
+    // Set the resolved upstream data (or empty string for trigger nodes) as our response payload
+    context.updateNodeData(context.node.id, {
+      ...context.node.data,
+      lastResponse: upstreamData,
+    });
   }
 
   // ─── Generic Database Output Sync ───

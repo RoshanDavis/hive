@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, useEffect, useRef } from "react";
+import { useCallback, useState, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -12,17 +12,16 @@ import {
   type Edge,
   type OnSelectionChangeFunc,
   BackgroundVariant,
-  useReactFlow,
   ReactFlowProvider,
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { invoke } from "@tauri-apps/api/core";
 
-import SpacesSidebar, { type SpaceEntry } from "./SpacesSidebar";
+import SpacesSidebar from "./SpacesSidebar";
 import InspectorPanel from "./InspectorPanel";
 import ContextMenu, { type ContextMenuItem } from "./ContextMenu";
-import { ToastContainer, ToastItem } from "./Toast";
+import { ToastContainer } from "./Toast";
 import TriggerNodeComponent from "../nodes/TriggerNode";
 import NotifyNodeComponent from "../nodes/NotifyNode";
 import OllamaNodeComponent from "../nodes/OllamaNode";
@@ -31,9 +30,17 @@ import OutputNodeComponent from "../nodes/OutputNode";
 import JSONStorageNodeComponent from "../nodes/JSONStorageNode";
 import CustomConnectionEdge from "./CustomConnectionEdge";
 import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
-import { executeNode } from "../engine";
 import { useWorkspaceClipboard } from "../hooks/useWorkspaceClipboard";
 import { getConnectionBehavior } from "../engine/connectivity";
+
+// Import consolidated types & custom hooks
+import {
+  type ContextMenuState,
+  type ToastItem,
+} from "../types/workspace";
+import { useWorkspaceSpaces } from "../hooks/useWorkspaceSpaces";
+import { useWorkspaceDragDrop } from "../hooks/useWorkspaceDragDrop";
+import { useWorkspaceRunner } from "../hooks/useWorkspaceRunner";
 
 // ─── Props ───────────────────────────────────────────────────
 interface WorkspaceEditorProps {
@@ -56,47 +63,6 @@ const edgeTypes = {
   custom: CustomConnectionEdge,
 };
 
-// ─── Context menu state ─────────────────────────────────────
-interface ContextMenuState {
-  x: number;
-  y: number;
-  items: ContextMenuItem[];
-}
-
-// ─── Serialized types (match Rust) ──────────────────────────
-interface FlowNode {
-  id: string;
-  type: string;
-  position: { x: number; y: number };
-  data: Record<string, unknown>;
-}
-
-interface FlowEdge {
-  id: string;
-  source: string;
-  target: string;
-  source_handle?: string;
-  target_handle?: string;
-  edge_type?: string;
-}
-
-interface SpaceData {
-  id: string;
-  label: string;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-  viewport: { x: number; y: number; zoom: number };
-}
-
-interface WorkspaceConfig {
-  version: number;
-  name: string;
-  created_at: string;
-  updated_at: string;
-  spaces: SpaceEntry[];
-  active_space: string;
-}
-
 // ─── Inner component (needs ReactFlowProvider) ──────────────
 function WorkspaceEditorInner({
   workspaceName: _workspaceName,
@@ -107,50 +73,9 @@ function WorkspaceEditorInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
-  // Space management
-  const [spaces, setSpaces] = useState<SpaceEntry[]>([]);
-  const [activeSpaceId, setActiveSpaceId] = useState<string>("");
-  const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Custom 100% opaque drag-and-drop state & events
-  const [activeDragNode, setActiveDragNode] = useState<{
-    type: string;
-    clientX: number;
-    clientY: number;
-  } | null>(null);
-
-  const handleDragStartNode = useCallback((type: string) => {
-    setActiveDragNode({ type, clientX: 0, clientY: 0 });
-  }, []);
-
-  const handleDragEndNode = useCallback(() => {
-    setActiveDragNode(null);
-  }, []);
-
-  // Window-level mouse tracking for the custom opaque drag ghost card
-  useEffect(() => {
-    if (!activeDragNode) return;
-
-    const handleWindowDragOver = (e: DragEvent) => {
-      setActiveDragNode((prev) =>
-        prev ? { ...prev, clientX: e.clientX, clientY: e.clientY } : null
-      );
-    };
-
-    window.addEventListener("dragover", handleWindowDragOver);
-    return () => {
-      window.removeEventListener("dragover", handleWindowDragOver);
-    };
-  }, [activeDragNode]);
-
-  const reactFlowInstance = useReactFlow();
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isInitialLoadRef = useRef(true);
   const rightClickStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -180,341 +105,77 @@ function WorkspaceEditorInner({
     []
   );
 
-  // ─── Load workspace config on mount ────────────────────────
-  useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        setIsLoading(true);
-        const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-          workspacePath,
-        });
-        setSpaces(config.spaces);
-        const spaceToLoad = config.active_space || config.spaces[0]?.id || "space_1";
-        setActiveSpaceId(spaceToLoad);
-        await loadSpaceData(spaceToLoad);
-      } catch (err) {
-        showToast(`Failed to load workspace: ${err}`, "error");
-      } finally {
-        setIsLoading(false);
-        // Allow auto-save after initial load settles
-        setTimeout(() => {
-          isInitialLoadRef.current = false;
-        }, 500);
-      }
-    };
-    loadConfig();
-  }, [workspacePath]);
+  // ─── Spaces custom hook ────────────────────────────────────
+  const {
+    spaces,
+    activeSpaceId,
+    editingSpaceId,
+    isLoading,
+    setEditingSpaceId,
+    saveCurrentSpace,
+    handleSwitchSpace,
+    handleAddSpace,
+    handleRenameSpace,
+    onSpaceContextMenu,
+  } = useWorkspaceSpaces({
+    workspacePath,
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    setSelectedNode,
+    showToast,
+    setContextMenu,
+  });
 
-  // ─── Load space data ───────────────────────────────────────
-  const loadSpaceData = async (spaceId: string) => {
-    try {
-      const data = await invoke<SpaceData>("load_space", {
-        workspacePath,
-        spaceId,
-      });
+  // ─── Drag & Drop custom hook ───────────────────────────────
+  const {
+    activeDragNode,
+    handleDragStartNode,
+    handleDragEndNode,
+    handleDragOver,
+    handleDrop,
+  } = useWorkspaceDragDrop({
+    setNodes,
+    showToast,
+  });
 
-      const loadedNodes: Node[] = data.nodes.map((n) => ({
-        id: n.id,
-        type: n.type === "output" ? "outputNode" : n.type,
-        position: n.position,
-        data: n.data,
-      }));
+  // ─── Clipboard & Deletion Operations (Modular Custom Hook) ──
+  const { copySelection, cutSelection, pasteSelection, deleteSelected } = useWorkspaceClipboard({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    selectedNode,
+    setSelectedNode,
+    workspacePath,
+    activeSpaceId,
+    showToast,
+  });
 
-      const loadedEdges: Edge[] = data.edges.map((e) => {
-        // Backward compatibility: map empty targetHandle to "left" for JSON Storage nodes
-        const targetNode = data.nodes.find((n) => n.id === e.target);
-        const targetHandle = (targetNode && targetNode.type === "jsonStorage" && !e.target_handle)
-          ? "left"
-          : e.target_handle || undefined;
-
-        const sourceNode = data.nodes.find((n) => n.id === e.source);
-        const { allowedOption } = getConnectionBehavior(
-          sourceNode?.type,
-          targetNode?.type,
-          e.source_handle || undefined,
-          targetHandle
-        );
-
-        // Custom edge type serialization
-        // e.edge_type will be loaded from backend JSON
-        // @ts-ignore
-        let edgeType = e.edge_type || "one-way";
-        if (edgeType === "bi-directional" && allowedOption === "one-way") {
-          edgeType = "one-way";
-        }
-
-        return {
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          sourceHandle: e.source_handle || undefined,
-          targetHandle,
-          type: "custom",
-          data: {
-            edgeType,
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: "#d4e600",
-            width: 16,
-            height: 16,
-          },
-          markerStart: edgeType === "bi-directional" ? {
-            type: MarkerType.ArrowClosed,
-            color: "#d4e600",
-            width: 16,
-            height: 16,
-          } : undefined,
-          style: {
-            stroke: "#d4e600",
-            strokeWidth: 2,
-          },
-        };
-      });
-
-      setNodes(loadedNodes);
-      setEdges(loadedEdges);
-
-      if (data.viewport.zoom > 0) {
-        setTimeout(() => {
-          reactFlowInstance.setViewport(data.viewport);
-        }, 50);
-      }
-    } catch (err) {
-      showToast(`Failed to load space: ${err}`, "error");
-    }
-  };
-
-  // ─── Save current space data ───────────────────────────────
-  const saveCurrentSpace = useCallback(async () => {
-    if (!activeSpaceId || isInitialLoadRef.current) return;
-
-    const viewport = reactFlowInstance.getViewport();
-    const currentLabel = spaces.find((s) => s.id === activeSpaceId)?.label || activeSpaceId;
-
-    const spaceData: SpaceData = {
-      id: activeSpaceId,
-      label: currentLabel,
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        type: n.type || "unknown",
-        position: n.position,
-        data: n.data as Record<string, unknown>,
-      })),
-      edges: edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        source_handle: e.sourceHandle || undefined,
-        target_handle: e.targetHandle || undefined,
-        edge_type: (e.data?.edgeType as string) || undefined,
-      })),
-      viewport,
-    };
-
-    try {
-      await invoke("save_space", { workspacePath, space: spaceData });
-    } catch (err) {
-      console.error("Auto-save failed:", err);
-    }
-  }, [activeSpaceId, nodes, edges, spaces, workspacePath, reactFlowInstance]);
-
-  // ─── Debounced auto-save on changes ────────────────────────
-  useEffect(() => {
-    if (isInitialLoadRef.current) return;
-
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    saveTimeoutRef.current = setTimeout(() => {
-      saveCurrentSpace();
-    }, 800);
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [nodes, edges, saveCurrentSpace]);
-
-  // ─── Switch space ──────────────────────────────────────────
-  const handleSwitchSpace = useCallback(
-    async (newSpaceId: string) => {
-      if (newSpaceId === activeSpaceId) return;
-
-      // Save current space first
-      await saveCurrentSpace();
-
-      // Load new space
-      isInitialLoadRef.current = true;
-      setActiveSpaceId(newSpaceId);
-      setSelectedNode(null);
-      await loadSpaceData(newSpaceId);
-
-      // Update active_space in config
-      try {
-        const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-          workspacePath,
-        });
-        config.active_space = newSpaceId;
-        await invoke("save_workspace_config", { workspacePath, config });
-      } catch (_err) {
-        // Non-critical
-      }
-
-      setTimeout(() => {
-        isInitialLoadRef.current = false;
-      }, 500);
-    },
-    [activeSpaceId, saveCurrentSpace, workspacePath]
-  );
-
-  // ─── Add new space ─────────────────────────────────────────
-  const handleAddSpace = useCallback(async () => {
-    // Find the next available numeric suffix for space ID to keep consistency with space_1
-    let maxIdNum = 0;
-    spaces.forEach((s) => {
-      const match = s.id.match(/^space_(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxIdNum) {
-          maxIdNum = num;
-        }
-      }
-    });
-    const newId = `space_${maxIdNum + 1}`;
-    const nextOrder = spaces.length > 0 ? Math.max(...spaces.map((s) => s.order)) + 1 : 0;
-    const newLabel = String(nextOrder + 1);
-
-    try {
-      await saveCurrentSpace();
-
-      await invoke("create_space", {
-        workspacePath,
-        spaceId: newId,
-        label: newLabel,
-      });
-
-      const newEntry: SpaceEntry = { id: newId, label: newLabel, order: nextOrder };
-      setSpaces((prev) => [...prev, newEntry]);
-
-      // Switch to the new space
-      isInitialLoadRef.current = true;
-      setActiveSpaceId(newId);
-      setSelectedNode(null);
-      setNodes([]);
-      setEdges([]);
-      setTimeout(() => {
-        isInitialLoadRef.current = false;
-      }, 500);
-
-      showToast(`Created space ${newLabel}`, "info");
-    } catch (err) {
-      showToast(`Failed to create space: ${err}`, "error");
-    }
-  }, [spaces, workspacePath, saveCurrentSpace, setNodes, setEdges, showToast]);
-
-  // ─── Rename space ──────────────────────────────────────────
-  const handleRenameSpace = useCallback(
-    async (spaceId: string, newLabel: string) => {
-      setSpaces((prev) =>
-        prev.map((s) => (s.id === spaceId ? { ...s, label: newLabel } : s))
+  // ─── Node data updates ─────────────────────────────────────
+  const handleUpdateNodeData = useCallback(
+    (nodeId: string, data: Record<string, unknown>) => {
+      setNodes((nds) =>
+        nds.map((n) => (n.id === nodeId ? { ...n, data: { ...data } } : n))
       );
-
-      // Update config
-      try {
-        const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-          workspacePath,
-        });
-        const space = config.spaces.find((s: SpaceEntry) => s.id === spaceId);
-        if (space) {
-          space.label = newLabel;
-          await invoke("save_workspace_config", { workspacePath, config });
-        }
-      } catch (_err) {
-        // Non-critical
-      }
     },
-    [workspacePath]
+    [setNodes]
   );
 
-  // ─── Delete space ──────────────────────────────────────────
-  const handleDeleteSpace = useCallback(
-    async (spaceId: string) => {
-      if (spaces.length <= 1) {
-        showToast("Cannot delete the only remaining space", "error");
-        return;
-      }
-
-      try {
-        await invoke("delete_space", { workspacePath, spaceId });
-
-        const updatedSpaces = spaces.filter((s) => s.id !== spaceId);
-        setSpaces(updatedSpaces);
-
-        // If we deleted the active space, switch to the first remaining one
-        if (activeSpaceId === spaceId) {
-          const nextSpace = updatedSpaces[0];
-          if (nextSpace) {
-            isInitialLoadRef.current = true;
-            setActiveSpaceId(nextSpace.id);
-            setSelectedNode(null);
-            await loadSpaceData(nextSpace.id);
-
-            // Update active_space in config
-            try {
-              const config = await invoke<WorkspaceConfig>("load_workspace_config", {
-                workspacePath,
-              });
-              config.active_space = nextSpace.id;
-              await invoke("save_workspace_config", { workspacePath, config });
-            } catch (_err) {}
-
-            setTimeout(() => {
-              isInitialLoadRef.current = false;
-            }, 500);
-          }
-        }
-
-        showToast("Space deleted", "info");
-      } catch (err) {
-        showToast(`Failed to delete space: ${err}`, "error");
-      }
-    },
-    [spaces, activeSpaceId, workspacePath, showToast, loadSpaceData]
-  );
-
-  const onSpaceContextMenu = useCallback(
-    (spaceId: string, event: React.MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const spaceLabel = spaces.find((s) => s.id === spaceId)?.label || "Space";
-
-      setContextMenu({
-        x: event.clientX,
-        y: event.clientY,
-        items: [
-          {
-            label: "Rename Space",
-            icon: "✏️",
-            onClick: () => {
-              setEditingSpaceId(spaceId);
-            },
-          },
-          {
-            label: `Delete Space ${spaceLabel}`,
-            icon: "🗑️",
-            danger: true,
-            onClick: () => {
-              handleDeleteSpace(spaceId);
-            },
-          },
-        ],
-      });
-    },
-    [spaces, handleDeleteSpace, setEditingSpaceId]
-  );
+  // ─── Runner custom hook ────────────────────────────────────
+  const {
+    isRunning,
+    executeWorkflow,
+    handleChatSend,
+    retryWorkflow,
+  } = useWorkspaceRunner({
+    nodes,
+    edges,
+    setNodes,
+    handleUpdateNodeData,
+    showToast,
+  });
 
   // ─── Connection handling ───────────────────────────────────
   const onConnect: OnConnect = useCallback(
@@ -575,19 +236,6 @@ function WorkspaceEditorInner({
     },
     []
   );
-
-  // ─── Clipboard & Deletion Operations (Modular Custom Hook) ─────────────
-  const { copySelection, cutSelection, pasteSelection, deleteSelected } = useWorkspaceClipboard({
-    nodes,
-    edges,
-    setNodes,
-    setEdges,
-    selectedNode,
-    setSelectedNode,
-    workspacePath,
-    activeSpaceId,
-    showToast,
-  });
 
   const currentSelectedNode = useMemo(() => {
     if (!selectedNode) return null;
@@ -769,7 +417,6 @@ function WorkspaceEditorInner({
   // Global context menu catcher for overlays (e.g., selection overlay)
   const handleWrapperContextMenu = useCallback(
     (event: React.MouseEvent) => {
-      // If the event was already intercepted by nodes/edges/pane, ignore
       if (event.isPropagationStopped()) return;
 
       const selectedNodes = nodes.filter((n) => n.selected);
@@ -879,81 +526,6 @@ function WorkspaceEditorInner({
     [nodes.length, setNodes, showToast]
   );
 
-  // ─── Drag and drop node creation ───────────────────────────
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = "move";
-    }
-    if (activeDragNode) {
-      setActiveDragNode((prev) =>
-        prev ? { ...prev, clientX: event.clientX, clientY: event.clientY } : null
-      );
-    }
-  }, [activeDragNode]);
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      if (!event.dataTransfer) {
-        setActiveDragNode(null);
-        return;
-      }
-      const type = event.dataTransfer.getData("application/reactflow");
-
-      // Check if dropped element is valid
-      if (!type) {
-        setActiveDragNode(null);
-        return;
-      }
-
-      // Dynamically measure the actual screen size of the floating drag ghost card
-      const ghostEl = document.getElementById("drag-ghost-card");
-      let offsetX = 45; // Safe default fallback
-      let offsetY = 40; // Safe default fallback
-      if (ghostEl) {
-        const rect = ghostEl.getBoundingClientRect();
-        offsetX = rect.width / 2;
-        offsetY = rect.height / 2;
-      }
-
-      setActiveDragNode(null);
-
-      // Project client coordinates to flow coordinates, centered under cursor
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX - offsetX,
-        y: event.clientY - offsetY,
-      });
-
-      // Find corresponding node definition from NODE_REGISTRY
-      const definition = NODE_REGISTRY.find((d) => d.type === type);
-      if (!definition) return;
-
-      const id = `${type}_${Date.now()}`;
-      const newNode: Node = {
-        id,
-        type,
-        position,
-        data: { ...definition.defaultData },
-      };
-
-      setNodes((nds) => [...nds, newNode]);
-      showToast(`Added ${definition.label} node`, "info");
-    },
-    [reactFlowInstance, setNodes, showToast]
-  );
-
-  // ─── Update node data ─────────────────────────────────────
-  const handleUpdateNodeData = useCallback(
-    (nodeId: string, data: Record<string, unknown>) => {
-      setNodes((nds) =>
-        nds.map((n) => (n.id === nodeId ? { ...n, data: { ...data } } : n))
-      );
-    },
-    [setNodes]
-  );
-
   // ─── Update edge type ──────────────────────────────────────
   const handleUpdateEdgeData = useCallback(
     (edgeId: string, edgeType: string) => {
@@ -999,116 +571,6 @@ function WorkspaceEditorInner({
       showToast("Connection deleted", "info");
     },
     [setEdges, showToast]
-  );
-
-  // ─── Centralized Workflow execution ────────────────────────
-  const runWorkflow = useCallback(
-    async (startNodeIds: string[], chatInput?: string) => {
-      setIsRunning(true);
-      if (!chatInput) {
-        showToast("Workflow started", "info");
-      }
-
-      try {
-        const currentNodes = [...nodes];
-        const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>) => {
-          const index = currentNodes.findIndex((n) => n.id === nodeId);
-          if (index !== -1) {
-            currentNodes[index] = { ...currentNodes[index], data: { ...data } };
-          }
-          handleUpdateNodeData(nodeId, data);
-        };
-
-        const visited = new Set<string>();
-        const queue = [...startNodeIds];
-        let haltedAtChat = false;
-
-        while (queue.length > 0) {
-          const currentId = queue.shift()!;
-          if (visited.has(currentId)) continue;
-          visited.add(currentId);
-
-          const currentNode = currentNodes.find((n) => n.id === currentId);
-          if (!currentNode) continue;
-
-          // 1. Execute the current node
-          const isStartingChatNode = currentNode.type === "chat" && startNodeIds.includes(currentNode.id);
-          
-          await executeNode(currentNode.type || "default", {
-            node: currentNode,
-            nodes: currentNodes,
-            edges,
-            updateNodeData: localUpdateNodeData,
-            showToast,
-            chatInput: isStartingChatNode ? chatInput : undefined,
-            visited,
-          });
-
-          // 2. Decide propagation downstream
-          // If the node is a chat node and is NOT a starting node, pause execution downstream
-          if (currentNode.type === "chat" && !isStartingChatNode) {
-            haltedAtChat = true;
-            continue;
-          }
-
-          // Propagate to logic downstream targets
-          const downstreamTargets = edges
-            .filter((e) => {
-              // Ignore storage connections
-              if (e.sourceHandle === "storage" || e.targetHandle === "storage") return false;
-              
-              // Exclude connections to/from jsonStorage nodes
-              const srcNode = currentNodes.find(n => n.id === e.source);
-              const tgtNode = currentNodes.find(n => n.id === e.target);
-              if (srcNode?.type === "jsonStorage" || tgtNode?.type === "jsonStorage") return false;
-
-              // Propagate if normal forward edge OR bi-directional edge from target back to source
-              return e.source === currentId || (e.target === currentId && e.data?.edgeType === "bi-directional");
-            })
-            .map((e) => (e.source === currentId ? e.target : e.source));
-
-          queue.push(...downstreamTargets);
-        }
-
-        if (haltedAtChat) {
-          showToast("Workflow paused at Chat. Awaiting message...", "info");
-        } else {
-          showToast("Workflow completed ✓", "success");
-        }
-      } catch (err) {
-        showToast(`Workflow failed: ${err}`, "error");
-      } finally {
-        setIsRunning(false);
-      }
-    },
-    [nodes, edges, showToast, handleUpdateNodeData]
-  );
-
-  const executeWorkflow = useCallback(
-    async (triggerNodeId?: string) => {
-      let triggerNodes = nodes.filter((n) => n.type === "trigger");
-      if (triggerNodeId && typeof triggerNodeId === "string") {
-        triggerNodes = triggerNodes.filter((n) => n.id === triggerNodeId);
-      }
-      if (triggerNodes.length === 0) {
-        showToast("No Trigger node found", "error");
-        return;
-      }
-
-      const startNodeIds = triggerNodes.map((n) => n.id);
-      await runWorkflow(startNodeIds);
-    },
-    [nodes, runWorkflow, showToast]
-  );
-
-  const handleChatSend = useCallback(
-    async (nodeId: string, text: string) => {
-      const chatNode = nodes.find((n) => n.id === nodeId);
-      if (!chatNode) return;
-
-      await runWorkflow([nodeId], text);
-    },
-    [nodes, runWorkflow]
   );
 
   // ─── Back handler (save before leaving) ────────────────────
@@ -1220,6 +682,7 @@ function WorkspaceEditorInner({
         onUpdateNodeData={handleUpdateNodeData}
         onRunWorkflow={executeWorkflow}
         onChatSend={handleChatSend}
+        onRetryWorkflow={retryWorkflow}
         isRunning={isRunning}
         nodes={nodes}
         edges={edges}

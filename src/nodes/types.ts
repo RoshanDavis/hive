@@ -130,7 +130,7 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     label: "Output",
     icon: "📤",
     description: "Displays the output",
-    defaultData: { label: "Output", outputContent: "" },
+    defaultData: { label: "Output" },
     inspector: OutputInspector,
   },
   {
@@ -138,7 +138,7 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     label: "Output",
     icon: "📤",
     description: "Displays the output",
-    defaultData: { label: "Output", outputContent: "" },
+    defaultData: { label: "Output" },
     inspector: OutputInspector,
   },
   {

@@ -307,3 +307,110 @@
   pointer-events: none;
 }
 
+/* ─── Node Execution Status Animations ─── */
+@keyframes executing-pulse {
+  0% {
+    border-color: rgba(34, 197, 94, 0.45) !important;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+  50% {
+    border-color: rgba(34, 197, 94, 0.95) !important;
+    box-shadow: 0 0 18px rgba(34, 197, 94, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+  100% {
+    border-color: rgba(34, 197, 94, 0.45) !important;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+}
+
+@keyframes waiting-pulse {
+  0% {
+    border-color: rgba(234, 179, 8, 0.45) !important;
+    box-shadow: 0 0 6px rgba(234, 179, 8, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+  50% {
+    border-color: rgba(234, 179, 8, 0.95) !important;
+    box-shadow: 0 0 18px rgba(234, 179, 8, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+  100% {
+    border-color: rgba(234, 179, 8, 0.45) !important;
+    box-shadow: 0 0 6px rgba(234, 179, 8, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+}
+
+@keyframes error-pulse {
+  0% {
+    border-color: rgba(239, 68, 68, 0.5) !important;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+  50% {
+    border-color: rgba(239, 68, 68, 1) !important;
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+  100% {
+    border-color: rgba(239, 68, 68, 0.5) !important;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  }
+}
+
+@keyframes status-dash-flow {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.status-border-executing {
+  stroke: #22c55e !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 0.8s linear infinite !important;
+  filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.6));
+}
+
+.status-border-waiting {
+  stroke: #eab308 !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 1.4s linear infinite !important;
+  filter: drop-shadow(0 0 4px rgba(234, 179, 8, 0.6));
+}
+
+.node-status-success {
+  border-color: #22c55e !important;
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.45), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+.node-status-error {
+  border-color: transparent !important;
+}
+
+.node-status-executing {
+  border-color: transparent !important;
+}
+
+.node-status-waiting {
+  border-color: transparent !important;
+}
+
+.status-border-pending {
+  stroke: #38bdf8 !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 1.8s linear infinite !important;
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.5));
+}
+
+.node-status-pending {
+  border-color: transparent !important;
+}
+
+.status-border-error {
+  stroke: #ef4444 !important;
+  stroke-width: 3 !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 1.2s linear infinite !important;
+  filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.7));
+}
+
+
+
