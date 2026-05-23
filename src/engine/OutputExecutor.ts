@@ -1,4 +1,4 @@
-import type { ExecutionContext, NodeExecutor } from "./types";
+import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class OutputExecutor implements NodeExecutor {
@@ -21,10 +21,21 @@ export class OutputExecutor implements NodeExecutor {
       }
     }
 
+    const outputEnvelope: NodeOutputEnvelope = {
+      value: resolvedMessage,
+      metadata: {
+        timestamp: new Date().toISOString()
+      },
+      data: {
+        output: resolvedMessage
+      }
+    };
+
     updateNodeData(node.id, {
       ...node.data,
       outputContent: resolvedMessage,
-      lastResponse: resolvedMessage
+      lastResponse: resolvedMessage,
+      outputEnvelope
     });
   }
 }

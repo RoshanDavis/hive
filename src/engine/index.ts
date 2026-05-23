@@ -3,7 +3,8 @@ import { NotifyExecutor } from "./NotifyExecutor";
 import { OllamaExecutor } from "./OllamaExecutor";
 import { ChatExecutor } from "./ChatExecutor";
 import { OutputExecutor } from "./OutputExecutor";
-import { getUpstreamNodeData } from "./utils";
+import { getUpstreamNodeData, getUpstreamNodeEnvelope } from "./utils";
+import type { NodeOutputEnvelope } from "./types";
 
 export * from "./types";
 export * from "./ChatExecutor";
@@ -25,7 +26,7 @@ export const executeNode = async (
     await executor.execute(context);
   } else {
     // Passive nodes or nodes without specialized executors (trigger, router, etc.)
-    let upstreamData = "";
+    let resolvedEnvelope: NodeOutputEnvelope = { value: "" };
 
     // Find all incoming edges (excluding storage connections)
     const incomingEdges = context.edges.filter(
@@ -45,18 +46,16 @@ export const executeNode = async (
         if (context.visited && !context.visited.has(upstream.id)) {
           continue;
         }
-        const val = getUpstreamNodeData(upstream);
-        if (val !== null) {
-          upstreamData = val;
-          break;
-        }
+        resolvedEnvelope = getUpstreamNodeEnvelope(upstream);
+        break;
       }
     }
 
-    // Set the resolved upstream data (or empty string for trigger nodes) as our response payload
+    // Set the resolved upstream envelope (or empty string for trigger nodes) as our response payload
     context.updateNodeData(context.node.id, {
       ...context.node.data,
-      lastResponse: upstreamData,
+      lastResponse: resolvedEnvelope.value,
+      outputEnvelope: resolvedEnvelope
     });
   }
 
@@ -80,16 +79,18 @@ export const executeNode = async (
           const payload = getUpstreamNodeData(context.node);
           if (payload !== null && payload !== undefined) {
             const dbRecords = (storageNode.data?.records as any[]) || [];
-            // Prevent duplicate entries of the same timestamp/content if triggered repeatedly in the same tick
+            // Prevent duplicate entries of the same content if triggered repeatedly in the same tick
             const isDuplicate = dbRecords.some(
               (rec) => rec.content === payload && Date.now() - Number(rec.id) < 500
             );
             if (!isDuplicate) {
+              const envelope = getUpstreamNodeEnvelope(context.node);
               const newRecord = {
                 id: Date.now().toString(),
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 source: String(context.node.data?.label || context.node.type || "Source"),
                 content: payload,
+                envelope: envelope
               };
               context.updateNodeData(storageNode.id, {
                 ...storageNode.data,

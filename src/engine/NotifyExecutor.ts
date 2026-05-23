@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ExecutionContext, NodeExecutor } from "./types";
+import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class NotifyExecutor implements NodeExecutor {
@@ -32,13 +32,28 @@ export class NotifyExecutor implements NodeExecutor {
       const outputTemplate = String(node.data?.output !== undefined ? node.data.output : "{input}");
       const finalOutputBody = outputTemplate.replace(/{input}/gi, resolvedMessage || "");
 
-      // Store fully evaluated output body in node state so downstream nodes can read it
+      const label = String(node.data?.label || "Hive");
+
+      // Store standard JSON envelope and evaluated output body in node state
+      const outputEnvelope: NodeOutputEnvelope = {
+        value: finalOutputBody,
+        metadata: {
+          title: label,
+          body: finalNotificationBody,
+          timestamp: new Date().toISOString()
+        },
+        data: {
+          notificationBody: finalNotificationBody,
+          outputBody: finalOutputBody
+        }
+      };
+
       updateNodeData(node.id, {
         ...node.data,
-        lastResponse: finalOutputBody
+        lastResponse: finalOutputBody,
+        outputEnvelope
       });
 
-      const label = String(node.data?.label || "Hive");
       await invoke("send_notification", { title: label, body: finalNotificationBody });
     } catch (err) {
       showToast(`Notify error: ${err}`, "error");

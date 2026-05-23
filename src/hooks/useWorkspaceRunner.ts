@@ -167,6 +167,12 @@ export function useWorkspaceRunner({
         });
         if (hasTriggerStart) {
           executedNodeIdsRef.current.clear();
+        } else {
+          // If starting from a node (e.g. Chat message), clear all reachable downstream nodes from history
+          // so they re-execute freshly to process the new message/signal
+          reachableDownstreamIds.forEach((id) => {
+            executedNodeIdsRef.current.delete(id);
+          });
         }
 
         const visited = new Set<string>(executedNodeIdsRef.current);

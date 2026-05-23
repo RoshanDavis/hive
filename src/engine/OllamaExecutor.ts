@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ExecutionContext, NodeExecutor } from "./types";
+import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class OllamaExecutor implements NodeExecutor {
@@ -70,10 +70,25 @@ export class OllamaExecutor implements NodeExecutor {
         maxTokens: maxT
       });
 
-      // 4. Update the Ollama node with the response
+      // 4. Create standard JSON envelope
+      const outputEnvelope: NodeOutputEnvelope = {
+        value: response,
+        metadata: {
+          model,
+          temperature: temp,
+          maxTokens: maxT,
+          timestamp: new Date().toISOString()
+        },
+        data: {
+          reply: response
+        }
+      };
+
+      // 5. Update the Ollama node with the response and rich envelope
       updateNodeData(node.id, {
         ...node.data,
-        lastResponse: response
+        lastResponse: response,
+        outputEnvelope
       });
     } catch (err) {
       showToast(`Ollama error: ${err}`, "error");

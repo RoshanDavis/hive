@@ -1,4 +1,5 @@
 import type { Node } from "@xyflow/react";
+import type { NodeOutputEnvelope } from "./types";
 
 /**
  * Extracts data from an upstream node based on standard data fields
@@ -53,4 +54,27 @@ export function getUpstreamNodeData(upstreamNode: Node): string | null {
   }
 
   return null;
+}
+
+/**
+ * Extracts the full standard JSON data envelope from an upstream node,
+ * automatically packaging primitive string outputs in a standard envelope structure if necessary.
+ */
+export function getUpstreamNodeEnvelope(upstreamNode: Node): NodeOutputEnvelope {
+  if (!upstreamNode || !upstreamNode.data) {
+    return { value: "" };
+  }
+
+  // 1. If the node has a structured outputEnvelope, load and return it directly
+  if (upstreamNode.data.outputEnvelope !== undefined && upstreamNode.data.outputEnvelope !== null) {
+    return upstreamNode.data.outputEnvelope as NodeOutputEnvelope;
+  }
+
+  // 2. Fallback: package the raw string output value inside a standard default envelope
+  const rawText = getUpstreamNodeData(upstreamNode) || "";
+  return {
+    value: rawText,
+    metadata: { generatedFallback: true, timestamp: new Date().toISOString() },
+    data: rawText
+  };
 }

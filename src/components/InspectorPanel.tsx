@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
 import { getConnectionBehavior } from "../engine/connectivity";
-import { getUpstreamNodeData } from "../engine/utils";
+import { getUpstreamNodeEnvelope } from "../engine/utils";
 
 // ─── DataConsole Helper for Code/Text Payloads ───────────────────
 function DataConsole({ content, placeholder = "No data transmitted yet." }: { content: string | null | undefined; placeholder?: string }) {
@@ -473,7 +473,8 @@ export default function InspectorPanel({
                 const showRead = edgeType === "read-only" || edgeType === "read-write";
                 const showWrite = edgeType === "write-only" || edgeType === "read-write";
                 
-                const writePayload = getUpstreamNodeData(logicNode);
+                const writeEnvelope = getUpstreamNodeEnvelope(logicNode);
+                const writePayload = writeEnvelope.metadata?.generatedFallback ? writeEnvelope.value : JSON.stringify(writeEnvelope, null, 2);
                 const records = (storageNode.data?.records as any[]) || [];
 
                 contentNodes = (
@@ -499,29 +500,80 @@ export default function InspectorPanel({
                 );
               } else {
                 // Non-storage triggers / standard logic
-                const sourceOutput = getUpstreamNodeData(sourceNode);
-                const targetOutput = getUpstreamNodeData(targetNode);
+                const targetEnvelope = getUpstreamNodeEnvelope(targetNode);
+                const targetOutput = targetEnvelope.metadata?.generatedFallback ? targetEnvelope.value : JSON.stringify(targetEnvelope, null, 2);
                 const showBiDirectional = edgeType === "bi-directional";
+                
+                const isChatToOllama = sourceNode.type === "chat" && targetNode.type === "ollama";
 
-                contentNodes = (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-text-secondary select-none">
-                        📤 Transmitted Payload ({sourceNodeLabel} ➔ {targetNodeLabel})
-                      </label>
-                      <DataConsole content={sourceOutput} placeholder="No output payload transmitted yet." />
-                    </div>
+                if (isChatToOllama) {
+                  const systemPrompt = String(targetNode.data?.systemPrompt || "");
+                  const historyLimit = Number(targetNode.data?.chatHistoryLimit || 0);
+                  const rawMessages = (sourceNode.data?.messages as any[]) || [];
 
-                    {showBiDirectional && (
+                  let ollamaMsgs = [...rawMessages];
+                  if (historyLimit > 0 && ollamaMsgs.length > historyLimit) {
+                    ollamaMsgs = ollamaMsgs.slice(-historyLimit);
+                  }
+                  if (systemPrompt.trim() !== "") {
+                    ollamaMsgs.unshift({ role: "system", content: systemPrompt });
+                  }
+
+                  const chatEnvelope = getUpstreamNodeEnvelope(sourceNode);
+                  const exactEnvelope = {
+                    value: chatEnvelope.value,
+                    metadata: {
+                      ...chatEnvelope.metadata,
+                      systemPromptConfigured: systemPrompt.trim() !== "",
+                      historyLimitApplied: historyLimit
+                    },
+                    data: ollamaMsgs
+                  };
+
+                  const formattedJson = JSON.stringify(exactEnvelope, null, 2);
+
+                  contentNodes = (
+                    <div className="flex flex-col gap-4">
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[10px] font-bold text-text-secondary select-none">
-                          📥 Return Payload ({targetNodeLabel} ➔ {sourceNodeLabel})
+                          💬 Exact Prompt Package Sent to Ollama
                         </label>
-                        <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." />
+                        <DataConsole content={formattedJson} placeholder="No messages prepared yet." />
                       </div>
-                    )}
-                  </div>
-                );
+
+                      {showBiDirectional && (
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-bold text-text-secondary select-none">
+                            📥 Return Payload ({targetNodeLabel} ➔ {sourceNodeLabel})
+                          </label>
+                          <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." />
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else {
+                  const sourceEnvelope = getUpstreamNodeEnvelope(sourceNode);
+                  const sourceOutput = sourceEnvelope.metadata?.generatedFallback ? sourceEnvelope.value : JSON.stringify(sourceEnvelope, null, 2);
+                  contentNodes = (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-text-secondary select-none">
+                          📤 Transmitted Payload ({sourceNodeLabel} ➔ {targetNodeLabel})
+                        </label>
+                        <DataConsole content={sourceOutput} placeholder="No output payload transmitted yet." />
+                      </div>
+
+                      {showBiDirectional && (
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-bold text-text-secondary select-none">
+                            📥 Return Payload ({targetNodeLabel} ➔ {sourceNodeLabel})
+                          </label>
+                          <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." />
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
               }
 
               return (

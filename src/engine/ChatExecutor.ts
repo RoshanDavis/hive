@@ -1,4 +1,4 @@
-import type { ExecutionContext, NodeExecutor } from "./types";
+import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class ChatExecutor implements NodeExecutor {
@@ -56,10 +56,25 @@ export class ChatExecutor implements NodeExecutor {
         updatedLocalMessages = [...updatedLocalMessages, { role: "user" as const, content: chatInput, sender: "You" }];
       }
 
+      const outputEnvelope: NodeOutputEnvelope = {
+        value: chatInput,
+        metadata: {
+          chatHistoryLimit: Number(chatNode.data?.chatHistoryLimit || 0),
+          messageCount: updatedLocalMessages.length,
+          sender: "User",
+          timestamp: new Date().toISOString()
+        },
+        data: {
+          messages: updatedLocalMessages,
+          latestMessage: chatInput
+        }
+      };
+
       updateNodeData(chatNode.id, {
         ...chatNode.data,
         messages: updatedLocalMessages,
-        lastResponse: chatInput
+        lastResponse: chatInput,
+        outputEnvelope
       });
     } else {
       // ─── Case B: Triggered Downstream (Output/Receiver Mode) ───
@@ -149,10 +164,26 @@ export class ChatExecutor implements NodeExecutor {
         updatedLocalMessages = [...updatedLocalMessages, { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel }];
       }
 
+      const envelopeValue = isSystemMsg ? "" : resolvedMessage;
+      const outputEnvelope: NodeOutputEnvelope = {
+        value: envelopeValue,
+        metadata: {
+          chatHistoryLimit: Number(chatNode.data?.chatHistoryLimit || 0),
+          messageCount: updatedLocalMessages.length,
+          sender: isSystemMsg ? "System" : senderLabel,
+          timestamp: new Date().toISOString()
+        },
+        data: {
+          messages: updatedLocalMessages,
+          latestMessage: envelopeValue
+        }
+      };
+
       updateNodeData(chatNode.id, {
         ...chatNode.data,
         messages: updatedLocalMessages,
-        lastResponse: isSystemMsg ? undefined : resolvedMessage // Clear lastResponse for system triggers so downstream nodes don't receive stale/placeholder values
+        lastResponse: isSystemMsg ? undefined : resolvedMessage, // Clear lastResponse for system triggers so downstream nodes don't receive stale/placeholder values
+        outputEnvelope
       });
     }
   }
