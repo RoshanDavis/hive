@@ -1,9 +1,11 @@
+import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class ChatExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node: chatNode, nodes, edges, updateNodeData, chatInput, visited } = context;
+    await concurrencyGovernor.enqueue("chat", async () => {
 
     // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
     const storageEdge = edges.find(
@@ -186,5 +188,6 @@ export class ChatExecutor implements NodeExecutor {
         outputEnvelope
       });
     }
+    });
   }
 }

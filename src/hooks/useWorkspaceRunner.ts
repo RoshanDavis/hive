@@ -50,17 +50,27 @@ export function useWorkspaceRunner({
   handleUpdateNodeData,
   showToast,
 }: UseWorkspaceRunnerParams) {
-  const [isRunning, setIsRunning] = useState(false);
-  const successTimeoutRef = useRef<number | undefined>(undefined);
-  const executedNodeIdsRef = useRef<Set<string>>(new Set<string>());
+  const [runningStartNodeIds, setRunningStartNodeIds] = useState<Set<string>>(new Set<string>());
+  const successTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const executedNodeIdsMapRef = useRef<Map<string, Set<string>>>(new Map());
+
+  const isRunning = runningStartNodeIds.size > 0;
 
   const runWorkflow = useCallback(
     async (startNodeIds: string[], chatInput?: string) => {
-      setIsRunning(true);
-      if (successTimeoutRef.current) {
-        clearTimeout(successTimeoutRef.current);
-        successTimeoutRef.current = undefined;
+      const startKey = startNodeIds.join(",");
+      setRunningStartNodeIds((prev) => {
+        const next = new Set(prev);
+        next.add(startKey);
+        return next;
+      });
+
+      const existingTimeout = successTimeoutsRef.current.get(startKey);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+        successTimeoutsRef.current.delete(startKey);
       }
+
       if (!chatInput) {
         showToast("Workflow started", "info");
       }
@@ -160,22 +170,27 @@ export function useWorkspaceRunner({
           })
         );
 
+        if (!executedNodeIdsMapRef.current.has(startKey)) {
+          executedNodeIdsMapRef.current.set(startKey, new Set<string>());
+        }
+        const executedNodeIds = executedNodeIdsMapRef.current.get(startKey)!;
+
         // Clear executed node history if starting from a fresh Trigger node
         const hasTriggerStart = startNodeIds.some((sid) => {
           const n = currentNodes.find((node) => node.id === sid);
           return n?.type === "trigger";
         });
         if (hasTriggerStart) {
-          executedNodeIdsRef.current.clear();
+          executedNodeIds.clear();
         } else {
           // If starting from a node (e.g. Chat message), clear all reachable downstream nodes from history
           // so they re-execute freshly to process the new message/signal
           reachableDownstreamIds.forEach((id) => {
-            executedNodeIdsRef.current.delete(id);
+            executedNodeIds.delete(id);
           });
         }
 
-        const visited = new Set<string>(executedNodeIdsRef.current);
+        const visited = new Set<string>(executedNodeIds);
         startNodeIds.forEach((sid) => visited.delete(sid));
         const queue = [...startNodeIds];
 
@@ -230,12 +245,12 @@ export function useWorkspaceRunner({
               if (isVisited) {
                 console.log(`[RUNWORKFLOW] Chat node ${currentId} return path complete. Setting to success.`);
                 localUpdateNodeData(currentId, { ...postExecNode.data, status: "success" });
-                executedNodeIdsRef.current.add(currentId);
+                executedNodeIds.add(currentId);
                 continue;
               } else {
                 console.log(`[RUNWORKFLOW] Chat node ${currentId} forward path halted waiting for input. Setting to waiting.`);
                 localUpdateNodeData(currentId, { ...postExecNode.data, status: "waiting" });
-                executedNodeIdsRef.current.add(currentId);
+                executedNodeIds.add(currentId);
                 haltedAtChat = true;
                 continue;
               }
@@ -255,7 +270,7 @@ export function useWorkspaceRunner({
                 console.log(`[RUNWORKFLOW] Node ${currentId} execution finished. Setting to success.`);
                 localUpdateNodeData(currentId, { ...postExecNode.data, status: "success" });
               }
-              executedNodeIdsRef.current.add(currentId);
+              executedNodeIds.add(currentId);
             }
           } catch (err) {
             console.error(`[RUNWORKFLOW] Error executing node ${currentId}:`, err);
@@ -302,26 +317,40 @@ export function useWorkspaceRunner({
       } finally {
         console.log("[RUNWORKFLOW] finally block reached. haltedAtChat:", haltedAtChat);
         if (!haltedAtChat) {
-          // Keep the green borders visible for 1.5 seconds after the entire workflow completes/fails, then clear success and pending states
-          successTimeoutRef.current = window.setTimeout(() => {
-            console.log("[RUNWORKFLOW] Clearing success/pending node statuses...");
+          const nodesToClear = new Set<string>([
+            ...startNodeIds,
+            ...Array.from(startingStorageNodeIds),
+            ...Array.from(reachableDownstreamIds)
+          ]);
+
+          // Keep the green borders visible for 1.5 seconds after the entire workflow completes/fails, then clear success and pending states for this cluster
+          const timeoutId = window.setTimeout(() => {
+            console.log("[RUNWORKFLOW] Clearing success/pending node statuses for starting cluster:", startKey);
             currentNodes.forEach((n) => {
-              const latest = currentNodes.find((latestNode) => latestNode.id === n.id);
-              if (
-                latest &&
-                (latest.data.status === "success" || latest.data.status === "pending")
-              ) {
-                console.log(`[RUNWORKFLOW] Clearing status for node ${n.id} (${latest.data.status} -> undefined)`);
-                localUpdateNodeData(n.id, { ...latest.data, status: undefined });
+              if (nodesToClear.has(n.id)) {
+                const latest = currentNodes.find((latestNode) => latestNode.id === n.id);
+                if (
+                  latest &&
+                  (latest.data.status === "success" || latest.data.status === "pending")
+                ) {
+                  console.log(`[RUNWORKFLOW] Clearing status for node ${n.id} (${latest.data.status} -> undefined)`);
+                  localUpdateNodeData(n.id, { ...latest.data, status: undefined });
+                }
               }
             });
-            successTimeoutRef.current = undefined;
+            successTimeoutsRef.current.delete(startKey);
           }, 1500);
+          successTimeoutsRef.current.set(startKey, timeoutId);
         }
-        setIsRunning(false);
+
+        setRunningStartNodeIds((prev) => {
+          const next = new Set(prev);
+          next.delete(startKey);
+          return next;
+        });
       }
     },
-    [nodes, edges, setNodes, showToast, handleUpdateNodeData]
+    [nodes, edges, setNodes, showToast, handleUpdateNodeData, setRunningStartNodeIds]
   );
 
   const executeWorkflow = useCallback(
@@ -363,6 +392,7 @@ export function useWorkspaceRunner({
 
   return {
     isRunning,
+    runningStartNodeIds,
     executeWorkflow,
     handleChatSend,
     retryWorkflow,

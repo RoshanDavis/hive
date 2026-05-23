@@ -1,10 +1,12 @@
 import { api } from "@/services/api";
+import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class OllamaExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node, nodes, edges, updateNodeData, showToast, visited } = context;
+    await concurrencyGovernor.enqueue("ollama", async () => {
 
     const url = String(node.data?.ollamaUrl || "http://localhost:11434");
     const model = String(node.data?.model || "llama3");
@@ -94,5 +96,6 @@ export class OllamaExecutor implements NodeExecutor {
       showToast(`Ollama error: ${err}`, "error");
       throw err;
     }
+    });
   }
 }

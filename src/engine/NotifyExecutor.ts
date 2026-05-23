@@ -1,12 +1,14 @@
 import { api } from "@/services/api";
+import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
 export class NotifyExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node, nodes, edges, updateNodeData, showToast, visited } = context;
-    try {
-      let resolvedMessage = "";
+    await concurrencyGovernor.enqueue("notify", async () => {
+      try {
+        let resolvedMessage = "";
 
       const incomingEdges = edges.filter(e => e.target === node.id);
       if (incomingEdges.length > 0) {
@@ -59,5 +61,6 @@ export class NotifyExecutor implements NodeExecutor {
       showToast(`Notify error: ${err}`, "error");
       throw err;
     }
+    });
   }
 }

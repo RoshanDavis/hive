@@ -20,6 +20,7 @@ import { api } from "@/services/api";
 
 import SpacesSidebar from "@/components/SpacesSidebar";
 import InspectorPanel from "@/components/InspectorPanel";
+import WorkspaceSettingsModal from "@/components/WorkspaceSettingsModal";
 import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
 import { ToastContainer } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
@@ -76,6 +77,7 @@ function WorkspaceEditorInner({
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const { toasts, showToast } = useToast(3500);
 
@@ -156,7 +158,7 @@ function WorkspaceEditorInner({
 
   // ─── Runner custom hook ────────────────────────────────────
   const {
-    isRunning,
+    runningStartNodeIds,
     executeWorkflow,
     handleChatSend,
     retryWorkflow,
@@ -586,6 +588,7 @@ function WorkspaceEditorInner({
         onSpaceContextMenu={onSpaceContextMenu}
         editingSpaceId={editingSpaceId}
         setEditingSpaceId={setEditingSpaceId}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Center — React Flow Canvas */}
@@ -666,7 +669,7 @@ function WorkspaceEditorInner({
         onRunWorkflow={executeWorkflow}
         onChatSend={handleChatSend}
         onRetryWorkflow={retryWorkflow}
-        isRunning={isRunning}
+        isRunning={selectedNode ? runningStartNodeIds.has(selectedNode.id) : false}
         nodes={nodes}
         edges={edges}
         onDragStartNode={handleDragStartNode}
@@ -688,6 +691,13 @@ function WorkspaceEditorInner({
 
       {/* Toasts */}
       <ToastContainer toasts={toasts} />
+
+      {/* Settings Modal */}
+      <WorkspaceSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        showToast={showToast}
+      />
 
       {/* Custom 100% Opaque Floating Ghost Card (Bypasses browser transparency limitations) */}
       {activeDragNode && activeDragNode.clientX > 0 && activeDragNode.clientY > 0 && (() => {

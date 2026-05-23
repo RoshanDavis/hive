@@ -7,8 +7,39 @@ export interface ClipboardData {
   copiedWithData: boolean;
 }
 
+export interface ConcurrencyConfig {
+  enabled: boolean;
+  limit: number;
+}
+
+export type ConcurrencySettings = Record<string, ConcurrencyConfig>;
+
 // ─── Centralized Type-Safe Storage client ──────────────────────
 export const storage = {
+  // Node Concurrency settings
+  getConcurrencySettings(): ConcurrencySettings {
+    const raw = localStorage.getItem("hive-concurrency-settings");
+    const defaultSettings: ConcurrencySettings = {
+      ollama: { enabled: true, limit: 1 },
+      notify: { enabled: false, limit: 2 },
+      chat: { enabled: false, limit: 2 },
+      output: { enabled: false, limit: 2 },
+      trigger: { enabled: false, limit: 2 },
+      jsonStorage: { enabled: false, limit: 2 },
+    };
+
+    if (!raw) return defaultSettings;
+    try {
+      const parsed = JSON.parse(raw);
+      return { ...defaultSettings, ...parsed };
+    } catch {
+      return defaultSettings;
+    }
+  },
+
+  setConcurrencySettings(settings: ConcurrencySettings): void {
+    localStorage.setItem("hive-concurrency-settings", JSON.stringify(settings));
+  },
   // Inspector Width settings
   getInspectorWidth(fallback = 320): number {
     const saved = localStorage.getItem("hive-inspector-width");

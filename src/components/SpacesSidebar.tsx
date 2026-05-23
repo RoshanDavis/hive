@@ -13,6 +13,7 @@ interface SpacesSidebarProps {
   onSpaceContextMenu?: (spaceId: string, event: React.MouseEvent) => void;
   editingSpaceId?: string | null;
   setEditingSpaceId?: (id: string | null) => void;
+  onOpenSettings: () => void;
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -26,6 +27,7 @@ export default function SpacesSidebar({
   onSpaceContextMenu,
   editingSpaceId,
   setEditingSpaceId,
+  onOpenSettings,
 }: SpacesSidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -286,6 +288,31 @@ export default function SpacesSidebar({
         >
           <span>+</span>
           <span>Add Space</span>
+        </button>
+      )}
+
+      {/* Spacer pushing settings to bottom */}
+      <div className="flex-grow" />
+
+      {/* Settings Button */}
+      {isCompact ? (
+        <button
+          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-border-subtle bg-transparent text-lg text-text-secondary hover:text-accent hover:border-accent-dim hover:bg-card select-none"
+          onClick={onOpenSettings}
+          title="Workspace Settings"
+          id="sidebar-settings-btn"
+        >
+          ⚙️
+        </button>
+      ) : (
+        <button
+          className="w-full px-3 py-2 flex items-center gap-3 rounded-lg text-xs font-semibold cursor-pointer transition-all border border-border-subtle bg-transparent text-left text-text-secondary hover:text-accent hover:border-accent-dim hover:bg-card select-none"
+          onClick={onOpenSettings}
+          title="Workspace Settings"
+          id="sidebar-settings-btn"
+        >
+          <span className="text-sm">⚙️</span>
+          <span>Settings</span>
         </button>
       )}
     </div>
