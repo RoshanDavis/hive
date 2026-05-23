@@ -2,6 +2,85 @@ import { useState, useMemo, useEffect } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { NODE_REGISTRY, type NodeDefinition } from "../nodes/types";
 import { getConnectionBehavior } from "../engine/connectivity";
+import { getUpstreamNodeData } from "../engine/utils";
+
+// ─── DataConsole Helper for Code/Text Payloads ───────────────────
+function DataConsole({ content, placeholder = "No data transmitted yet." }: { content: string | null | undefined; placeholder?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!content) return;
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const hasData = content !== null && content !== undefined;
+  const isEmpty = content === "";
+
+  let displayVal = placeholder;
+  if (hasData) {
+    displayVal = isEmpty ? '"" (empty string)' : content;
+  }
+
+  return (
+    <div className="bg-[#0b0b0d]/70 border border-[#222] rounded-lg p-3 font-mono text-[11px] leading-relaxed text-[#e4e4e7] overflow-x-auto relative group max-h-[140px] overflow-y-auto pr-10 scrollbar-thin select-text">
+      {hasData && !isEmpty && (
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 hover:bg-[#1e1e24] text-[#a1a1aa] hover:text-white text-[9px] px-1.5 py-0.5 rounded border border-[#2e2e38]/30 transition-all select-none cursor-pointer duration-150"
+        >
+          {copied ? "✓ Copied" : "📋 Copy"}
+        </button>
+      )}
+      <pre className={`m-0 whitespace-pre-wrap break-all ${!hasData || isEmpty ? "text-text-secondary/60 italic" : ""}`}>
+        {displayVal}
+      </pre>
+    </div>
+  );
+}
+
+// ─── DatabaseRecordFeed Helper for JSON storage record logs ──────
+function DatabaseRecordFeed({ records }: { records: any[] }) {
+  if (!records || records.length === 0) {
+    return (
+      <div className="bg-[#0b0b0d]/70 border border-[#222] rounded-lg p-3 text-center text-[11px] text-text-secondary/60 italic select-none">
+        No records stored yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#0b0b0d]/70 border border-[#222] rounded-lg p-3 max-h-[160px] overflow-y-auto font-mono text-[11px] leading-relaxed text-[#e4e4e7] scrollbar-thin select-text flex flex-col gap-1">
+      {records.map((rec, idx) => {
+        const time = rec.timestamp || "--:--:--";
+        const source = rec.source || "Unknown";
+        const content = rec.content || "";
+        const sourceLower = source.toLowerCase();
+
+        let sourceColor = "text-[#888888]"; // Default
+        if (sourceLower === "user" || sourceLower === "you") {
+          sourceColor = "text-[#34d399]"; // User green
+        } else if (sourceLower === "system") {
+          sourceColor = "text-[#818cf8]"; // System purple-blue
+        } else if (sourceLower.includes("ollama") || sourceLower.includes("robot")) {
+          sourceColor = "text-[#c084fc]"; // AI Ollama purple
+        } else if (sourceLower.includes("notify")) {
+          sourceColor = "text-[#60a5fa]"; // Notify blue
+        }
+
+        return (
+          <div key={rec.id || idx} className="py-0.5 border-b border-[#222]/10 last:border-0 hover:bg-[#1a1a24]/10 rounded px-1 select-text">
+            <span className="text-[#52525b] mr-1">[{time}]</span>
+            <span className={`${sourceColor} font-semibold mr-1.5`}>[{source}]</span>
+            <span className="text-[#d4d4d8]">{content}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── Props ───────────────────────────────────────────────────
 interface InspectorPanelProps {
@@ -260,71 +339,229 @@ export default function InspectorPanel({
         </>
       ) : selectedEdge ? (
         <>
-          <div className="p-4 border-b border-border-subtle bg-card flex flex-col gap-1">
-            <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2">
-              🔗 Connection
-            </h2>
-            <span className="text-[10px] uppercase tracking-widest font-bold text-accent bg-accent-glow self-start px-2 py-0.5 rounded-sm">
-              Inspector
+          {/* Header */}
+          <div className="p-4 border-b border-border-subtle bg-card/60 backdrop-blur-md flex flex-col gap-1.5 select-none">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold m-0 text-text-main flex items-center gap-2">
+                <span>🔗</span>
+                <span>Connection Inspector</span>
+              </h2>
+              {/* Dynamic status pill */}
+              {(() => {
+                const edgeType = (selectedEdge.data?.edgeType as string) || connectionBehavior.defaultFlow;
+                let badgeLabel = "One-Way Flow";
+                let badgeColorClass = "text-accent bg-accent-glow/5 border-accent/20";
+                
+                if (edgeType === "bi-directional") {
+                  badgeLabel = "Bi-Directional Sync";
+                  badgeColorClass = "text-accent bg-accent-glow/5 border-accent/20";
+                } else if (edgeType === "read-write") {
+                  badgeLabel = "Read & Write Sync";
+                  badgeColorClass = "text-[#38bdf8] bg-[#38bdf8]/5 border-[#38bdf8]/20";
+                } else if (edgeType === "read-only") {
+                  badgeLabel = "Read-Only Context";
+                  badgeColorClass = "text-[#38bdf8] bg-[#38bdf8]/5 border-[#38bdf8]/20";
+                } else if (edgeType === "write-only") {
+                  badgeLabel = "Write-Only Output";
+                  badgeColorClass = "text-[#38bdf8] bg-[#38bdf8]/5 border-[#38bdf8]/20";
+                }
+
+                return (
+                  <span className={`text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${badgeColorClass}`}>
+                    {badgeLabel}
+                  </span>
+                );
+              })()}
+            </div>
+            <span className="text-[10px] text-text-secondary leading-normal">
+              Inspect active data routing pipelines and configure connection behaviors.
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
-            {/* Source & Target Routing Info */}
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Routing</label>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 scrollbar-thin">
+            {/* 1. Source & Target Routing Pathway Visualizer */}
+            {(() => {
+              if (!sourceNode || !targetNode) return null;
+              const sourceDef = NODE_REGISTRY.find((d) => d.type === sourceNode.type);
+              const targetDef = NODE_REGISTRY.find((d) => d.type === targetNode.type);
+              const edgeType = (selectedEdge.data?.edgeType as string) || connectionBehavior.defaultFlow;
+              const isDatabase = ["read-only", "write-only", "read-write"].includes(edgeType);
+              const isReverse = edgeType === "read-only" && targetNode.type === "jsonStorage";
               
-              <div className="bg-primary/20 border border-border-subtle rounded-lg p-3 flex flex-col gap-3 relative overflow-hidden">
-                <div className="flex items-center justify-between gap-3 z-10">
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-[10px] uppercase tracking-widest text-text-muted font-bold">Source</span>
-                    <span className="text-sm font-semibold text-text-main truncate mt-0.5" title={sourceNode ? String(sourceNode.data?.label || sourceNode.type) : "Source Node"}>
-                      {sourceNode ? String(sourceNode.data?.label || sourceNode.type) : "Source Node"}
-                    </span>
-                    <span className="text-[9px] font-mono text-text-muted truncate mt-0.5">ID: {selectedEdge.source}</span>
-                  </div>
+              return (
+                <div className="flex flex-col gap-2.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#71717a] select-none">Routing Pathway</label>
                   
-                  <div className="text-accent flex items-center justify-center shrink-0 px-1">
-                    <span className="text-lg leading-none select-none animate-pulse">➔</span>
-                  </div>
-                  
-                  <div className="flex flex-col min-w-0 flex-1 text-right">
-                    <span className="text-[10px] uppercase tracking-widest text-text-muted font-bold">Target</span>
-                    <span className="text-sm font-semibold text-text-main truncate mt-0.5" title={targetNode ? String(targetNode.data?.label || targetNode.type) : "Target Node"}>
-                      {targetNode ? String(targetNode.data?.label || targetNode.type) : "Target Node"}
-                    </span>
-                    <span className="text-[9px] font-mono text-text-muted truncate mt-0.5">ID: {selectedEdge.target}</span>
+                  <div className="relative bg-[#0b0b0d]/70 border border-[#222] rounded-xl p-3.5 flex flex-col gap-3 overflow-hidden shadow-inner">
+                    {/* Decorative grid backdrop */}
+                    <div className="absolute inset-0 opacity-[0.015] pointer-events-none bg-[radial-gradient(#d4e600_1px,transparent_1px)] [background-size:16px_16px]"></div>
+                    
+                    <div className="flex items-center justify-between gap-3 z-10 relative">
+                      {/* Source Node Card */}
+                      <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-[#16161a] border border-[#2c2c34] rounded-lg p-2 shadow-sm text-center">
+                        <span className="text-lg select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
+                          {sourceDef?.icon || "⚪"}
+                        </span>
+                        <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(sourceNode.data?.label || sourceDef?.label || sourceNode.type)}>
+                          {String(sourceNode.data?.label || sourceDef?.label || sourceNode.type)}
+                        </span>
+                        <span className="text-[8px] uppercase font-mono tracking-wider text-[#52525b] mt-0.5 px-1 py-[1px] bg-[#1e1e24] rounded border border-[#2e2e38]/30">
+                          {sourceNode.type}
+                        </span>
+                      </div>
+
+                      {/* Animated Flow Connector */}
+                      <div className="flex flex-col items-center justify-center shrink-0 w-10 select-none relative">
+                        <span className={`text-base leading-none filter drop-shadow-[0_0_4px_rgba(212,230,0,0.4)] ${isDatabase ? "text-[#38bdf8]" : "text-accent"} ${isReverse ? "rotate-180" : ""}`}>➔</span>
+                        <div className="w-8 h-[2px] bg-[#222] mt-1 relative overflow-hidden rounded-full border-t border-[#333]">
+                          <div 
+                            className={`absolute top-0 h-full w-2.5 rounded-full animate-[flowDash_1.6s_linear_infinite]`}
+                            style={{ 
+                              background: isDatabase 
+                                ? "linear-gradient(90deg, transparent, #38bdf8, transparent)" 
+                                : "linear-gradient(90deg, transparent, #d4e600, transparent)",
+                              animationDirection: isReverse ? "reverse" : "normal"
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Target Node Card */}
+                      <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-[#16161a] border border-[#2c2c34] rounded-lg p-2 shadow-sm text-center">
+                        <span className="text-lg select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
+                          {targetDef?.icon || "⚪"}
+                        </span>
+                        <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(targetNode.data?.label || targetDef?.label || targetNode.type)}>
+                          {String(targetNode.data?.label || targetDef?.label || targetNode.type)}
+                        </span>
+                        <span className="text-[8px] uppercase font-mono tracking-wider text-[#52525b] mt-0.5 px-1 py-[1px] bg-[#1e1e24] rounded border border-[#2e2e38]/30">
+                          {targetNode.type}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Routing Details Footer */}
+                    <div className="flex justify-between items-center text-[8px] font-mono text-text-muted border-t border-[#1b1b1f] pt-2 mt-1 z-10 select-none">
+                      <span className="truncate max-w-[45%]">ID: {selectedEdge.source}</span>
+                      <span className="truncate max-w-[45%] text-right">ID: {selectedEdge.target}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
 
-             {/* Edge Type Customization */}
-            <div className="flex flex-col gap-3">
-              <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+            {/* 2. Data Flow Debugger */}
+            {(() => {
+              if (!sourceNode || !targetNode) return null;
+
+              const edgeType = (selectedEdge.data?.edgeType as string) || connectionBehavior.defaultFlow;
+              const sourceNodeLabel = String(sourceNode.data?.label || sourceNode.type);
+              const targetNodeLabel = String(targetNode.data?.label || targetNode.type);
+
+              const isSourceStorage = sourceNode.type === "jsonStorage";
+              const isTargetStorage = targetNode.type === "jsonStorage";
+              const hasStorage = isSourceStorage || isTargetStorage;
+
+              let contentNodes: React.ReactNode = null;
+
+              if (hasStorage) {
+                const storageNode = isSourceStorage ? sourceNode : targetNode;
+                const logicNode = isSourceStorage ? targetNode : sourceNode;
+                const storageNodeLabel = String(storageNode.data?.label || "Storage");
+                const logicNodeLabel = String(logicNode.data?.label || "Node");
+
+                const showRead = edgeType === "read-only" || edgeType === "read-write";
+                const showWrite = edgeType === "write-only" || edgeType === "read-write";
+                
+                const writePayload = getUpstreamNodeData(logicNode);
+                const records = (storageNode.data?.records as any[]) || [];
+
+                contentNodes = (
+                  <div className="flex flex-col gap-4">
+                    {showRead && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-text-secondary select-none">
+                          📖 Read ({storageNodeLabel} ➔ {logicNodeLabel})
+                        </label>
+                        <DatabaseRecordFeed records={records} />
+                      </div>
+                    )}
+
+                    {showWrite && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-text-secondary select-none">
+                          ✍️ Write ({logicNodeLabel} ➔ {storageNodeLabel})
+                        </label>
+                        <DataConsole content={writePayload} placeholder="No output data written yet." />
+                      </div>
+                    )}
+                  </div>
+                );
+              } else {
+                // Non-storage triggers / standard logic
+                const sourceOutput = getUpstreamNodeData(sourceNode);
+                const targetOutput = getUpstreamNodeData(targetNode);
+                const showBiDirectional = edgeType === "bi-directional";
+
+                contentNodes = (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-text-secondary select-none">
+                        📤 Transmitted Payload ({sourceNodeLabel} ➔ {targetNodeLabel})
+                      </label>
+                      <DataConsole content={sourceOutput} placeholder="No output payload transmitted yet." />
+                    </div>
+
+                    {showBiDirectional && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-text-secondary select-none">
+                          📥 Return Payload ({targetNodeLabel} ➔ {sourceNodeLabel})
+                        </label>
+                        <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." />
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-[#71717a] flex items-center gap-1.5 select-none">
+                    <span>🔍</span>
+                    <span>Live Connection Data</span>
+                  </div>
+                  {contentNodes}
+                </div>
+              );
+            })()}
+
+            {/* 3. Edge Type Customization */}
+            <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-[#71717a] select-none">
                 {["database", "database-read", "database-write"].includes(connectionBehavior.allowedOption)
                   ? "Database Permissions"
                   : "Connection Type"}
               </label>
+              
               <div className="flex flex-col gap-2">
                 {["database", "database-read", "database-write"].includes(connectionBehavior.allowedOption) ? (
                   [
                     {
                       id: "write-only",
-                      label: "Write-Only",
-                      desc: "Allows the node to save output payloads directly into database records.",
+                      label: "Write-Only Link",
+                      desc: "Allows saving output payloads directly into database records.",
                       icon: "💾",
                     },
                     {
                       id: "read-only",
-                      label: "Read-Only",
-                      desc: "Allows the node to query records from the database as input context.",
+                      label: "Read-Only Context",
+                      desc: "Allows querying database records as upstream context.",
                       icon: "⚡",
                     },
                     {
                       id: "read-write",
                       label: "Read & Write Sync",
-                      desc: "Maintains full two-way synchronization between the node and storage.",
+                      desc: "Maintains full two-way state synchronization with storage.",
                       icon: "🔄",
                     },
                   ]
@@ -344,18 +581,23 @@ export default function InspectorPanel({
                           key={t.id}
                           type="button"
                           onClick={() => onUpdateEdgeData?.(selectedEdge.id, t.id)}
-                          className={`flex items-start text-left gap-3 p-3 rounded-lg border text-sm transition-all duration-150 cursor-pointer ${
+                          className={`flex items-start text-left gap-3.5 p-3 rounded-lg border text-xs transition-all duration-150 cursor-pointer ${
                             isSelected
-                              ? "bg-[#38bdf8]/10 border-[#38bdf8] text-text-main shadow-[0_0_12px_rgba(56,189,248,0.15)]"
-                              : "bg-card border-border-card text-text-muted hover:bg-card-hover hover:border-border-subtle"
+                              ? "bg-[#38bdf8]/10 border-[#38bdf8] text-text-main shadow-[0_0_12px_rgba(56,189,248,0.12)]"
+                              : "bg-card/40 border-border-card text-text-muted hover:bg-card-hover hover:border-border-subtle"
                           }`}
                         >
-                          <span className="text-base mt-0.5 select-none">{t.icon}</span>
+                          <span className="text-base select-none mt-0.5">{t.icon}</span>
                           <div className="flex flex-col min-w-0 flex-grow">
-                            <span className={`font-semibold ${isSelected ? "text-[#38bdf8]" : "text-text-main"}`}>
-                              {t.label}
-                            </span>
-                            <span className="text-xs text-text-muted mt-1 leading-normal font-normal">
+                            <div className="flex items-center gap-1.5 justify-between">
+                              <span className={`font-semibold ${isSelected ? "text-[#38bdf8]" : "text-text-main"}`}>
+                                {t.label}
+                              </span>
+                              <span className={`text-[10px] font-mono select-none ${isSelected ? "text-[#38bdf8]" : "text-[#52525b]"}`}>
+                                {isSelected ? "● ACTIVE" : "○ SELECT"}
+                              </span>
+                            </div>
+                            <span className="text-[10.5px] text-text-secondary mt-1 leading-normal font-normal">
                               {t.desc}
                             </span>
                           </div>
@@ -366,14 +608,14 @@ export default function InspectorPanel({
                   [
                     {
                       id: "one-way",
-                      label: "One-Way Flow",
-                      desc: "Dashed line with a moving forward flow animation. Standard trigger and sequential logic.",
+                      label: "One-Way Trigger Flow",
+                      desc: "Standard sequential trigger path. Dash animated flow runs forward.",
                       icon: "⚡",
                     },
                     {
                       id: "bi-directional",
-                      label: "Bi-directional Sync",
-                      desc: "Dual arrowheads with two dashed flow animations moving in both directions. Ideal for databases and storage sync.",
+                      label: "Bi-Directional Sync",
+                      desc: "Dual flow pathways moving in both directions. Ideal for agent loops.",
                       icon: "🔄",
                     },
                   ]
@@ -393,18 +635,23 @@ export default function InspectorPanel({
                           key={t.id}
                           type="button"
                           onClick={() => onUpdateEdgeData?.(selectedEdge.id, t.id)}
-                          className={`flex items-start text-left gap-3 p-3 rounded-lg border text-sm transition-all duration-150 cursor-pointer ${
+                          className={`flex items-start text-left gap-3.5 p-3 rounded-lg border text-xs transition-all duration-150 cursor-pointer ${
                             isSelected
-                              ? "bg-accent-glow/10 border-accent text-text-main shadow-[0_0_12px_rgba(212,230,0,0.08)]"
-                              : "bg-card border-border-card text-text-muted hover:bg-card-hover hover:border-border-subtle"
+                              ? "bg-accent-glow/10 border-accent text-text-main shadow-[0_0_12px_rgba(212,230,0,0.06)]"
+                              : "bg-card/40 border-border-card text-text-muted hover:bg-card-hover hover:border-border-subtle"
                           }`}
                         >
-                          <span className="text-base mt-0.5 select-none">{t.icon}</span>
-                          <div className="flex flex-col min-w-0">
-                            <span className={`font-semibold ${isSelected ? "text-accent" : "text-text-main"}`}>
-                              {t.label}
-                            </span>
-                            <span className="text-xs text-text-muted mt-1 leading-normal font-normal">
+                          <span className="text-base select-none mt-0.5">{t.icon}</span>
+                          <div className="flex flex-col min-w-0 flex-grow">
+                            <div className="flex items-center gap-1.5 justify-between">
+                              <span className={`font-semibold ${isSelected ? "text-accent" : "text-text-main"}`}>
+                                {t.label}
+                              </span>
+                              <span className={`text-[10px] font-mono select-none ${isSelected ? "text-accent" : "text-[#52525b]"}`}>
+                                {isSelected ? "● ACTIVE" : "○ SELECT"}
+                              </span>
+                            </div>
+                            <span className="text-[10.5px] text-text-secondary mt-1 leading-normal font-normal">
                               {t.desc}
                             </span>
                           </div>
@@ -414,18 +661,19 @@ export default function InspectorPanel({
                 )}
               </div>
               {connectionBehavior.allowedOption !== "both" && (
-                <div className="text-[10px] text-text-muted italic px-1">
-                  ℹ️ Flow and permissions are determined based on node connection type.
+                <div className="text-[9px] text-[#52525b] italic px-1 flex items-center gap-1 select-none">
+                  <span>ℹ️</span>
+                  <span>Pathway constraint determined by connected nodes.</span>
                 </div>
               )}
             </div>
 
-            {/* Delete Connection */}
+            {/* 4. Delete Connection */}
             <div className="mt-auto border-t border-border-subtle pt-4">
               <button
                 type="button"
                 onClick={() => onDeleteEdge?.(selectedEdge.id)}
-                className="w-full bg-red-950/20 hover:bg-red-900/40 border border-red-500/20 hover:border-red-500/40 text-red-400 hover:text-red-300 rounded-md py-2.5 px-4 text-sm font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                className="w-full bg-[#1c0e0e]/40 hover:bg-[#ef4444]/15 border border-[#ef4444]/20 hover:border-[#ef4444]/40 text-[#fca5a5] hover:text-[#f87171] rounded-lg py-2.5 px-4 text-xs font-semibold tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer duration-200 active:scale-[0.98]"
               >
                 <span>🗑️</span>
                 <span>Delete Connection</span>

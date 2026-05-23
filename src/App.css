@@ -412,5 +412,14 @@
   filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.7));
 }
 
+@keyframes flowDash {
+  0% {
+    left: -20%;
+  }
+  100% {
+    left: 120%;
+  }
+}
+
 
 

@@ -7,6 +7,18 @@ import type { Node } from "@xyflow/react";
 export function getUpstreamNodeData(upstreamNode: Node): string | null {
   if (!upstreamNode || !upstreamNode.data) return null;
 
+  // 0. If it's a Chat node, prioritize the last USER message as its outward payload
+  if (upstreamNode.type === "chat") {
+    if (Array.isArray(upstreamNode.data.messages) && upstreamNode.data.messages.length > 0) {
+      const lastUserMsg = [...upstreamNode.data.messages]
+        .reverse()
+        .find((m: any) => m.role === "user");
+      if (lastUserMsg && lastUserMsg.content !== undefined && lastUserMsg.content !== null) {
+        return String(lastUserMsg.content);
+      }
+    }
+  }
+
   // 1. Check lastResponse (commonly used by Ollama, Notify, Output)
   if (upstreamNode.data.lastResponse !== undefined && upstreamNode.data.lastResponse !== null) {
     return String(upstreamNode.data.lastResponse);
