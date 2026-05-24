@@ -1,12 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { type NodeDefinition } from "@/nodes/types";
 import { NODE_REGISTRY } from "@/nodes/registry";
 import { ConnectionInspector } from "@/components/inspectors";
+import { WorkspaceInspector } from "@/components/inspector";
 import { storage } from "@/services/storage";
 
-// ─── Props ───────────────────────────────────────────────────
 interface InspectorPanelProps {
+  workspaceName: string;
   selectedNode: Node | null;
   onAddNode: (definition: NodeDefinition) => void;
   onUpdateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
@@ -23,8 +24,8 @@ interface InspectorPanelProps {
   onDeleteEdge?: (edgeId: string) => void;
 }
 
-// ─── Inspector Panel ─────────────────────────────────────────
 export default function InspectorPanel({
+  workspaceName,
   selectedNode,
   onAddNode,
   onUpdateNodeData,
@@ -40,11 +41,8 @@ export default function InspectorPanel({
   onUpdateEdgeData,
   onDeleteEdge,
 }: InspectorPanelProps) {
-  const [searchQuery, setSearchQuery] = useState("");
   const [width, setWidth] = useState(() => storage.getInspectorWidth(320));
   const [isResizing, setIsResizing] = useState(false);
-
-
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -60,7 +58,6 @@ export default function InspectorPanel({
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      // Inspector is docked to the right edge, so width grows as mouse moves left (smaller clientX)
       const newWidth = window.innerWidth - e.clientX;
       const boundedWidth = Math.max(280, Math.min(newWidth, 800));
       setWidth(boundedWidth);
@@ -84,48 +81,6 @@ export default function InspectorPanel({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isResizing]);
-
-  const handleDragStart = (event: React.DragEvent, nodeType: string) => {
-    if (event.dataTransfer) {
-      event.dataTransfer.setData("application/reactflow", nodeType);
-      event.dataTransfer.effectAllowed = "move";
-
-      // Hide the browser's default semi-transparent drag ghost image completely
-      const img = new Image();
-      img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-      event.dataTransfer.setDragImage(img, 0, 0);
-    }
-    if (onDragStartNode) {
-      onDragStartNode(nodeType);
-    }
-  };
-
-  const filteredNodes = useMemo(() => {
-    const baseList = NODE_REGISTRY.filter(d => d.type !== "output");
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return baseList;
-
-    return baseList.map((def) => {
-      const label = def.label.toLowerCase();
-      const desc = def.description.toLowerCase();
-
-      let score = 0;
-      if (label === query) {
-        score = 100; // Exact match
-      } else if (label.startsWith(query)) {
-        score = 80; // Prefix match
-      } else if (label.includes(query)) {
-        score = 60; // Substring match in label
-      } else if (desc.includes(query)) {
-        score = 40; // Substring match in description
-      }
-
-      return { def, score };
-    })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.def);
-  }, [searchQuery]);
 
   return (
     <div
@@ -255,55 +210,12 @@ export default function InspectorPanel({
           onDeleteEdge={onDeleteEdge}
         />
       ) : (
-        <>
-          <div className="p-4 border-b border-border-subtle bg-card flex flex-col gap-1">
-            <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2">Add Node</h2>
-            <span className="text-[10px] uppercase tracking-widest font-bold text-accent bg-accent-glow self-start px-2 py-0.5 rounded-sm">Palette</span>
-          </div>
-
-          <div className="p-4 border-b border-border-subtle bg-primary">
-            <input
-              className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
-              type="text"
-              placeholder="Search nodes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
-            {filteredNodes.length > 0 ? (
-              filteredNodes.map((def) => (
-                <div
-                  key={def.type}
-                  className="bg-card border border-border-card rounded-lg p-4 cursor-grab active:cursor-grabbing transition-all hover:bg-card-hover hover:border-accent-dim hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
-                  onClick={() => onAddNode(def)}
-                  draggable={true}
-                  onDragStart={(e) => handleDragStart(e, def.type)}
-                  onDragEnd={() => {
-                    if (onDragEndNode) onDragEndNode();
-                  }}
-                  id={`add-node-${def.type}`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xl">{def.icon}</span>
-                    <span className="font-semibold text-text-main">{def.label}</span>
-                  </div>
-                  <div className="text-xs text-text-muted leading-relaxed">
-                    {def.description}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2 mt-8">
-                <span className="text-2xl opacity-50">🔍</span>
-                <span className="text-sm">
-                  No nodes match "{searchQuery}"
-                </span>
-              </div>
-            )}
-          </div>
-        </>
+        <WorkspaceInspector
+          workspaceName={workspaceName}
+          onAddNode={onAddNode}
+          onDragStartNode={onDragStartNode}
+          onDragEndNode={onDragEndNode}
+        />
       )}
     </div>
   );

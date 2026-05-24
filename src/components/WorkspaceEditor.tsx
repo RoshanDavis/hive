@@ -663,6 +663,7 @@ function WorkspaceEditorInner({
 
       {/* Right — Inspector Panel */}
       <InspectorPanel
+        workspaceName={_workspaceName}
         selectedNode={currentSelectedNode}
         onAddNode={handleAddNode}
         onUpdateNodeData={handleUpdateNodeData}

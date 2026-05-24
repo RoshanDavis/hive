@@ -421,5 +421,42 @@
   }
 }
 
+/* ─── Collapsible Section ─── */
+.collapsible-content {
+  display: grid;
+  transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
+/* ─── Node Palette Grid ─── */
+.node-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+}
 
+.node-palette-card {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 6px;
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border-card);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.node-palette-card:active {
+  cursor: grabbing;
+}
+
+.node-palette-card:hover {
+  background-color: var(--color-card-hover);
+  border-color: var(--color-accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
