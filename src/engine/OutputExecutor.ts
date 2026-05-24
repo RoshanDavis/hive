@@ -1,11 +1,12 @@
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
-import { getUpstreamNodeData } from "./utils";
+import { getUpstreamNodeEnvelope } from "./utils";
 
 export class OutputExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node, nodes, edges, updateNodeData, visited } = context;
     const incomingEdges = edges.filter(e => e.target === node.id);
     let resolvedMessage = "";
+    let resolvedEnvelope: NodeOutputEnvelope | null = null;
 
     if (incomingEdges.length > 0) {
       const upstreamNodes = nodes.filter(n => incomingEdges.some(e => e.source === n.id));
@@ -13,9 +14,10 @@ export class OutputExecutor implements NodeExecutor {
         if (visited && !visited.has(upstream.id)) {
           continue;
         }
-        const val = getUpstreamNodeData(upstream);
-        if (val !== null) {
-          resolvedMessage = val;
+        const env = getUpstreamNodeEnvelope(upstream);
+        if (env) {
+          resolvedEnvelope = env;
+          resolvedMessage = env.value;
           break;
         }
       }
@@ -27,7 +29,8 @@ export class OutputExecutor implements NodeExecutor {
         timestamp: new Date().toISOString()
       },
       data: {
-        output: resolvedMessage
+        output: resolvedMessage,
+        upstreamEnvelope: resolvedEnvelope
       }
     };
 
@@ -35,6 +38,7 @@ export class OutputExecutor implements NodeExecutor {
       ...node.data,
       outputContent: resolvedMessage,
       lastResponse: resolvedMessage,
+      upstreamEnvelope: resolvedEnvelope,
       outputEnvelope
     });
   }

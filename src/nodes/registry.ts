@@ -22,7 +22,7 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     label: "Notify",
     icon: "🔔",
     description: "Sends an OS notification",
-    defaultData: { label: "Notify", message: "Hello from Hive!", output: "{input}" },
+    defaultData: { label: "Notify", message: "{input.value}", output: "{input.value}" },
     inspector: NotifyInspector,
   },
   {

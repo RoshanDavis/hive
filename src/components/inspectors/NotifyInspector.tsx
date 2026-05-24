@@ -4,8 +4,8 @@ export default function NotifyInspector({
   node,
   onUpdate
 }: InspectorProps) {
-  const messageValue = String(node.data?.message !== undefined ? node.data.message : "");
-  const outputValue = String(node.data?.output !== undefined ? node.data.output : "{input}");
+  const messageValue = String(node.data?.message !== undefined ? node.data.message : "{input.value}");
+  const outputValue = String(node.data?.output !== undefined ? node.data.output : "{input.value}");
 
   return (
     <div className="border-t border-border-subtle pt-4 flex flex-col gap-4">
@@ -23,7 +23,7 @@ export default function NotifyInspector({
               message: e.target.value,
             })
           }
-          placeholder="e.g. Hello from Hive!"
+          placeholder="e.g. {input.value}"
           rows={2}
         />
       </div>
@@ -40,13 +40,13 @@ export default function NotifyInspector({
               output: e.target.value,
             })
           }
-          placeholder="e.g. {input}"
+          placeholder="e.g. {input.value}"
           rows={2}
         />
       </div>
 
       <p className="text-[11px] text-text-muted leading-relaxed">
-        The <span className="font-semibold text-text-main">Notification Message</span> will appear as an OS notification. The <span className="font-semibold text-text-main">Output Template</span> determines what gets passed to downstream nodes (stored in <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">lastResponse</code>). Use <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input}`}</code> to inject incoming data.
+        The <span className="font-semibold text-text-main">Notification Message</span> will appear as an OS notification. The <span className="font-semibold text-text-main">Output Template</span> determines what gets passed to downstream nodes (stored in <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">lastResponse</code>). Use <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.value}`}</code> to inject the primary output string, or path expressions like <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.data[0]}`}</code> or <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.metadata.timestamp}`}</code> to select specific fields from the incoming JSON envelope.
       </p>
     </div>
   );

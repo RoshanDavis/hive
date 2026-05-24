@@ -158,14 +158,10 @@ function WorkspaceEditorInner({
 
   // ─── Runner custom hook ────────────────────────────────────
   const {
-    runningStartNodeIds,
+    isRunning,
     executeWorkflow,
     handleChatSend,
     retryWorkflow,
-    pauseWorkflow,
-    resumeWorkflow,
-    stopWorkflow,
-    getWorkflowControlState,
   } = useWorkspaceRunner({
     nodes,
     edges,
@@ -673,11 +669,7 @@ function WorkspaceEditorInner({
         onRunWorkflow={executeWorkflow}
         onChatSend={handleChatSend}
         onRetryWorkflow={retryWorkflow}
-        isRunning={selectedNode ? runningStartNodeIds.has(selectedNode.id) : false}
-        workflowControl={selectedNode ? getWorkflowControlState(selectedNode.id) : { isRunning: false, isPaused: false, hasError: false }}
-        onPauseWorkflow={pauseWorkflow}
-        onResumeWorkflow={resumeWorkflow}
-        onStopWorkflow={stopWorkflow}
+        isRunning={isRunning}
         nodes={nodes}
         edges={edges}
         onDragStartNode={handleDragStartNode}

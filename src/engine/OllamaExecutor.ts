@@ -29,33 +29,44 @@ export class OllamaExecutor implements NodeExecutor {
 
     let ollamaMessages: any[] = [];
 
-    // 1. If an upstream Chat node exists on the active run path, load the full conversation log
-    const chatNode = visitedNodes.find(n => n.type === "chat");
-    if (chatNode) {
-      let rawMessages = chatNode.data?.messages as any[] || [];
-      if (historyLimit > 0 && rawMessages.length > historyLimit) {
-        rawMessages = rawMessages.slice(-historyLimit);
+    // Check if we are retrying and already have a saved lastInputMessages
+    if (node.data?.lastInputMessages && Array.isArray(node.data.lastInputMessages) && node.data.lastInputMessages.length > 0) {
+      console.log(`[OLLAMA EXECUTOR] Reusing saved lastInputMessages from previous run:`, node.data.lastInputMessages);
+      ollamaMessages = [...node.data.lastInputMessages];
+    } else {
+      // 1. If an upstream Chat node exists on the active run path, load the full conversation log
+      const chatNode = visitedNodes.find(n => n.type === "chat");
+      if (chatNode) {
+        let rawMessages = chatNode.data?.messages as any[] || [];
+        if (historyLimit > 0 && rawMessages.length > historyLimit) {
+          rawMessages = rawMessages.slice(-historyLimit);
+        }
+        ollamaMessages = [...rawMessages];
       }
-      ollamaMessages = [...rawMessages];
-    }
 
-    // 2. If no Chat node or empty chat, resolve input generically from visited upstream nodes
-    if (ollamaMessages.length === 0) {
-      let resolvedText = "";
-      for (const upstream of visitedNodes) {
-        const val = getUpstreamNodeData(upstream);
-        if (val !== null) {
-          resolvedText = val;
-          break;
+      // 2. If no Chat node or empty chat, resolve input generically from visited upstream nodes
+      if (ollamaMessages.length === 0) {
+        let resolvedText = "";
+        for (const upstream of visitedNodes) {
+          const val = getUpstreamNodeData(upstream);
+          if (val !== null) {
+            resolvedText = val;
+            break;
+          }
+        }
+
+        if (resolvedText) {
+          ollamaMessages = [{ role: "user" as const, content: resolvedText }];
+        } else {
+          throw new Error("No upstream input data found.");
         }
       }
 
-      if (resolvedText) {
-        ollamaMessages = [{ role: "user" as const, content: resolvedText }];
-      } else {
-        showToast("Ollama node: No upstream input data found.", "error");
-        return;
-      }
+      // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry
+      updateNodeData(node.id, {
+        ...node.data,
+        lastInputMessages: ollamaMessages
+      });
     }
 
     // 3. Prepend system prompt if configured

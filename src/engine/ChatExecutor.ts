@@ -82,7 +82,7 @@ export class ChatExecutor implements NodeExecutor {
       // ─── Case B: Triggered Downstream (Output/Receiver Mode) ───
       let resolvedMessage = "";
       let senderLabel = "Agent";
-      
+
       // Find all upstream edges where Chat is target, OR where Chat is source but edge is bi-directional
       // Exclude storage connections (sourceHandle === "storage" or targetHandle === "storage")
       const upstreamEdges = edges.filter(e => 
@@ -92,23 +92,38 @@ export class ChatExecutor implements NodeExecutor {
          (e.source === chatNode.id && e.data?.edgeType === "bi-directional"))
       );
 
-      if (upstreamEdges.length > 0) {
-        // Find upstream nodes (the other end of these edges)
-        const upstreamNodes = nodes.filter(n => 
-          upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== chatNode.id
-        );
+      // Check if we are retrying and already have a saved lastInputText
+      if (chatNode.data?.lastInputText !== undefined && chatNode.data?.lastInputText !== null) {
+        console.log(`[CHAT EXECUTOR] Reusing saved lastInputText from previous run:`, chatNode.data.lastInputText);
+        resolvedMessage = String(chatNode.data.lastInputText);
+        senderLabel = String(chatNode.data.lastInputSender || "Agent");
+      } else {
 
-        for (const upstream of upstreamNodes) {
-          if (visited && !visited.has(upstream.id)) {
-            continue;
-          }
-          const val = getUpstreamNodeData(upstream);
-          if (val !== null) {
-            resolvedMessage = val;
-            senderLabel = String(upstream.data?.label || upstream.type || "Agent");
-            break;
+        if (upstreamEdges.length > 0) {
+          // Find upstream nodes (the other end of these edges)
+          const upstreamNodes = nodes.filter(n => 
+            upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== chatNode.id
+          );
+
+          for (const upstream of upstreamNodes) {
+            if (visited && !visited.has(upstream.id)) {
+              continue;
+            }
+            const val = getUpstreamNodeData(upstream);
+            if (val !== null) {
+              resolvedMessage = val;
+              senderLabel = String(upstream.data?.label || upstream.type || "Agent");
+              break;
+            }
           }
         }
+
+        // Save resolved input to chatNode.data.lastInputText so we can reuse it on retry
+        updateNodeData(chatNode.id, {
+          ...chatNode.data,
+          lastInputText: resolvedMessage,
+          lastInputSender: senderLabel
+        });
       }
 
       if (!resolvedMessage) {

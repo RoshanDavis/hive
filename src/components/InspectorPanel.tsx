@@ -21,10 +21,6 @@ interface InspectorPanelProps {
   selectedEdge: Edge | null;
   onUpdateEdgeData?: (edgeId: string, edgeType: string) => void;
   onDeleteEdge?: (edgeId: string) => void;
-  workflowControl?: { isRunning: boolean; isPaused: boolean; hasError: boolean };
-  onPauseWorkflow?: (nodeId: string) => void;
-  onResumeWorkflow?: (nodeId: string) => void;
-  onStopWorkflow?: (nodeId: string) => void;
 }
 
 // ─── Inspector Panel ─────────────────────────────────────────
@@ -43,10 +39,6 @@ export default function InspectorPanel({
   selectedEdge,
   onUpdateEdgeData,
   onDeleteEdge,
-  workflowControl = { isRunning: false, isPaused: false, hasError: false },
-  onPauseWorkflow,
-  onResumeWorkflow,
-  onStopWorkflow,
 }: InspectorPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [width, setWidth] = useState(() => storage.getInspectorWidth(320));
@@ -174,46 +166,6 @@ export default function InspectorPanel({
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
-            {/* Real-time Execution Controls */}
-            {workflowControl && workflowControl.isRunning && (
-              <div className="bg-primary/45 border border-border-subtle rounded-lg p-3.5 flex flex-col gap-3 relative overflow-hidden backdrop-blur-md animate-[fadeIn_0.15s_ease-out]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${workflowControl.isPaused ? "bg-amber-500 shadow-[0_0_8px_#f59e0b]" : "bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse"} select-none`} />
-                    <span className="text-xs uppercase tracking-widest text-text-main font-bold select-none">
-                      {workflowControl.isPaused ? "Workflow Paused" : "Workflow Executing"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  {workflowControl.isPaused ? (
-                    <button
-                      onClick={() => onResumeWorkflow && onResumeWorkflow(selectedNode.id)}
-                      className="flex-1 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 hover:border-emerald-500/60 text-emerald-200 hover:text-white rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm"
-                    >
-                      <span>▶️</span>
-                      <span>Resume</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onPauseWorkflow && onPauseWorkflow(selectedNode.id)}
-                      className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 hover:border-amber-500/60 text-amber-200 hover:text-white rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm"
-                    >
-                      <span>⏸️</span>
-                      <span>Pause</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => onStopWorkflow && onStopWorkflow(selectedNode.id)}
-                    className="flex-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm"
-                  >
-                    <span>⏹️</span>
-                    <span>Stop</span>
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Error Message & Retry Action Banner */}
             {selectedNode.data?.status === "error" && (
