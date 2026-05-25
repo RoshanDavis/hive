@@ -1,6 +1,5 @@
 import { type NodeDefinition } from "@/nodes/types";
 import NodePaletteSection from "./NodePaletteSection";
-import WorkflowsSection from "./WorkflowsSection";
 
 interface WorkspaceInspectorProps {
   workspaceName: string;
@@ -33,7 +32,6 @@ export default function WorkspaceInspector({
           onDragStartNode={onDragStartNode}
           onDragEndNode={onDragEndNode}
         />
-        <WorkflowsSection />
       </div>
     </>
   );

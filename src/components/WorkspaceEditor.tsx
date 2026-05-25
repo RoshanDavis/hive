@@ -20,7 +20,7 @@ import { api } from "@/services/api";
 
 import SpacesSidebar from "@/components/SpacesSidebar";
 import InspectorPanel from "@/components/InspectorPanel";
-import WorkspaceSettingsModal from "@/components/WorkspaceSettingsModal";
+import { SettingsModal } from "@/components/settings";
 import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
 import { ToastContainer } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
@@ -694,7 +694,7 @@ function WorkspaceEditorInner({
       <ToastContainer toasts={toasts} />
 
       {/* Settings Modal */}
-      <WorkspaceSettingsModal
+      <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         showToast={showToast}

@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { type NodeDefinition } from "@/nodes/types";
 import { NODE_REGISTRY } from "@/nodes/registry";
-import { ConnectionInspector } from "@/components/inspectors";
-import { WorkspaceInspector } from "@/components/inspector";
+import { ConnectionInspector, WorkspaceInspector } from "@/components/inspectors";
 import { storage } from "@/services/storage";
 
 interface InspectorPanelProps {

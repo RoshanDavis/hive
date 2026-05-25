@@ -5,4 +5,8 @@ export { default as ChatInspector } from "./ChatInspector";
 export { default as OutputInspector } from "./OutputInspector";
 export { default as JSONStorageInspector } from "./JSONStorageInspector";
 export { default as ConnectionInspector } from "./ConnectionInspector";
+export { default as CollapsibleSection } from "./CollapsibleSection";
+export { default as NodePaletteSection } from "./NodePaletteSection";
+export { default as WorkspaceInspector } from "./WorkspaceInspector";
 export * from "./types";
+

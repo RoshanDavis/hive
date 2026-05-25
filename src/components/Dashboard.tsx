@@ -3,22 +3,21 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ToastContainer } from "@/components/Toast";
 import { api, type Workspace } from "@/services/api";
 import { useToast } from "@/hooks/useToast";
+import { SettingsModal } from "@/components/settings";
 
 interface DashboardProps {
   onOpenWorkspace: (ws: Workspace) => void;
 }
 
-// ─── Dashboard ───────────────────────────────────────────────
 export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeNav, setActiveNav] = useState(0);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Unified custom hook toast helper
   const { toasts, showToast } = useToast(3000);
 
-  // Load workspaces on mount
   useEffect(() => {
     loadWorkspaces();
   }, []);
@@ -35,7 +34,6 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
     }
   };
 
-  // Open folder picker and add workspace
   const handleAddWorkspace = async () => {
     try {
       const selected = await open({
@@ -44,7 +42,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
         title: "Select a workspace folder",
       });
 
-      if (selected === null) return; // User cancelled
+      if (selected === null) return;
 
       const path = typeof selected === "string" ? selected : String(selected);
       const ws = await api.addWorkspace(path);
@@ -60,7 +58,6 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
     }
   };
 
-  // Remove workspace from list
   const handleRemoveWorkspace = async (path: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -72,14 +69,12 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
     }
   };
 
-  // Filter workspaces by search
   const filteredWorkspaces = workspaces.filter(
     (ws) =>
       ws.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ws.path.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Truncate path for display
   const truncatePath = (path: string): string => {
     const maxLen = 30;
     if (path.length <= maxLen) return path;
@@ -88,7 +83,6 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
     return parts[0] + "/.../" + parts.slice(-2).join("/");
   };
 
-  // Nav items for sidebar (removed unimplemented Packages and Settings icons)
   const navItems = [
     { icon: "🔲", label: "Dashboard" },
   ];
@@ -111,6 +105,18 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
             {item.icon}
           </button>
         ))}
+
+        <div className="flex-grow" />
+
+        {/* Settings button */}
+        <button
+          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-border-subtle bg-transparent text-lg text-text-secondary hover:text-accent hover:border-accent-dim hover:bg-card select-none"
+          onClick={() => setIsSettingsOpen(true)}
+          title="Settings"
+          id="dashboard-settings-btn"
+        >
+          ⚙️
+        </button>
       </nav>
 
       {/* ─── Main Content ─── */}
@@ -222,6 +228,13 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
           )}
         </div>
       </main>
+
+      {/* ─── Settings Modal ─── */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        showToast={showToast}
+      />
 
       {/* ─── Toasts ─── */}
       <ToastContainer toasts={toasts} />
