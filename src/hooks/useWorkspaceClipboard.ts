@@ -88,7 +88,7 @@ export function useWorkspaceClipboard({
       
       if (node.type === "chat") {
         cleanData.messages = [];
-      } else if (node.type === "ollama") {
+      } else if (node.type === "ollama" || node.type === "llm") {
         delete cleanData.lastResponse;
       } else if (node.type === "output" || node.type === "outputNode") {
         cleanData.outputContent = "";

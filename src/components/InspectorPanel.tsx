@@ -109,7 +109,7 @@ export default function InspectorPanel({
             <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2">
               {selectedNode.type === "trigger" ? "⚡" : ""}
               {selectedNode.type === "notify" ? "🔔" : ""}
-              {selectedNode.type === "ollama" ? "🤖" : ""}
+              {selectedNode.type === "ollama" || selectedNode.type === "llm" ? "🧠" : ""}
               {selectedNode.type === "chat" ? "💬" : ""}
               {selectedNode.type === "output" || selectedNode.type === "outputNode" ? "📤" : ""}
               {selectedNode.type === "jsonStorage" ? "💾" : ""}
@@ -123,7 +123,7 @@ export default function InspectorPanel({
 
             {/* Error Message & Retry Action Banner */}
             {selectedNode.data?.status === "error" && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3.5 flex flex-col gap-3 relative overflow-hidden backdrop-blur-md">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3.5 flex flex-col gap-3 relative backdrop-blur-md">
                 <div className="flex items-start gap-2.5">
                   <span className="text-lg leading-none select-none">⚠️</span>
                   <div className="flex flex-col gap-0.5 min-w-0 flex-1">
@@ -133,12 +133,12 @@ export default function InspectorPanel({
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mt-1">
                   {onRetryWorkflow && (
                     <button
                       onClick={() => onRetryWorkflow(selectedNode.id)}
                       disabled={isRunning}
-                      className="flex-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed select-none shadow-sm"
+                      className="flex-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-1.5 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed select-none shadow-sm"
                     >
                       <span>🔄</span>
                       <span>Retry</span>
@@ -146,7 +146,7 @@ export default function InspectorPanel({
                   )}
                   <button
                     onClick={() => onUpdateNodeData(selectedNode.id, { ...selectedNode.data, status: undefined, error: undefined })}
-                    className="flex-1 bg-primary/45 hover:bg-card-hover border border-border-subtle rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm text-text-secondary hover:text-text-main"
+                    className="flex-1 bg-primary/45 hover:bg-card-hover border border-border-subtle rounded-md py-1.5 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm text-text-secondary hover:text-text-main"
                   >
                     <span>🗑️</span>
                     <span>Clear</span>

@@ -81,4 +81,25 @@ export const api = {
       maxTokens,
     });
   },
+
+  // Polymorphic Generic LLM Inference
+  async llmChat(
+    provider: string,
+    baseURL: string,
+    apiKey: string,
+    modelName: string,
+    messages: ChatMessage[],
+    temperature: number,
+    maxTokens: number
+  ): Promise<string> {
+    return invoke<string>("llm_chat", {
+      provider,
+      baseURL,
+      apiKey,
+      modelName,
+      messages,
+      temperature,
+      maxTokens,
+    });
+  },
 };

@@ -100,7 +100,7 @@ export default function ConnectionInspector({
     const targetOutput = targetEnvelope.metadata?.generatedFallback ? targetEnvelope.value : JSON.stringify(targetEnvelope, null, 2);
     const showBiDirectional = edgeType === "bi-directional";
 
-    const isChatToOllama = sourceNode.type === "chat" && targetNode.type === "ollama";
+    const isChatToOllama = sourceNode.type === "chat" && (targetNode.type === "ollama" || targetNode.type === "llm");
 
     if (isChatToOllama) {
       const systemPrompt = String(targetNode.data?.systemPrompt || "");
@@ -132,7 +132,7 @@ export default function ConnectionInspector({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold text-text-secondary select-none">
-              💬 Exact Prompt Package Sent to Ollama
+              💬 Exact Prompt Package Sent to LLM
             </label>
             <DataConsole content={formattedJson} placeholder="No messages prepared yet." />
           </div>

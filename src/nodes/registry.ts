@@ -1,7 +1,7 @@
 import {
   TriggerInspector,
   NotifyInspector,
-  OllamaInspector,
+  LLMInspector,
   ChatInspector,
   OutputInspector,
   JSONStorageInspector
@@ -26,20 +26,21 @@ export const NODE_REGISTRY: NodeDefinition[] = [
     inspector: NotifyInspector,
   },
   {
-    type: "ollama",
-    label: "Ollama",
-    icon: "🤖",
-    description: "LLM inference node using Ollama",
+    type: "llm",
+    label: "LLM",
+    icon: "🧠",
+    description: "Generic LLM inference node",
     defaultData: {
-      label: "Ollama",
-      model: "llama3",
+      label: "LLM",
+      provider: "Ollama",
+      modelName: "",
       systemPrompt: "You are a helpful AI assistant.",
       temperature: 0.7,
       maxTokens: 2048,
-      ollamaUrl: "http://localhost:11434",
+      baseURL: "http://localhost:11434",
       chatHistoryLimit: 0,
     },
-    inspector: OllamaInspector,
+    inspector: LLMInspector,
   },
   {
     type: "chat",

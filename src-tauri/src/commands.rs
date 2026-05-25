@@ -429,3 +429,140 @@ pub async fn ollama_chat(
         Err("Ollama response contained no message".to_string())
     }
 }
+
+#[tauri::command]
+pub async fn llm_chat(
+    provider: String,
+    base_url: Option<String>,
+    api_key: Option<String>,
+    model_name: String,
+    messages: Vec<OllamaMessage>,
+    temperature: f64,
+    max_tokens: u32,
+) -> Result<String, String> {
+    let provider_lower = provider.to_lowercase();
+    
+    if provider_lower == "ollama" {
+        let url = base_url.unwrap_or_else(|| "http://localhost:11434".to_string());
+        ollama_chat(url, model_name, messages, temperature, max_tokens).await
+    } else if provider_lower == "openai" || provider_lower == "other" || provider_lower == "google" {
+        let url = match provider_lower.as_str() {
+            "openai" => base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+            "google" => base_url.unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+            _ => base_url.unwrap_or_default(),
+        };
+
+        if url.is_empty() {
+            return Err("Base URL is required".to_string());
+        }
+
+        let key = api_key.unwrap_or_default();
+        let client = reqwest::Client::new();
+        let mut req = client.post(format!("{}/chat/completions", url));
+        
+        if !key.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+
+        let req_body = serde_json::json!({
+            "model": model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        });
+
+        let res = req.json(&req_body)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to send request to LLM: {}", e))?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let err_text = res.text().await.unwrap_or_default();
+            return Err(format!("LLM provider returned error status ({}): {}", status, err_text));
+        }
+
+        let resp_data: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response from LLM: {}", e))?;
+
+        if let Some(choices) = resp_data.get("choices").and_then(|c| c.as_array()) {
+            if let Some(first_choice) = choices.first() {
+                if let Some(content) = first_choice.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_str()) {
+                    return Ok(content.to_string());
+                }
+            }
+        }
+
+        Err("LLM response contained no content choice".to_string())
+    } else if provider_lower == "anthropic" {
+        let url = base_url.unwrap_or_else(|| "https://api.anthropic.com".to_string());
+        let key = api_key.unwrap_or_default();
+
+        if key.is_empty() {
+            return Err("Anthropic API Key is required".to_string());
+        }
+
+        let mut system_prompt = String::new();
+        let mut anthropic_messages = Vec::new();
+
+        for msg in messages {
+            if msg.role.to_lowercase() == "system" {
+                system_prompt = msg.content;
+            } else {
+                anthropic_messages.push(serde_json::json!({
+                    "role": msg.role,
+                    "content": msg.content
+                }));
+            }
+        }
+
+        let client = reqwest::Client::new();
+        let req = client.post(format!("{}/v1/messages", url))
+            .header("x-api-key", &key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json");
+
+        let mut req_body = serde_json::json!({
+            "model": model_name,
+            "messages": anthropic_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        });
+
+        if !system_prompt.is_empty() {
+            if let Some(obj) = req_body.as_object_mut() {
+                obj.insert("system".to_string(), serde_json::json!(system_prompt));
+            }
+        }
+
+        let res = req.json(&req_body)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to send request to Anthropic: {}", e))?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let err_text = res.text().await.unwrap_or_default();
+            return Err(format!("Anthropic returned error status ({}): {}", status, err_text));
+        }
+
+        let resp_data: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response from Anthropic: {}", e))?;
+
+        if let Some(content_array) = resp_data.get("content").and_then(|c| c.as_array()) {
+            if let Some(first_content) = content_array.first() {
+                if let Some(text) = first_content.get("text").and_then(|t| t.as_str()) {
+                    return Ok(text.to_string());
+                }
+            }
+        }
+
+        Err("Anthropic response contained no text".to_string())
+    } else {
+        Err(format!("Unsupported provider: {}", provider))
+    }
+}

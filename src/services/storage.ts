@@ -21,6 +21,7 @@ export const storage = {
     const raw = localStorage.getItem("hive-concurrency-settings");
     const defaultSettings: ConcurrencySettings = {
       ollama: { enabled: true, limit: 1 },
+      llm: { enabled: true, limit: 1 },
       notify: { enabled: false, limit: 2 },
       chat: { enabled: false, limit: 2 },
       output: { enabled: false, limit: 2 },

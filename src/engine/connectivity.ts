@@ -22,6 +22,12 @@ const CONNECTION_RULES: NodeConnectionRule[] = [
     allowedOption: "both", // User can toggle between one-way and bi-directional flow
     defaultFlow: "bi-directional",
   },
+  {
+    sourceType: "chat",
+    targetType: "llm",
+    allowedOption: "both", // User can toggle between one-way and bi-directional flow
+    defaultFlow: "bi-directional",
+  },
   // Add future multi-way conversational/processing nodes here
 ];
 

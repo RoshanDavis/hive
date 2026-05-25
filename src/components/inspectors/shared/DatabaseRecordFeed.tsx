@@ -31,7 +31,7 @@ export default function DatabaseRecordFeed({ records }: DatabaseRecordFeedProps)
           sourceColor = "text-[#34d399]"; // User green
         } else if (sourceLower === "system") {
           sourceColor = "text-[#818cf8]"; // System purple-blue
-        } else if (sourceLower.includes("ollama") || sourceLower.includes("robot")) {
+        } else if (sourceLower.includes("ollama") || sourceLower.includes("llm") || sourceLower.includes("robot")) {
           sourceColor = "text-[#c084fc]"; // AI Ollama purple
         } else if (sourceLower.includes("notify")) {
           sourceColor = "text-[#60a5fa]"; // Notify blue

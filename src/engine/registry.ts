@@ -1,6 +1,6 @@
 import type { NodeExecutor } from "./types";
 import { NotifyExecutor } from "./NotifyExecutor";
-import { OllamaExecutor } from "./OllamaExecutor";
+import { LLMExecutor } from "./LLMExecutor";
 import { ChatExecutor } from "./ChatExecutor";
 import { OutputExecutor } from "./OutputExecutor";
 
@@ -10,7 +10,8 @@ class ExecutorRegistry {
   constructor() {
     // Automatically register all default/core engine executors
     this.register("notify", new NotifyExecutor());
-    this.register("ollama", new OllamaExecutor());
+    this.register("ollama", new LLMExecutor());
+    this.register("llm", new LLMExecutor());
     this.register("chat", new ChatExecutor());
     this.register("output", new OutputExecutor());
     this.register("outputNode", new OutputExecutor());

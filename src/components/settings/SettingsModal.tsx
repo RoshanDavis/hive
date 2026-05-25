@@ -1,6 +1,3 @@
-import { useState } from "react";
-import { storage, type ConcurrencySettings } from "@/services/storage";
-import ConcurrencySection from "./ConcurrencySection";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,14 +6,9 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose, showToast }: SettingsModalProps) {
-  const [concurrency, setConcurrency] = useState<ConcurrencySettings>(() =>
-    storage.getConcurrencySettings()
-  );
-
   if (!isOpen) return null;
 
   const handleSave = () => {
-    storage.setConcurrencySettings(concurrency);
     showToast("Settings saved ✓", "success");
     onClose();
   };
@@ -44,8 +36,9 @@ export default function SettingsModal({ isOpen, onClose, showToast }: SettingsMo
         </div>
 
         {/* Sections */}
-        <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1 py-1">
-          <ConcurrencySection settings={concurrency} onUpdate={setConcurrency} />
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center gap-2 pr-1 py-8 text-center text-xs text-text-secondary select-none">
+          <span className="text-2xl">🐝</span>
+          <span>General settings are currently managed automatically.</span>
         </div>
 
         {/* Footer */}

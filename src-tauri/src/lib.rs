@@ -23,6 +23,7 @@ pub fn run() {
             commands::delete_chat_history,
             commands::delete_storage_history,
             commands::ollama_chat,
+            commands::llm_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

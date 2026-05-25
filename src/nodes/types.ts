@@ -13,16 +13,25 @@ export interface NotifyNodeData {
   [key: string]: unknown;
 }
 
-export interface OllamaNodeData {
+export interface LLMNodeData {
   label: string;
-  model: string;
+  provider?: "Ollama" | "OpenAI" | "Anthropic" | "Google" | "Other";
+  baseURL?: string;
+  apiKey?: string;
+  modelName?: string;
+
+  // Legacy Ollama-only fields for backward compatibility
+  model?: string;
+  ollamaUrl?: string;
+
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
-  ollamaUrl: string;
   chatHistoryLimit: number;
   [key: string]: unknown;
 }
+
+export type OllamaNodeData = LLMNodeData;
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -57,11 +66,12 @@ export interface JSONStorageNodeData {
 
 export type TriggerNode = Node<TriggerNodeData, "trigger">;
 export type NotifyNode = Node<NotifyNodeData, "notify">;
-export type OllamaNode = Node<OllamaNodeData, "ollama">;
+export type LLMNode = Node<LLMNodeData, "ollama" | "llm">;
+export type OllamaNode = LLMNode;
 export type ChatNode = Node<ChatNodeData, "chat">;
 export type OutputNode = Node<OutputNodeData, "output" | "outputNode">;
 export type JSONStorageNode = Node<JSONStorageNodeData, "jsonStorage">;
-export type HiveNode = TriggerNode | NotifyNode | OllamaNode | ChatNode | OutputNode | JSONStorageNode;
+export type HiveNode = TriggerNode | NotifyNode | LLMNode | ChatNode | OutputNode | JSONStorageNode;
 
 import React from "react";
 

@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/useToast";
 import { storage } from "@/services/storage";
 import TriggerNodeComponent from "@/nodes/TriggerNode";
 import NotifyNodeComponent from "@/nodes/NotifyNode";
-import OllamaNodeComponent from "@/nodes/OllamaNode";
+import LLMNodeComponent from "@/nodes/LLMNode";
 import ChatNodeComponent from "@/nodes/ChatNode";
 import OutputNodeComponent from "@/nodes/OutputNode";
 import JSONStorageNodeComponent from "@/nodes/JSONStorageNode";
@@ -55,7 +55,8 @@ interface WorkspaceEditorProps {
 const nodeTypes = {
   trigger: TriggerNodeComponent,
   notify: NotifyNodeComponent,
-  ollama: OllamaNodeComponent,
+  ollama: LLMNodeComponent,
+  llm: LLMNodeComponent,
   chat: ChatNodeComponent,
   output: OutputNodeComponent,
   outputNode: OutputNodeComponent,
@@ -634,7 +635,7 @@ function WorkspaceEditorInner({
             nodeColor={(n) => {
               if (n.type === "trigger") return "#d4e600";
               if (n.type === "notify") return "#60a5fa";
-              if (n.type === "ollama") return "#a78bfa";
+              if (n.type === "ollama" || n.type === "llm") return "#a78bfa";
               if (n.type === "chat") return "#34d399";
               if (n.type === "output" || n.type === "outputNode") return "#fb923c";
               if (n.type === "jsonStorage") return "#38bdf8";

@@ -1,11 +1,11 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { OllamaNodeData } from "./types";
+import type { LLMNodeData } from "./types";
 import StatusBorder from "./StatusBorder";
 
-export default function OllamaNodeComponent({
+export default function LLMNodeComponent({
   data,
   selected,
-}: NodeProps & { data: OllamaNodeData }) {
+}: NodeProps & { data: LLMNodeData }) {
   const statusClass =
     selected
       ? "" // Selection white border takes precedence
@@ -29,7 +29,7 @@ export default function OllamaNodeComponent({
         position={Position.Left}
         className="hive-handle"
       />
-      <div className="text-2xl">🤖</div>
+      <div className="text-2xl">🧠</div>
       <div className="text-xs font-semibold tracking-wide text-center w-full whitespace-nowrap overflow-hidden text-ellipsis">{data.label}</div>
       <Handle
         type="source"

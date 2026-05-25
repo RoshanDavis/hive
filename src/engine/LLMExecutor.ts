@@ -3,19 +3,28 @@ import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
 
-export class OllamaExecutor implements NodeExecutor {
+export class LLMExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node, nodes, edges, updateNodeData, showToast, visited } = context;
-    await concurrencyGovernor.enqueue("ollama", async () => {
+    await concurrencyGovernor.enqueue("llm", async () => {
 
-    const url = String(node.data?.ollamaUrl || "http://localhost:11434");
-    const model = String(node.data?.model || "llama3");
+    const provider = String(node.data?.provider || "Ollama");
+    let defaultBaseURL = "";
+    if (provider === "Ollama") defaultBaseURL = "http://localhost:11434";
+    else if (provider === "OpenAI") defaultBaseURL = "https://api.openai.com/v1";
+    else if (provider === "Anthropic") defaultBaseURL = "https://api.anthropic.com";
+    else if (provider === "Google") defaultBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai";
+
+    const baseURL = String(node.data?.baseURL !== undefined ? node.data?.baseURL : (node.data?.ollamaUrl !== undefined ? node.data?.ollamaUrl : defaultBaseURL));
+    const modelName = String(node.data?.modelName !== undefined ? node.data?.modelName : (node.data?.model !== undefined ? node.data?.model : ""));
+    const apiKey = String(node.data?.apiKey || "");
+
     const systemPrompt = String(node.data?.systemPrompt || "");
     const temp = Number(node.data?.temperature || 0.7);
     const maxT = Number(node.data?.maxTokens || 2048);
     const historyLimit = Number(node.data?.chatHistoryLimit || 0);
 
-    // Find all upstream edges where Ollama is target, OR where Ollama is source but edge is bi-directional
+    // Find all upstream edges where LLM is target, OR where LLM is source but edge is bi-directional
     const upstreamEdges = edges.filter(e => 
       e.target === node.id || 
       (e.source === node.id && e.data?.edgeType === "bi-directional")
@@ -27,12 +36,12 @@ export class OllamaExecutor implements NodeExecutor {
     // Filter to only allow upstream nodes that are in the active run path (visited Set)
     const visitedNodes = upstreamNodes.filter(n => !visited || visited.has(n.id));
 
-    let ollamaMessages: any[] = [];
+    let llmMessages: any[] = [];
 
     // Check if we are retrying and already have a saved lastInputMessages
     if (node.data?.lastInputMessages && Array.isArray(node.data.lastInputMessages) && node.data.lastInputMessages.length > 0) {
-      console.log(`[OLLAMA EXECUTOR] Reusing saved lastInputMessages from previous run:`, node.data.lastInputMessages);
-      ollamaMessages = [...node.data.lastInputMessages];
+      console.log(`[LLM EXECUTOR] Reusing saved lastInputMessages from previous run:`, node.data.lastInputMessages);
+      llmMessages = [...node.data.lastInputMessages];
     } else {
       // 1. If an upstream Chat node exists on the active run path, load the full conversation log
       const chatNode = visitedNodes.find(n => n.type === "chat");
@@ -41,11 +50,11 @@ export class OllamaExecutor implements NodeExecutor {
         if (historyLimit > 0 && rawMessages.length > historyLimit) {
           rawMessages = rawMessages.slice(-historyLimit);
         }
-        ollamaMessages = [...rawMessages];
+        llmMessages = [...rawMessages];
       }
 
       // 2. If no Chat node or empty chat, resolve input generically from visited upstream nodes
-      if (ollamaMessages.length === 0) {
+      if (llmMessages.length === 0) {
         let resolvedText = "";
         for (const upstream of visitedNodes) {
           const val = getUpstreamNodeData(upstream);
@@ -56,7 +65,7 @@ export class OllamaExecutor implements NodeExecutor {
         }
 
         if (resolvedText) {
-          ollamaMessages = [{ role: "user" as const, content: resolvedText }];
+          llmMessages = [{ role: "user" as const, content: resolvedText }];
         } else {
           throw new Error("No upstream input data found.");
         }
@@ -65,20 +74,22 @@ export class OllamaExecutor implements NodeExecutor {
       // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry
       updateNodeData(node.id, {
         ...node.data,
-        lastInputMessages: ollamaMessages
+        lastInputMessages: llmMessages
       });
     }
 
     // 3. Prepend system prompt if configured
     if (systemPrompt.trim() !== "") {
-      ollamaMessages.unshift({ role: "system", content: systemPrompt });
+      llmMessages.unshift({ role: "system", content: systemPrompt });
     }
 
     try {
-      const response = await api.ollamaChat(
-        url,
-        model,
-        ollamaMessages,
+      const response = await api.llmChat(
+        provider,
+        baseURL,
+        apiKey,
+        modelName,
+        llmMessages,
         temp,
         maxT
       );
@@ -87,7 +98,8 @@ export class OllamaExecutor implements NodeExecutor {
       const outputEnvelope: NodeOutputEnvelope = {
         value: response,
         metadata: {
-          model,
+          model: modelName,
+          provider,
           temperature: temp,
           maxTokens: maxT,
           timestamp: new Date().toISOString()
@@ -97,14 +109,14 @@ export class OllamaExecutor implements NodeExecutor {
         }
       };
 
-      // 5. Update the Ollama node with the response and rich envelope
+      // 5. Update the LLM node with the response and rich envelope
       updateNodeData(node.id, {
         ...node.data,
         lastResponse: response,
         outputEnvelope
       });
     } catch (err) {
-      showToast(`Ollama error: ${err}`, "error");
+      showToast(`LLM execution error: ${err}`, "error");
       throw err;
     }
     });
