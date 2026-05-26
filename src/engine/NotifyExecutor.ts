@@ -3,16 +3,25 @@ import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeEnvelope } from "./utils";
 
+/**
+ * Safely resolves a dot-separated property path on an object.
+ * e.g. resolvePath({ input: { value: "hello" } }, "input.value") => "hello"
+ */
+function resolvePath(obj: any, path: string): any {
+  return path.split('.').reduce((acc, key) => {
+    if (acc === undefined || acc === null) return undefined;
+    return acc[key];
+  }, obj);
+}
+
 function evaluateTemplate(template: string, inputEnvelope: NodeOutputEnvelope): string {
   if (!template) return "";
   
   return template.replace(/\{([^{}]+)\}/g, (match, expression) => {
     try {
-      const expr = expression.trim();
-      
-      // Resiliently evaluate the expression with 'input' bound to inputEnvelope
-      const evaluator = new Function("input", `try { return ${expr}; } catch(e) { return ""; }`);
-      const result = evaluator(inputEnvelope);
+      const path = expression.trim();
+      const context = { input: inputEnvelope };
+      const result = resolvePath(context, path);
       
       if (result === undefined || result === null) {
         return "";
@@ -27,6 +36,7 @@ function evaluateTemplate(template: string, inputEnvelope: NodeOutputEnvelope): 
     }
   });
 }
+
 
 export class NotifyExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {

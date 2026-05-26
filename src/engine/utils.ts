@@ -1,54 +1,44 @@
 import type { Node } from "@xyflow/react";
 import type { NodeOutputEnvelope } from "./types";
+import { pluginRegistry } from "./pluginRegistry";
 
 /**
  * Extracts data from an upstream node based on standard data fields
  * supporting sequential information transmission through the workflow.
+ * 
+ * Uses plugin.getOutput() if available, otherwise falls back to
+ * reading from the standardized outputEnvelope, then common data fields.
  */
 export function getUpstreamNodeData(upstreamNode: Node): string | null {
   if (!upstreamNode || !upstreamNode.data) return null;
 
-  // 0. If it's a Chat node, prioritize the last USER message as its outward payload
-  if (upstreamNode.type === "chat") {
-    if (Array.isArray(upstreamNode.data.messages) && upstreamNode.data.messages.length > 0) {
-      const lastUserMsg = [...upstreamNode.data.messages]
-        .reverse()
-        .find((m: any) => m.role === "user");
-      if (lastUserMsg && lastUserMsg.content !== undefined && lastUserMsg.content !== null) {
-        return String(lastUserMsg.content);
-      }
-    }
+  // 1. Try plugin-specific output extraction
+  const plugin = pluginRegistry.get(upstreamNode.type || "");
+  if (plugin?.getOutput) {
+    const envelope = plugin.getOutput(upstreamNode.data as Record<string, unknown>);
+    if (envelope.value) return envelope.value;
   }
 
-  // 1. Check lastResponse (commonly used by Ollama, Notify, Output)
+  // 2. Read from standardized outputEnvelope
+  if (upstreamNode.data.outputEnvelope) {
+    const env = upstreamNode.data.outputEnvelope as NodeOutputEnvelope;
+    if (env.value) return env.value;
+  }
+
+  // 3. Fallback chain for backward compatibility with nodes
+  //    that haven't written an outputEnvelope yet
   if (upstreamNode.data.lastResponse !== undefined && upstreamNode.data.lastResponse !== null) {
     return String(upstreamNode.data.lastResponse);
   }
 
-  // 2. Check outputContent (commonly used by Output)
   if (upstreamNode.data.outputContent !== undefined && upstreamNode.data.outputContent !== null) {
     return String(upstreamNode.data.outputContent);
   }
 
-  // 3. Check messages (commonly used by Chat)
-  if (Array.isArray(upstreamNode.data.messages) && upstreamNode.data.messages.length > 0) {
-    const lastMsg = upstreamNode.data.messages[upstreamNode.data.messages.length - 1];
-    if (lastMsg && lastMsg.content !== undefined && lastMsg.content !== null) {
-      return String(lastMsg.content);
-    }
-  }
-
-  // 4. Check output (commonly used by Notify)
   if (upstreamNode.data.output !== undefined && upstreamNode.data.output !== null) {
     return String(upstreamNode.data.output);
   }
 
-  // 5. Check message (commonly used by Notify fallback)
-  if (upstreamNode.data.message !== undefined && upstreamNode.data.message !== null) {
-    return String(upstreamNode.data.message);
-  }
-
-  // 5. Check value
   if (upstreamNode.data.value !== undefined && upstreamNode.data.value !== null) {
     return String(upstreamNode.data.value);
   }
@@ -65,12 +55,18 @@ export function getUpstreamNodeEnvelope(upstreamNode: Node): NodeOutputEnvelope 
     return { value: "" };
   }
 
-  // 1. If the node has a structured outputEnvelope, load and return it directly
+  // 1. Try plugin-specific output extraction
+  const plugin = pluginRegistry.get(upstreamNode.type || "");
+  if (plugin?.getOutput) {
+    return plugin.getOutput(upstreamNode.data as Record<string, unknown>);
+  }
+
+  // 2. If the node has a structured outputEnvelope, load and return it directly
   if (upstreamNode.data.outputEnvelope !== undefined && upstreamNode.data.outputEnvelope !== null) {
     return upstreamNode.data.outputEnvelope as NodeOutputEnvelope;
   }
 
-  // 2. Fallback: package the raw string output value inside a standard default envelope
+  // 3. Fallback: package the raw string output value inside a standard default envelope
   const rawText = getUpstreamNodeData(upstreamNode) || "";
   return {
     value: rawText,

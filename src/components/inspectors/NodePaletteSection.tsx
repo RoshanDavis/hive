@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { type NodeDefinition } from "@/nodes/types";
-import { NODE_REGISTRY } from "@/nodes/registry";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 import CollapsibleSection from "./CollapsibleSection";
 
 interface NodePaletteSectionProps {
@@ -17,7 +17,7 @@ export default function NodePaletteSection({
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredNodes = useMemo(() => {
-    const baseList = NODE_REGISTRY.filter((d) => d.type !== "output");
+    const baseList = pluginRegistry.getNodeDefinitions();
     const query = searchQuery.trim().toLowerCase();
     if (!query) return baseList;
 

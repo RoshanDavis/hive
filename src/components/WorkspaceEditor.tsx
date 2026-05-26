@@ -25,15 +25,11 @@ import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
 import { ToastContainer } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { storage } from "@/services/storage";
-import TriggerNodeComponent from "@/nodes/TriggerNode";
-import NotifyNodeComponent from "@/nodes/NotifyNode";
-import LLMNodeComponent from "@/nodes/LLMNode";
-import ChatNodeComponent from "@/nodes/ChatNode";
-import OutputNodeComponent from "@/nodes/OutputNode";
-import JSONStorageNodeComponent from "@/nodes/JSONStorageNode";
+import "@/nodes/plugins"; // Side-effect import: registers all node plugins
+import { pluginRegistry } from "@/engine/pluginRegistry";
+import GenericNodeShell from "@/nodes/GenericNodeShell";
 import CustomConnectionEdge from "@/components/CustomConnectionEdge";
 import { type NodeDefinition } from "@/nodes/types";
-import { NODE_REGISTRY } from "@/nodes/registry";
 import { useWorkspaceClipboard } from "@/hooks/useWorkspaceClipboard";
 import { getConnectionBehavior } from "@/engine/connectivity";
 
@@ -52,16 +48,8 @@ interface WorkspaceEditorProps {
   onBack: () => void;
 }
 
-const nodeTypes = {
-  trigger: TriggerNodeComponent,
-  notify: NotifyNodeComponent,
-  ollama: LLMNodeComponent,
-  llm: LLMNodeComponent,
-  chat: ChatNodeComponent,
-  output: OutputNodeComponent,
-  outputNode: OutputNodeComponent,
-  jsonStorage: JSONStorageNodeComponent,
-};
+// Dynamic node type map from plugin registry — auto-includes all registered plugins + aliases
+const nodeTypes = pluginRegistry.getNodeTypesMap(GenericNodeShell);
 
 const edgeTypes = {
   custom: CustomConnectionEdge,
@@ -633,15 +621,7 @@ function WorkspaceEditorInner({
           <Controls position="bottom-left" showInteractive={false} />
           <MiniMap
             position="bottom-right"
-            nodeColor={(n) => {
-              if (n.type === "trigger") return "#d4e600";
-              if (n.type === "notify") return "#60a5fa";
-              if (n.type === "ollama" || n.type === "llm") return "#a78bfa";
-              if (n.type === "chat") return "#34d399";
-              if (n.type === "output" || n.type === "outputNode") return "#fb923c";
-              if (n.type === "jsonStorage") return "#38bdf8";
-              return "#888";
-            }}
+            nodeColor={(n) => pluginRegistry.getColor(n.type || '')}
             maskColor="rgba(0, 0, 0, 0.7)"
             style={{
               background: "#1a1a1a",
@@ -705,8 +685,8 @@ function WorkspaceEditorInner({
 
       {/* Custom 100% Opaque Floating Ghost Card (Bypasses browser transparency limitations) */}
       {activeDragNode && activeDragNode.clientX > 0 && activeDragNode.clientY > 0 && (() => {
-        const def = NODE_REGISTRY.find((d) => d.type === activeDragNode.type);
-        if (!def) return null;
+        const plugin = pluginRegistry.get(activeDragNode.type);
+        if (!plugin) return null;
         return (
           <div
             id="drag-ghost-card"
@@ -717,8 +697,8 @@ function WorkspaceEditorInner({
               transform: "translate(-50%, -50%) scale(1.05)",
             }}
           >
-            <span className="text-2xl select-none">{def.icon}</span>
-            <span className="font-semibold text-text-main text-xs select-none w-full text-center whitespace-nowrap overflow-hidden text-ellipsis">{def.label}</span>
+            <span className="text-2xl select-none">{plugin.meta.icon}</span>
+            <span className="font-semibold text-text-main text-xs select-none w-full text-center whitespace-nowrap overflow-hidden text-ellipsis">{plugin.meta.label}</span>
           </div>
         );
       })()}

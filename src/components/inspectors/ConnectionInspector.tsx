@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Node, Edge } from "@xyflow/react";
-import { NODE_REGISTRY } from "@/nodes/registry";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 import { getConnectionBehavior } from "@/engine/connectivity";
 import { getUpstreamNodeEnvelope } from "@/engine/utils";
 import DataConsole from "./shared/DataConsole";
@@ -45,8 +45,8 @@ export default function ConnectionInspector({
 
   if (!sourceNode || !targetNode) return null;
 
-  const sourceDef = NODE_REGISTRY.find((d) => d.type === sourceNode.type);
-  const targetDef = NODE_REGISTRY.find((d) => d.type === targetNode.type);
+  const sourcePlugin = pluginRegistry.get(sourceNode.type || '');
+  const targetPlugin = pluginRegistry.get(targetNode.type || '');
   const edgeType = (selectedEdge.data?.edgeType as string) || connectionBehavior.defaultFlow;
   const isDatabase = ["read-only", "write-only", "read-write"].includes(edgeType);
   const isReverse = edgeType === "read-only" && targetNode.type === "jsonStorage";
@@ -225,10 +225,10 @@ export default function ConnectionInspector({
               {/* Source Node Card */}
               <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-[#16161a] border border-[#2c2c34] rounded-lg p-2 shadow-sm text-center">
                 <span className="text-lg select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
-                  {sourceDef?.icon || "⚪"}
+                  {sourcePlugin?.meta.icon || "⚪"}
                 </span>
-                <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(sourceNode.data?.label || sourceDef?.label || sourceNode.type)}>
-                  {String(sourceNode.data?.label || sourceDef?.label || sourceNode.type)}
+                <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(sourceNode.data?.label || sourcePlugin?.meta.label || sourceNode.type)}>
+                  {String(sourceNode.data?.label || sourcePlugin?.meta.label || sourceNode.type)}
                 </span>
                 <span className="text-[8px] uppercase font-mono tracking-wider text-[#52525b] mt-0.5 px-1 py-px bg-[#1e1e24] rounded border border-[#2e2e38]/30">
                   {sourceNode.type}
@@ -254,10 +254,10 @@ export default function ConnectionInspector({
               {/* Target Node Card */}
               <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-[#16161a] border border-[#2c2c34] rounded-lg p-2 shadow-sm text-center">
                 <span className="text-lg select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
-                  {targetDef?.icon || "⚪"}
+                  {targetPlugin?.meta.icon || "⚪"}
                 </span>
-                <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(targetNode.data?.label || targetDef?.label || targetNode.type)}>
-                  {String(targetNode.data?.label || targetDef?.label || targetNode.type)}
+                <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(targetNode.data?.label || targetPlugin?.meta.label || targetNode.type)}>
+                  {String(targetNode.data?.label || targetPlugin?.meta.label || targetNode.type)}
                 </span>
                 <span className="text-[8px] uppercase font-mono tracking-wider text-[#52525b] mt-0.5 px-1 py-px bg-[#1e1e24] rounded border border-[#2e2e38]/30">
                   {targetNode.type}

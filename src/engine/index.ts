@@ -1,17 +1,19 @@
 import type { ExecutionContext } from "./types";
-import { executorRegistry } from "./registry";
+import { pluginRegistry } from "./pluginRegistry";
 import { getUpstreamNodeData, getUpstreamNodeEnvelope } from "./utils";
 import type { NodeOutputEnvelope } from "./types";
 
 export * from "./types";
 export * from "./ChatExecutor";
-export { executorRegistry };
+export { pluginRegistry };
 
 export const executeNode = async (
   nodeType: string,
   context: ExecutionContext
 ): Promise<void> => {
-  const executor = executorRegistry.get(nodeType);
+  const plugin = pluginRegistry.get(nodeType);
+  const executor = plugin?.executor;
+
   if (executor) {
     await executor.execute(context);
   } else {
@@ -49,11 +51,12 @@ export const executeNode = async (
     });
   }
 
-  // ─── Generic Database Output Sync ───
-  // After executing any node (except chat, which handles database sync in ChatExecutor),
-  // check if there is a connected JSON storage node with write permissions.
-  // If so, write the node's output payload to the storage records!
-  if (context.node.type !== "chat") {
+  // ─── Post-Execution Storage Sync Middleware ───
+  // After executing any node, check if there is a connected JSON storage node with write permissions.
+  // Nodes that handle their own storage sync (e.g. ChatExecutor) set skipStorageSync = true in their plugin.
+  const shouldSyncStorage = !plugin?.skipStorageSync;
+
+  if (shouldSyncStorage) {
     const storageEdges = context.edges.filter((e) => {
       const targetNode = context.nodes.find((n) => n.id === e.target);
       return e.source === context.node.id && targetNode?.type === "jsonStorage";

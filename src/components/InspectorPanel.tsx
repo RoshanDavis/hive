@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { type NodeDefinition } from "@/nodes/types";
-import { NODE_REGISTRY } from "@/nodes/registry";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 import { ConnectionInspector, WorkspaceInspector } from "@/components/inspectors";
 import { storage } from "@/services/storage";
 
@@ -109,12 +109,7 @@ export default function InspectorPanel({
         <>
           <div className="p-4 border-b border-border-subtle bg-card flex flex-col gap-1">
             <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2">
-              {selectedNode.type === "trigger" ? "⚡" : ""}
-              {selectedNode.type === "notify" ? "🔔" : ""}
-              {selectedNode.type === "ollama" || selectedNode.type === "llm" ? "🧠" : ""}
-              {selectedNode.type === "chat" ? "💬" : ""}
-              {selectedNode.type === "output" || selectedNode.type === "outputNode" ? "📤" : ""}
-              {selectedNode.type === "jsonStorage" ? "💾" : ""}
+              {pluginRegistry.getIcon(selectedNode.type || '')}
               {" "}
               {String(selectedNode.data?.label || selectedNode.type)}
             </h2>
@@ -175,8 +170,8 @@ export default function InspectorPanel({
 
             {/* Dynamic Component Rendering based on Registry */}
             {(() => {
-              const def = NODE_REGISTRY.find(d => d.type === selectedNode.type);
-              const Inspector = def?.inspector;
+              const plugin = pluginRegistry.get(selectedNode.type || '');
+              const Inspector = plugin?.inspector;
               if (Inspector) {
                 return (
                   <Inspector

@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect } from "react";
 import { useReactFlow, type Node } from "@xyflow/react";
-import { NODE_REGISTRY } from "@/nodes/registry";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 import { type ShowToastFunc } from "@/types/workspace";
 
 interface UseWorkspaceDragDropParams {
@@ -92,19 +92,19 @@ export function useWorkspaceDragDrop({
         y: event.clientY - offsetY,
       });
 
-      const definition = NODE_REGISTRY.find((d) => d.type === type);
-      if (!definition) return;
+      const plugin = pluginRegistry.get(type);
+      if (!plugin) return;
 
       const id = `${type}_${Date.now()}`;
       const newNode: Node = {
         id,
         type,
         position,
-        data: { ...definition.defaultData },
+        data: { ...plugin.defaultData },
       };
 
       setNodes((nds) => [...nds, newNode]);
-      showToast(`Added ${definition.label} node`, "info");
+      showToast(`Added ${plugin.meta.label} node`, "info");
     },
     [reactFlowInstance, setNodes, showToast]
   );
