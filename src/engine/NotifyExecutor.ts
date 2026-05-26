@@ -31,7 +31,7 @@ function evaluateTemplate(template: string, inputEnvelope: NodeOutputEnvelope): 
 export class NotifyExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node, nodes, edges, updateNodeData, showToast, visited } = context;
-    await concurrencyGovernor.enqueue("notify", async () => {
+    await concurrencyGovernor.enqueue("general", async () => {
       try {
         let resolvedEnvelope: NodeOutputEnvelope | null = null;
 

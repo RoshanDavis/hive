@@ -12,7 +12,12 @@ export interface ConcurrencyConfig {
   limit: number;
 }
 
-export type ConcurrencySettings = Record<string, ConcurrencyConfig>;
+export interface ConcurrencySettings {
+  local: ConcurrencyConfig;    // For local models (Ollama, LM Studio, etc.)
+  cloud: ConcurrencyConfig;    // For cloud APIs (OpenAI, Anthropic, Google, etc.)
+  general: ConcurrencyConfig;  // For other lightweight tasks (e.g. notifications)
+  localPatterns: string[];     // Glob wildcard patterns, e.g. ["*localhost*", "*127.0.0.1*", "*[::1]*"]
+}
 
 // ─── Centralized Type-Safe Storage client ──────────────────────
 export const storage = {
@@ -20,19 +25,47 @@ export const storage = {
   getConcurrencySettings(): ConcurrencySettings {
     const raw = localStorage.getItem("hive-concurrency-settings");
     const defaultSettings: ConcurrencySettings = {
-      ollama: { enabled: true, limit: 1 },
-      llm: { enabled: true, limit: 1 },
-      notify: { enabled: false, limit: 2 },
-      chat: { enabled: false, limit: 2 },
-      output: { enabled: false, limit: 2 },
-      trigger: { enabled: false, limit: 2 },
-      jsonStorage: { enabled: false, limit: 2 },
+      local: { enabled: true, limit: 1 },
+      cloud: { enabled: false, limit: 10 },
+      general: { enabled: false, limit: 2 },
+      localPatterns: ["*localhost*", "*127.0.0.1*", "*[::1]*"]
     };
 
     if (!raw) return defaultSettings;
     try {
       const parsed = JSON.parse(raw);
-      return { ...defaultSettings, ...parsed };
+      
+      // Perform backward-compatibility migration if loading from legacy schema
+      const migratedSettings: ConcurrencySettings = { ...defaultSettings };
+
+      if (parsed.local !== undefined) {
+        migratedSettings.local = parsed.local;
+      } else if (parsed.ollama !== undefined) {
+        // Migrate legacy 'ollama' config to 'local'
+        migratedSettings.local = parsed.ollama;
+      }
+
+      if (parsed.cloud !== undefined) {
+        migratedSettings.cloud = parsed.cloud;
+      } else if (parsed.llm !== undefined) {
+        // Migrate legacy 'llm' config to 'cloud' (but set a higher parallel limit if disabled)
+        migratedSettings.cloud = {
+          enabled: parsed.llm.enabled ?? false,
+          limit: parsed.llm.limit > 1 ? parsed.llm.limit : 10
+        };
+      }
+
+      if (parsed.general !== undefined) {
+        migratedSettings.general = parsed.general;
+      } else if (parsed.notify !== undefined) {
+        migratedSettings.general = parsed.notify;
+      }
+
+      if (Array.isArray(parsed.localPatterns)) {
+        migratedSettings.localPatterns = parsed.localPatterns;
+      }
+
+      return migratedSettings;
     } catch {
       return defaultSettings;
     }

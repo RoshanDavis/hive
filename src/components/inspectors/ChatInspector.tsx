@@ -4,7 +4,7 @@ import type { InspectorProps } from "./types";
 export default function ChatInspector({
   node,
   onUpdate,
-  isRunning,
+  runningStartNodeIds,
   onChatSend,
   nodes,
   edges
@@ -14,6 +14,9 @@ export default function ChatInspector({
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const prevMessagesLength = useRef(0);
+
+  // Check if this specific ChatNode is currently executing its workflow
+  const isThisChatRunning = !!runningStartNodeIds?.has(node.id);
 
   // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
   const storageEdge = edges?.find(
@@ -170,14 +173,14 @@ export default function ChatInspector({
           }}
           placeholder="Type a message..."
           rows={2}
-          disabled={isRunning}
+          disabled={isThisChatRunning}
         />
         <button 
-          className={`w-full border border-accent text-accent rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${isRunning ? "bg-accent text-primary shadow-[0_0_12px_rgba(212,230,0,0.3)]" : "bg-card hover:bg-accent hover:text-primary hover:shadow-[0_0_12px_rgba(212,230,0,0.3)]"}`}
+          className={`w-full border border-accent text-accent rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${isThisChatRunning ? "bg-accent text-primary shadow-[0_0_12px_rgba(212,230,0,0.3)]" : "bg-card hover:bg-accent hover:text-primary hover:shadow-[0_0_12px_rgba(212,230,0,0.3)]"}`}
           onClick={handleSend}
-          disabled={!chatInput.trim() || isRunning}
+          disabled={!chatInput.trim() || isThisChatRunning}
         >
-          {isRunning ? "Sending..." : "Send"}
+          {isThisChatRunning ? "Sending..." : "Send"}
         </button>
       </div>
       <button

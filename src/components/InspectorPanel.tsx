@@ -14,6 +14,7 @@ interface InspectorPanelProps {
   onChatSend?: (nodeId: string, text: string) => void;
   onRetryWorkflow?: (nodeId: string) => void;
   isRunning: boolean;
+  runningStartNodeIds?: Set<string>;
   nodes?: Node[];
   edges?: Edge[];
   onDragStartNode?: (type: string) => void;
@@ -32,6 +33,7 @@ export default function InspectorPanel({
   onChatSend,
   onRetryWorkflow,
   isRunning,
+  runningStartNodeIds,
   nodes,
   edges,
   onDragStartNode,
@@ -181,6 +183,7 @@ export default function InspectorPanel({
                     node={selectedNode}
                     onUpdate={onUpdateNodeData}
                     isRunning={isRunning}
+                    runningStartNodeIds={runningStartNodeIds}
                     onRun={onRunWorkflow}
                     onChatSend={onChatSend}
                     nodes={nodes}

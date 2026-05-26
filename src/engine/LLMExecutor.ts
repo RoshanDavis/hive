@@ -6,7 +6,6 @@ import { getUpstreamNodeData } from "./utils";
 export class LLMExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node, nodes, edges, updateNodeData, showToast, visited } = context;
-    await concurrencyGovernor.enqueue("llm", async () => {
 
     const provider = String(node.data?.provider || "Ollama");
     let defaultBaseURL = "";
@@ -24,101 +23,106 @@ export class LLMExecutor implements NodeExecutor {
     const maxT = Number(node.data?.maxTokens || 2048);
     const historyLimit = Number(node.data?.chatHistoryLimit || 0);
 
-    // Find all upstream edges where LLM is target, OR where LLM is source but edge is bi-directional
-    const upstreamEdges = edges.filter(e => 
-      e.target === node.id || 
-      (e.source === node.id && e.data?.edgeType === "bi-directional")
-    );
-    const upstreamNodes = nodes.filter(n => 
-      upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== node.id
-    );
+    // Dynamically resolve pool: local vs. cloud based on configured address wildcards
+    const isLocal = concurrencyGovernor.isLocalModel(provider, baseURL);
+    const poolType = isLocal ? "local" : "cloud";
 
-    // Filter to only allow upstream nodes that are in the active run path (visited Set)
-    const visitedNodes = upstreamNodes.filter(n => !visited || visited.has(n.id));
+    await concurrencyGovernor.enqueue(poolType, async () => {
+      // Find all upstream edges where LLM is target, OR where LLM is source but edge is bi-directional
+      const upstreamEdges = edges.filter(e => 
+        e.target === node.id || 
+        (e.source === node.id && e.data?.edgeType === "bi-directional")
+      );
+      const upstreamNodes = nodes.filter(n => 
+        upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== node.id
+      );
 
-    let llmMessages: any[] = [];
+      // Filter to only allow upstream nodes that are in the active run path (visited Set)
+      const visitedNodes = upstreamNodes.filter(n => !visited || visited.has(n.id));
 
-    // Check if we are retrying and already have a saved lastInputMessages
-    if (node.data?.lastInputMessages && Array.isArray(node.data.lastInputMessages) && node.data.lastInputMessages.length > 0) {
-      console.log(`[LLM EXECUTOR] Reusing saved lastInputMessages from previous run:`, node.data.lastInputMessages);
-      llmMessages = [...node.data.lastInputMessages];
-    } else {
-      // 1. If an upstream Chat node exists on the active run path, load the full conversation log
-      const chatNode = visitedNodes.find(n => n.type === "chat");
-      if (chatNode) {
-        let rawMessages = chatNode.data?.messages as any[] || [];
-        if (historyLimit > 0 && rawMessages.length > historyLimit) {
-          rawMessages = rawMessages.slice(-historyLimit);
+      let llmMessages: any[] = [];
+
+      // Check if we are retrying and already have a saved lastInputMessages
+      if (node.data?.lastInputMessages && Array.isArray(node.data.lastInputMessages) && node.data.lastInputMessages.length > 0) {
+        console.log(`[LLM EXECUTOR] Reusing saved lastInputMessages from previous run:`, node.data.lastInputMessages);
+        llmMessages = [...node.data.lastInputMessages];
+      } else {
+        // 1. If an upstream Chat node exists on the active run path, load the full conversation log
+        const chatNode = visitedNodes.find(n => n.type === "chat");
+        if (chatNode) {
+          let rawMessages = chatNode.data?.messages as any[] || [];
+          if (historyLimit > 0 && rawMessages.length > historyLimit) {
+            rawMessages = rawMessages.slice(-historyLimit);
+          }
+          llmMessages = [...rawMessages];
         }
-        llmMessages = [...rawMessages];
-      }
 
-      // 2. If no Chat node or empty chat, resolve input generically from visited upstream nodes
-      if (llmMessages.length === 0) {
-        let resolvedText = "";
-        for (const upstream of visitedNodes) {
-          const val = getUpstreamNodeData(upstream);
-          if (val !== null) {
-            resolvedText = val;
-            break;
+        // 2. If no Chat node or empty chat, resolve input generically from visited upstream nodes
+        if (llmMessages.length === 0) {
+          let resolvedText = "";
+          for (const upstream of visitedNodes) {
+            const val = getUpstreamNodeData(upstream);
+            if (val !== null) {
+              resolvedText = val;
+              break;
+            }
+          }
+
+          if (resolvedText) {
+            llmMessages = [{ role: "user" as const, content: resolvedText }];
+          } else {
+            throw new Error("No upstream input data found.");
           }
         }
 
-        if (resolvedText) {
-          llmMessages = [{ role: "user" as const, content: resolvedText }];
-        } else {
-          throw new Error("No upstream input data found.");
-        }
+        // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry
+        updateNodeData(node.id, {
+          ...node.data,
+          lastInputMessages: llmMessages
+        });
       }
 
-      // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry
-      updateNodeData(node.id, {
-        ...node.data,
-        lastInputMessages: llmMessages
-      });
-    }
+      // 3. Prepend system prompt if configured
+      if (systemPrompt.trim() !== "") {
+        llmMessages.unshift({ role: "system", content: systemPrompt });
+      }
 
-    // 3. Prepend system prompt if configured
-    if (systemPrompt.trim() !== "") {
-      llmMessages.unshift({ role: "system", content: systemPrompt });
-    }
-
-    try {
-      const response = await api.llmChat(
-        provider,
-        baseURL,
-        apiKey,
-        modelName,
-        llmMessages,
-        temp,
-        maxT
-      );
-
-      // 4. Create standard JSON envelope
-      const outputEnvelope: NodeOutputEnvelope = {
-        value: response,
-        metadata: {
-          model: modelName,
+      try {
+        const response = await api.llmChat(
           provider,
-          temperature: temp,
-          maxTokens: maxT,
-          timestamp: new Date().toISOString()
-        },
-        data: {
-          reply: response
-        }
-      };
+          baseURL,
+          apiKey,
+          modelName,
+          llmMessages,
+          temp,
+          maxT
+        );
 
-      // 5. Update the LLM node with the response and rich envelope
-      updateNodeData(node.id, {
-        ...node.data,
-        lastResponse: response,
-        outputEnvelope
-      });
-    } catch (err) {
-      showToast(`LLM execution error: ${err}`, "error");
-      throw err;
-    }
+        // 4. Create standard JSON envelope
+        const outputEnvelope: NodeOutputEnvelope = {
+          value: response,
+          metadata: {
+            model: modelName,
+            provider,
+            temperature: temp,
+            maxTokens: maxT,
+            timestamp: new Date().toISOString()
+          },
+          data: {
+            reply: response
+          }
+        };
+
+        // 5. Update the LLM node with the response and rich envelope
+        updateNodeData(node.id, {
+          ...node.data,
+          lastResponse: response,
+          outputEnvelope
+        });
+      } catch (err) {
+        showToast(`LLM execution error: ${err}`, "error");
+        throw err;
+      }
     });
   }
 }
