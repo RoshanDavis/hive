@@ -281,9 +281,9 @@ function WorkspaceEditorInner({
               if (count > 1) {
                 deleteSelected();
               } else {
-                if (node.type === "jsonStorage") {
+                if (pluginRegistry.get(node.type || '')?.meta.category === 'storage') {
                   api.deleteStorageHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
-                    console.error("Failed to delete JSON storage history:", err);
+                    console.error("Failed to delete storage history:", err);
                   });
                 }
                 setNodes((nds) => nds.filter((n) => n.id !== node.id));
@@ -464,9 +464,9 @@ function WorkspaceEditorInner({
               icon: "🗑️",
               danger: true,
               onClick: () => {
-                if (singleNode.type === "jsonStorage") {
+                if (pluginRegistry.get(singleNode.type || '')?.meta.category === 'storage') {
                   api.deleteStorageHistory(workspacePath, activeSpaceId, singleNode.id).catch((err) => {
-                    console.error("Failed to delete JSON storage history:", err);
+                    console.error("Failed to delete storage history:", err);
                   });
                 }
                 setNodes((nds) => nds.filter((n) => n.id !== singleNode.id));

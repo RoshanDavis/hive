@@ -4,7 +4,6 @@ import { getUpstreamNodeData, getUpstreamNodeEnvelope } from "./utils";
 import type { NodeOutputEnvelope } from "./types";
 
 export * from "./types";
-export * from "./ChatExecutor";
 export { pluginRegistry };
 
 export const executeNode = async (
@@ -59,7 +58,8 @@ export const executeNode = async (
   if (shouldSyncStorage) {
     const storageEdges = context.edges.filter((e) => {
       const targetNode = context.nodes.find((n) => n.id === e.target);
-      return e.source === context.node.id && targetNode?.type === "jsonStorage";
+      const targetPlugin = pluginRegistry.get(targetNode?.type || '');
+      return e.source === context.node.id && targetPlugin?.meta.category === 'storage';
     });
 
     for (const edge of storageEdges) {

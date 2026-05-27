@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { type Node, type Edge, useReactFlow } from "@xyflow/react";
 import { api } from "@/services/api";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 import { storage } from "@/services/storage";
 import { type ShowToastFunc } from "@/types/workspace";
 
@@ -34,10 +35,12 @@ export function useWorkspaceClipboard({
     const selectedEdges = edges.filter((e) => e.selected);
     if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
 
+    // Clean up persisted data for storage nodes
     selectedNodes.forEach((node) => {
-      if (node.type === "jsonStorage") {
+      const plugin = pluginRegistry.get(node.type || '');
+      if (plugin?.meta.category === 'storage') {
         api.deleteStorageHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
-          console.error("Failed to delete JSON storage history:", err);
+          console.error("Failed to delete storage history:", err);
         });
       }
     });
@@ -84,20 +87,22 @@ export function useWorkspaceClipboard({
     const processedNodes = selectedNodes.map((node) => {
       if (withData) return node;
 
+      // Generic runtime data cleanup — strips execution artifacts
+      // while preserving user-configured fields like labels, prompts, etc.
       const cleanData = { ...node.data };
-      
-      if (node.type === "chat") {
-        cleanData.messages = [];
-      } else if (node.type === "ollama" || node.type === "llm") {
-        delete cleanData.lastResponse;
-      } else if (node.type === "output" || node.type === "outputNode") {
-        cleanData.outputContent = "";
-        delete cleanData.lastResponse;
-      } else if (node.type === "jsonStorage") {
-        cleanData.records = [];
-      } else if (node.type === "notify") {
-        delete cleanData.lastResponse;
-      }
+      delete cleanData.lastResponse;
+      delete cleanData.outputEnvelope;
+      delete cleanData.lastInputMessages;
+      delete cleanData.lastInputText;
+      delete cleanData.lastInputSender;
+      delete cleanData.lastInputEnvelope;
+      delete cleanData.status;
+      delete cleanData.error;
+
+      // Clear accumulator fields that store runtime content
+      if (Array.isArray(cleanData.messages)) cleanData.messages = [];
+      if (Array.isArray(cleanData.records)) cleanData.records = [];
+      if (typeof cleanData.outputContent === "string") cleanData.outputContent = "";
 
       return {
         ...node,
@@ -163,7 +168,7 @@ export function useWorkspaceClipboard({
       }
 
       const newNodes = clipboardNodes.map((node) => {
-        const nodeType = node.type === "output" ? "outputNode" : (node.type || "unknown");
+        const nodeType = node.type || "unknown";
         const newId = `${nodeType}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
         idMap.set(node.id, newId);
 

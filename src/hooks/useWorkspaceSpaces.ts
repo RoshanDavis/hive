@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect, useRef } from "react";
 import { useReactFlow, MarkerType, type Node, type Edge } from "@xyflow/react";
 import { api } from "@/services/api";
 import { getConnectionBehavior } from "@/engine/connectivity";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 import {
   type SpaceEntry,
   type SpaceData,
@@ -69,16 +70,17 @@ export function useWorkspaceSpaces({
 
       const loadedNodes: Node[] = data.nodes.map((n) => ({
         id: n.id,
-        type: n.type === "output" ? "outputNode" : n.type,
+        type: n.type,
         position: n.position,
         data: n.data,
       }));
 
       const loadedEdges: Edge[] = data.edges.map((e) => {
-        // Backward compatibility: map empty targetHandle to "left" for JSON Storage nodes
+        // Backward compatibility: map empty targetHandle to "left" for storage nodes
         const targetNode = data.nodes.find((n) => n.id === e.target);
+        const targetPlugin = targetNode ? pluginRegistry.get(targetNode.type) : undefined;
         const targetHandle =
-          targetNode && targetNode.type === "jsonStorage" && !e.target_handle
+          targetPlugin?.meta.category === 'storage' && !e.target_handle
             ? "left"
             : e.target_handle || undefined;
 

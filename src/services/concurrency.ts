@@ -12,6 +12,21 @@ function matchesPattern(text: string, pattern: string): boolean {
   return regex.test(text);
 }
 
+/** Well-known pool names that the governor manages */
+type ConcurrencyPool = "local" | "cloud" | "general";
+
+/**
+ * Resolves a raw pool type string to a canonical pool name.
+ * Legacy node type names (e.g. "ollama", "chat") are mapped to their
+ * correct pool for backward compatibility.
+ */
+function resolvePool(poolType: string): ConcurrencyPool {
+  const lower = poolType.toLowerCase();
+  if (lower === "local" || lower === "ollama") return "local";
+  if (lower === "cloud" || lower === "llm") return "cloud";
+  return "general";
+}
+
 class ConcurrencyGovernor {
   // Map of active execution counts and waiting task resolves per logical execution pool
   private semaphores = new Map<string, { active: number; queue: (() => void)[] }>();
@@ -44,26 +59,9 @@ class ConcurrencyGovernor {
    * Enqueues and executes a task, guaranteeing it respects the dynamic concurrency limit for the specified execution pool.
    */
   async enqueue<T>(poolType: string, task: () => Promise<T>): Promise<T> {
-    // Resolve legacy node-type calls to new pools for robust backward compatibility
-    let resolvedPool = poolType.toLowerCase();
-    if (resolvedPool === "ollama") {
-      resolvedPool = "local";
-    } else if (resolvedPool === "llm") {
-      resolvedPool = "cloud"; // LLM nodes now call with resolved local/cloud pool, but default to cloud for legacy
-    } else if (
-      resolvedPool === "chat" ||
-      resolvedPool === "notify" ||
-      resolvedPool === "output" ||
-      resolvedPool === "trigger" ||
-      resolvedPool === "jsonstorage"
-    ) {
-      resolvedPool = "general";
-    }
-
+    const resolvedPool = resolvePool(poolType);
     const settings = storage.getConcurrencySettings();
-    const config = (resolvedPool === "local" || resolvedPool === "cloud" || resolvedPool === "general")
-      ? settings[resolvedPool]
-      : { enabled: false, limit: 2 };
+    const config = settings[resolvedPool] || { enabled: false, limit: 2 };
 
     if (!config.enabled) {
       // Concurrency limits disabled: execute immediately in parallel
@@ -105,26 +103,14 @@ class ConcurrencyGovernor {
    * Helper to check the current queue length for a given pool type.
    */
   getQueueLength(poolType: string): number {
-    let resolvedPool = poolType.toLowerCase();
-    if (resolvedPool === "ollama") resolvedPool = "local";
-    else if (resolvedPool === "llm") resolvedPool = "cloud";
-    else if (["chat", "notify", "output", "trigger", "jsonstorage"].includes(resolvedPool)) {
-      resolvedPool = "general";
-    }
-    return this.semaphores.get(resolvedPool)?.queue.length || 0;
+    return this.semaphores.get(resolvePool(poolType))?.queue.length || 0;
   }
 
   /**
    * Helper to check the active count for a given pool type.
    */
   getActiveCount(poolType: string): number {
-    let resolvedPool = poolType.toLowerCase();
-    if (resolvedPool === "ollama") resolvedPool = "local";
-    else if (resolvedPool === "llm") resolvedPool = "cloud";
-    else if (["chat", "notify", "output", "trigger", "jsonstorage"].includes(resolvedPool)) {
-      resolvedPool = "general";
-    }
-    return this.semaphores.get(resolvedPool)?.active || 0;
+    return this.semaphores.get(resolvePool(poolType))?.active || 0;
   }
 }
 

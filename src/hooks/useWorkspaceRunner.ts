@@ -1,6 +1,7 @@
 import { useCallback, useState, useRef } from "react";
 import { type Node, type Edge } from "@xyflow/react";
 import { executeNode } from "@/engine";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 import { type ShowToastFunc } from "@/types/workspace";
 
 // Helper to find all reachable downstream nodes on the active workflow execution path
@@ -134,7 +135,7 @@ export function useWorkspaceRunner({
 
       const hasTriggerStart = startNodeIds.some((sid) => {
         const n = nodes.find((node) => node.id === sid);
-        return n?.type === "trigger";
+        return n?.type && !pluginRegistry.get(n.type)?.executor;
       });
       const isFreshRun = hasTriggerStart || !!chatInput;
 
@@ -172,8 +173,9 @@ export function useWorkspaceRunner({
           console.log(`[RUNWORKFLOW] localUpdateNodeData: ${nodeId} (${oldNode.type}) - status change: ${oldNode.data.status} -> ${data.status}`);
           currentNodes[index] = { ...currentNodes[index], data: { ...data } };
 
-          // Mirror Chat node status updates onto connected JSON storage node (ignoring "waiting")
-          if (oldNode.type === "chat" && data.status !== oldNode.data.status) {
+          // Mirror status updates onto connected storage nodes for pause-capable nodes
+          const nodePlugin = pluginRegistry.get(oldNode.type || '');
+          if (nodePlugin?.canPauseWorkflow && data.status !== oldNode.data.status) {
             const storageEdge = edges.find(
               (e) => e.source === nodeId && e.sourceHandle === "storage"
             );
@@ -240,7 +242,7 @@ export function useWorkspaceRunner({
         // Clear executed node history if starting from a fresh Trigger node
         const hasTriggerStart = startNodeIds.some((sid) => {
           const n = currentNodes.find((node) => node.id === sid);
-          return n?.type === "trigger";
+          return n?.type && !pluginRegistry.get(n.type)?.executor;
         });
         if (hasTriggerStart) {
           executedNodeIds.clear();
@@ -272,10 +274,11 @@ export function useWorkspaceRunner({
           console.log(`[RUNWORKFLOW] Loop iteration. currentId: ${currentId}, type: ${currentNode?.type}, isVisited: ${isVisited}, queue:`, [...queue]);
           if (!currentNode) continue;
 
-          // Normally skip visited nodes, but allow Chat nodes to be executed a second time as a downstream receiver.
+          // Normally skip visited nodes, but allow pause-capable nodes (like Chat) to execute again as downstream receivers.
           if (isVisited) {
-            if (currentNode.type === "chat") {
-              console.log(`[RUNWORKFLOW] Allowing visited Chat node ${currentId} to execute again as downstream receiver.`);
+            const nodePlugin = pluginRegistry.get(currentNode.type || '');
+            if (nodePlugin?.canPauseWorkflow) {
+              console.log(`[RUNWORKFLOW] Allowing visited ${currentNode.type} node ${currentId} to execute again as downstream receiver.`);
             } else {
               console.log(`[RUNWORKFLOW] Skipping already visited node: ${currentId}`);
               continue;
@@ -290,11 +293,11 @@ export function useWorkspaceRunner({
           // Introduce a short visual delay (e.g., 600ms)
           await new Promise<void>((resolve) => setTimeout(resolve, 600));
 
-          // Execute the current node
-          const isStartingChatNode =
-            updatedNode.type === "chat" && startNodeIds.includes(updatedNode.id) && !isVisited;
+          const postExecNodePlugin = pluginRegistry.get(updatedNode.type || '');
+          const isStartingPauseNode =
+            postExecNodePlugin?.canPauseWorkflow && startNodeIds.includes(updatedNode.id) && !isVisited;
 
-          console.log(`[RUNWORKFLOW] Executing node ${currentId} (${updatedNode.type}). isStartingChatNode: ${isStartingChatNode}`);
+          console.log(`[RUNWORKFLOW] Executing node ${currentId} (${updatedNode.type}). isStartingPauseNode: ${isStartingPauseNode}`);
 
           try {
             await executeNode(updatedNode.type || "default", {
@@ -303,7 +306,7 @@ export function useWorkspaceRunner({
               edges,
               updateNodeData: localUpdateNodeData,
               showToast,
-              chatInput: isStartingChatNode ? chatInput : undefined,
+              chatInput: isStartingPauseNode ? chatInput : undefined,
               visited,
             });
 
@@ -311,8 +314,8 @@ export function useWorkspaceRunner({
             const postExecNode = currentNodes.find((n) => n.id === currentId) || updatedNode;
 
             // Decide propagation downstream
-            // If the node is a chat node and is NOT a starting node, pause execution downstream
-            if (postExecNode.type === "chat" && !isStartingChatNode) {
+            // If the node can pause workflow and is NOT a starting node, pause execution downstream
+            if (postExecNodePlugin?.canPauseWorkflow && !isStartingPauseNode) {
               const isReturnPath =
                 isVisited ||
                 edges.some(
@@ -343,7 +346,7 @@ export function useWorkspaceRunner({
                   (e.source === currentId && e.data?.edgeType === "bi-directional") ||
                   (e.target === currentId && e.data?.edgeType === "bi-directional")
               );
-              if (postExecNode.type === "chat" && hasBiDirectionalEdge) {
+              if (postExecNodePlugin?.canPauseWorkflow && hasBiDirectionalEdge) {
                 console.log(`[RUNWORKFLOW] Starting Chat node ${currentId} has bi-directional edge. Setting to pending.`);
                 localUpdateNodeData(currentId, { ...postExecNode.data, status: "pending" });
               } else {
@@ -373,7 +376,9 @@ export function useWorkspaceRunner({
               // Exclude connections to/from jsonStorage nodes
               const srcNode = currentNodes.find((n) => n.id === e.source);
               const tgtNode = currentNodes.find((n) => n.id === e.target);
-              if (srcNode?.type === "jsonStorage" || tgtNode?.type === "jsonStorage") return false;
+              const srcPlugin = pluginRegistry.get(srcNode?.type || '');
+              const tgtPlugin = pluginRegistry.get(tgtNode?.type || '');
+              if (srcPlugin?.meta.category === 'storage' || tgtPlugin?.meta.category === 'storage') return false;
 
               // Propagate if normal forward edge OR bi-directional edge from target back to source
               return (
@@ -449,7 +454,10 @@ export function useWorkspaceRunner({
 
   const executeWorkflow = useCallback(
     async (triggerNodeId?: string) => {
-      let triggerNodes = nodes.filter((n) => n.type === "trigger");
+      let triggerNodes = nodes.filter((n) => {
+        const plugin = pluginRegistry.get(n.type || '');
+        return plugin && !plugin.executor;
+      });
       if (triggerNodeId && typeof triggerNodeId === "string") {
         triggerNodes = triggerNodes.filter((n) => n.id === triggerNodeId);
       }
