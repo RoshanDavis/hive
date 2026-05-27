@@ -158,6 +158,7 @@ function WorkspaceEditorInner({
     setNodes,
     handleUpdateNodeData,
     showToast,
+    workspacePath,
   });
 
   // ─── Connection handling ───────────────────────────────────
@@ -646,6 +647,7 @@ function WorkspaceEditorInner({
       {/* Right — Inspector Panel */}
       <InspectorPanel
         workspaceName={_workspaceName}
+        workspacePath={workspacePath}
         selectedNode={currentSelectedNode}
         onAddNode={handleAddNode}
         onUpdateNodeData={handleUpdateNodeData}
@@ -681,6 +683,7 @@ function WorkspaceEditorInner({
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         showToast={showToast}
+        workspacePath={workspacePath}
       />
 
       {/* Custom 100% Opaque Floating Ghost Card (Bypasses browser transparency limitations) */}

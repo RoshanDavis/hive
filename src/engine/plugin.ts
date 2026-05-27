@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { NodeExecutor, NodeOutputEnvelope } from "./types";
+import type { CredentialSchema } from "@/types/credentialTypes";
 
 export interface HandleConfig {
   id?: string;
@@ -50,4 +51,7 @@ export interface NodePlugin {
 
   /** Backward-compatible type aliases */
   aliases?: string[];
+
+  /** Credential shapes this node type can consume. The picker filters by these. */
+  credentialSchemas?: CredentialSchema[];
 }

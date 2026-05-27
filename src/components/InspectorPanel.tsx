@@ -7,6 +7,7 @@ import { storage } from "@/services/storage";
 
 interface InspectorPanelProps {
   workspaceName: string;
+  workspacePath: string;
   selectedNode: Node | null;
   onAddNode: (definition: NodeDefinition) => void;
   onUpdateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
@@ -26,6 +27,7 @@ interface InspectorPanelProps {
 
 export default function InspectorPanel({
   workspaceName,
+  workspacePath,
   selectedNode,
   onAddNode,
   onUpdateNodeData,
@@ -183,6 +185,7 @@ export default function InspectorPanel({
                     onChatSend={onChatSend}
                     nodes={nodes}
                     edges={edges}
+                    workspacePath={workspacePath}
                   />
                 );
               }

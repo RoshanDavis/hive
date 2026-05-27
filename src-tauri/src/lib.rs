@@ -1,5 +1,6 @@
 pub mod models;
 pub mod utils;
+pub mod vault;
 pub mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -24,6 +25,12 @@ pub fn run() {
             commands::delete_storage_history,
             commands::ollama_chat,
             commands::llm_chat,
+            commands::credential_list,
+            commands::credential_add,
+            commands::credential_update,
+            commands::credential_remove,
+            commands::credential_transfer,
+            commands::credential_resolve,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

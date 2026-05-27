@@ -74,6 +74,7 @@ interface UseWorkspaceRunnerParams {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   handleUpdateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   showToast: ShowToastFunc;
+  workspacePath: string;
 }
 
 export function useWorkspaceRunner({
@@ -82,6 +83,7 @@ export function useWorkspaceRunner({
   setNodes,
   handleUpdateNodeData,
   showToast,
+  workspacePath,
 }: UseWorkspaceRunnerParams) {
   const [runningStartNodeIds, setRunningStartNodeIds] = useState<Set<string>>(new Set<string>());
   const successTimeoutsRef = useRef<Map<string, number>>(new Map());
@@ -308,6 +310,7 @@ export function useWorkspaceRunner({
               showToast,
               chatInput: isStartingPauseNode ? chatInput : undefined,
               visited,
+              workspacePath,
             });
 
             // Re-fetch the node from currentNodes to ensure we preserve any data updates made during executeNode
@@ -449,7 +452,7 @@ export function useWorkspaceRunner({
         });
       }
     },
-    [nodes, edges, setNodes, showToast, handleUpdateNodeData, setRunningStartNodeIds]
+    [nodes, edges, setNodes, showToast, handleUpdateNodeData, setRunningStartNodeIds, workspacePath]
   );
 
   const executeWorkflow = useCallback(

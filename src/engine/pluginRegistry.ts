@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { NodePlugin } from "./plugin";
 import type { NodeExecutor } from "./types";
 import type { NodeDefinition } from "@/nodes/types";
+import type { CredentialSchema } from "@/types/credentialTypes";
 
 class PluginRegistry {
   private plugins = new Map<string, NodePlugin>();
@@ -66,6 +67,22 @@ class PluginRegistry {
       map[key] = plugin.component || fallbackComponent;
     }
     return map;
+  }
+
+  /** Collect all credential schemas across all registered plugins (deduped by type). */
+  getCredentialSchemas(): CredentialSchema[] {
+    const byType = new Map<string, CredentialSchema>();
+    for (const plugin of this.getAll()) {
+      for (const schema of plugin.credentialSchemas || []) {
+        byType.set(schema.type, schema);
+      }
+    }
+    return Array.from(byType.values());
+  }
+
+  /** Credential schemas declared by a specific node type. */
+  getCredentialSchemasForType(nodeType: string): CredentialSchema[] {
+    return this.get(nodeType)?.credentialSchemas || [];
   }
 }
 

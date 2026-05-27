@@ -9,6 +9,52 @@ use crate::utils::{
     cleanup_unused_directories, hive_dir, init_hive_structure, now_iso, read_workspaces,
     write_workspaces, write_atomic,
 };
+use crate::vault::{
+    get_or_create_master_key, global_vault_path, local_vault_path, CredentialMeta,
+    CredentialVault,
+};
+
+// ─── Credential vault helpers ────────────────────────────────
+
+fn make_global_vault(app: &tauri::AppHandle) -> Result<CredentialVault, String> {
+    let key = get_or_create_master_key()?;
+    let path = global_vault_path(app)?;
+    Ok(CredentialVault::new(path, "global", key))
+}
+
+fn make_local_vault(workspace_path: &str) -> Result<CredentialVault, String> {
+    let key = get_or_create_master_key()?;
+    Ok(CredentialVault::new(
+        local_vault_path(workspace_path),
+        "local",
+        key,
+    ))
+}
+
+fn resolve_credential_values(
+    app: &tauri::AppHandle,
+    credential_id: &str,
+    scope_hint: Option<&str>,
+    workspace_path: Option<&str>,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let global = make_global_vault(app)?;
+    let local = workspace_path.map(make_local_vault).transpose()?;
+
+    let try_local = |v: &Option<CredentialVault>| -> Result<Option<_>, String> {
+        match v {
+            Some(vault) => vault.resolve(credential_id),
+            None => Ok(None),
+        }
+    };
+
+    let resolved = match scope_hint {
+        Some("global") => global.resolve(credential_id)?.or(try_local(&local)?),
+        Some("local") => try_local(&local)?.or(global.resolve(credential_id)?),
+        _ => try_local(&local)?.or(global.resolve(credential_id)?),
+    };
+
+    resolved.ok_or_else(|| format!("Credential not found: {}", credential_id))
+}
 
 #[tauri::command]
 pub fn get_workspaces(app: tauri::AppHandle) -> Result<Vec<Workspace>, String> {
@@ -432,16 +478,45 @@ pub async fn ollama_chat(
 
 #[tauri::command]
 pub async fn llm_chat(
+    app: tauri::AppHandle,
     provider: String,
     base_url: Option<String>,
     api_key: Option<String>,
+    credential_id: Option<String>,
+    credential_scope: Option<String>,
+    workspace_path: Option<String>,
     model_name: String,
     messages: Vec<OllamaMessage>,
     temperature: f64,
     max_tokens: u32,
 ) -> Result<String, String> {
+    // Rust-side credential resolution: if a credentialId is provided, look it up
+    // in the appropriate vault and override base_url/api_key from the stored values.
+    // The plaintext secret never crosses back into the renderer.
+    let (api_key, base_url) = if let Some(id) = credential_id.as_deref() {
+        let values = resolve_credential_values(
+            &app,
+            id,
+            credential_scope.as_deref(),
+            workspace_path.as_deref(),
+        )?;
+        let resolved_key = values
+            .get("apiKey")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or(api_key);
+        let resolved_url = values
+            .get("baseURL")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or(base_url);
+        (resolved_key, resolved_url)
+    } else {
+        (api_key, base_url)
+    };
+
     let provider_lower = provider.to_lowercase();
-    
+
     if provider_lower == "ollama" {
         let url = base_url.unwrap_or_else(|| "http://localhost:11434".to_string());
         ollama_chat(url, model_name, messages, temperature, max_tokens).await
@@ -565,4 +640,138 @@ pub async fn llm_chat(
     } else {
         Err(format!("Unsupported provider: {}", provider))
     }
+}
+
+// ─── Credential vault IPC ────────────────────────────────────
+
+#[tauri::command]
+pub fn credential_list(
+    app: tauri::AppHandle,
+    workspace_path: Option<String>,
+) -> Result<Vec<CredentialMeta>, String> {
+    let global = make_global_vault(&app)?;
+    let mut metas = global.list_meta()?;
+    if let Some(wp) = workspace_path {
+        let local = make_local_vault(&wp)?;
+        metas.extend(local.list_meta()?);
+    }
+    Ok(metas)
+}
+
+#[tauri::command]
+pub fn credential_add(
+    app: tauri::AppHandle,
+    scope: String,
+    workspace_path: Option<String>,
+    name: String,
+    schema_type: String,
+    provider: String,
+    values: serde_json::Map<String, serde_json::Value>,
+) -> Result<CredentialMeta, String> {
+    let vault = match scope.as_str() {
+        "global" => make_global_vault(&app)?,
+        "local" => {
+            let wp = workspace_path
+                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
+            make_local_vault(&wp)?
+        }
+        other => return Err(format!("Unknown credential scope: {}", other)),
+    };
+    vault.add(name, schema_type, provider, values)
+}
+
+#[tauri::command]
+pub fn credential_update(
+    app: tauri::AppHandle,
+    scope: String,
+    workspace_path: Option<String>,
+    id: String,
+    name: Option<String>,
+    values: Option<serde_json::Map<String, serde_json::Value>>,
+) -> Result<CredentialMeta, String> {
+    let vault = match scope.as_str() {
+        "global" => make_global_vault(&app)?,
+        "local" => {
+            let wp = workspace_path
+                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
+            make_local_vault(&wp)?
+        }
+        other => return Err(format!("Unknown credential scope: {}", other)),
+    };
+    vault.update(&id, name, values)
+}
+
+#[tauri::command]
+pub fn credential_remove(
+    app: tauri::AppHandle,
+    scope: String,
+    workspace_path: Option<String>,
+    id: String,
+) -> Result<(), String> {
+    let vault = match scope.as_str() {
+        "global" => make_global_vault(&app)?,
+        "local" => {
+            let wp = workspace_path
+                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
+            make_local_vault(&wp)?
+        }
+        other => return Err(format!("Unknown credential scope: {}", other)),
+    };
+    vault.remove(&id)
+}
+
+#[tauri::command]
+pub fn credential_transfer(
+    app: tauri::AppHandle,
+    id: String,
+    from_scope: String,
+    to_scope: String,
+    workspace_path: Option<String>,
+) -> Result<CredentialMeta, String> {
+    if from_scope == to_scope {
+        return Err("Source and destination scopes are the same".to_string());
+    }
+    let source = match from_scope.as_str() {
+        "global" => make_global_vault(&app)?,
+        "local" => {
+            let wp = workspace_path
+                .clone()
+                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
+            make_local_vault(&wp)?
+        }
+        other => return Err(format!("Unknown source scope: {}", other)),
+    };
+    let dest = match to_scope.as_str() {
+        "global" => make_global_vault(&app)?,
+        "local" => {
+            let wp = workspace_path
+                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
+            make_local_vault(&wp)?
+        }
+        other => return Err(format!("Unknown destination scope: {}", other)),
+    };
+    let entry = source
+        .take_entry(&id)?
+        .ok_or_else(|| format!("Credential not found in {} vault: {}", from_scope, id))?;
+    let meta = CredentialMeta {
+        id: entry.id.clone(),
+        name: entry.name.clone(),
+        schema_type: entry.schema_type.clone(),
+        provider: entry.provider.clone(),
+        scope: to_scope.clone(),
+        created_at: entry.created_at.clone(),
+        updated_at: entry.updated_at.clone(),
+    };
+    dest.insert_entry(entry)?;
+    Ok(meta)
+}
+
+#[tauri::command]
+pub fn credential_resolve(
+    app: tauri::AppHandle,
+    id: String,
+    scope: Option<String>,
+    workspace_path: Option<String>,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    resolve_credential_values(&app, &id, scope.as_deref(), workspace_path.as_deref())
 }

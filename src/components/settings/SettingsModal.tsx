@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { storage, type ConcurrencySettings } from "@/services/storage";
+import CredentialManager from "./CredentialManager";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   showToast: (msg: string, type: "success" | "error" | "info") => void;
+  /** When provided, Settings also shows workspace-scoped credentials. Omitted on the landing page (global only). */
+  workspacePath?: string;
 }
 
-export default function SettingsModal({ isOpen, onClose, showToast }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, showToast, workspacePath }: SettingsModalProps) {
   if (!isOpen) return null;
 
   // Concurrency & Resource Pool State
@@ -93,7 +96,10 @@ export default function SettingsModal({ isOpen, onClose, showToast }: SettingsMo
 
         {/* Scrollable Settings Panel */}
         <div className="flex-1 overflow-y-auto pr-1 py-4 flex flex-col gap-6 text-left select-none scrollbar-thin">
-          
+
+          {/* Section: Credentials */}
+          <CredentialManager workspacePath={workspacePath} showToast={showToast} />
+
           {/* Section: Concurrency Pools */}
           <div className="flex flex-col gap-4">
             {/* Collapsible Section Header */}

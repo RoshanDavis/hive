@@ -9,4 +9,5 @@ export interface InspectorProps {
   onChatSend?: (nodeId: string, text: string) => void;
   nodes?: Node[];
   edges?: Edge[];
+  workspacePath: string;
 }

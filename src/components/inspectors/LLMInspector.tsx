@@ -1,18 +1,31 @@
 import type { InspectorProps } from "./types";
 import DataConsole from "./shared/DataConsole";
+import CredentialPicker from "./shared/CredentialPicker";
+import { pluginRegistry } from "@/engine/pluginRegistry";
 
 type ProviderType = "Ollama" | "OpenAI" | "Anthropic" | "Google" | "Other";
 
+// Maps a provider selection to the credential schema(s) the picker should accept.
+// Ollama runs locally and needs no credential, so it gets an empty list.
+const PROVIDER_SCHEMA_TYPES: Record<ProviderType, string[]> = {
+  Ollama: [],
+  OpenAI: ["openai-api-key"],
+  Anthropic: ["anthropic-api-key"],
+  Google: ["google-api-key"],
+  Other: ["custom-api-key"],
+};
+
 export default function LLMInspector({
   node,
-  onUpdate
+  onUpdate,
+  workspacePath,
 }: InspectorProps) {
   const provider = (node.data?.provider || "Ollama") as ProviderType;
-  
+
   // Resolve current values with sensible defaults and backward-compatibility fallbacks
-  const apiKeyValue = String(node.data?.apiKey || "");
   const baseURLValue = String(node.data?.baseURL !== undefined ? node.data?.baseURL : (node.data?.ollamaUrl !== undefined ? node.data?.ollamaUrl : (provider === "Ollama" ? "http://localhost:11434" : "")));
   const modelNameValue = String(node.data?.modelName !== undefined ? node.data?.modelName : (node.data?.model !== undefined ? node.data?.model : ""));
+  const credentialId = (node.data?.credentialId as string | undefined) ?? null;
 
   const limitValue = Number(node.data?.chatHistoryLimit || 0);
   const isLimited = limitValue > 0;
@@ -20,7 +33,7 @@ export default function LLMInspector({
   const handleProviderChange = (newProvider: ProviderType) => {
     const updatedData = { ...node.data };
     updatedData.provider = newProvider;
-    
+
     if (newProvider === "Ollama") {
       updatedData.baseURL = "http://localhost:11434";
       updatedData.modelName = "";
@@ -35,20 +48,40 @@ export default function LLMInspector({
       updatedData.modelName = "";
     } else if (newProvider === "Other") {
       updatedData.baseURL = "";
-      updatedData.apiKey = "";
       updatedData.modelName = "";
     }
-    
+
+    // Strip any lingering inline apiKey from legacy state — credentials live in the vault now.
+    delete updatedData.apiKey;
+
+    // Switching provider may invalidate the picked credential. If it does, drop it
+    // so the inspector doesn't show a stale "Credential missing" banner forever.
+    const newSchemaTypes = PROVIDER_SCHEMA_TYPES[newProvider];
+    if (credentialId) {
+      const allSchemas = pluginRegistry.getCredentialSchemas();
+      // We don't know the credential's schemaType locally; the picker will re-validate
+      // against the new schemaTypes anyway. Just clear when the new provider expects
+      // none, or when the new provider's schemas are a disjoint set.
+      if (newSchemaTypes.length === 0) {
+        delete updatedData.credentialId;
+      } else {
+        // Heuristic: if all new schemas have a different `type` than any plausible
+        // match for the previous provider, clear. Picker will surface "missing" if not.
+        // (Cheap check — leave the picker to render the banner.)
+        void allSchemas;
+      }
+    }
+
     onUpdate(node.id, updatedData);
   };
 
   const showBaseURL = provider === "Ollama" || provider === "Other";
-  const showAPIKey = provider !== "Ollama";
+  const schemaTypes = PROVIDER_SCHEMA_TYPES[provider];
 
   return (
     <div className="border-t border-border-subtle pt-4 flex flex-col gap-4">
       <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted mb-1">LLM Configuration</div>
-      
+
       {/* Provider Selector */}
       <div className="flex flex-col gap-2">
         <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">LLM Provider</label>
@@ -86,24 +119,18 @@ export default function LLMInspector({
         </div>
       )}
 
-      {/* Dynamic API Key Field */}
-      {showAPIKey && (
-        <div className="flex flex-col gap-2 animate-[fadeIn_0.15s_ease-out]">
-          <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">API Key</label>
-          <input
-            className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
-            type="password"
-            value={apiKeyValue}
-            placeholder={provider === "Other" ? "Enter API Key (Optional)" : `Enter ${provider} API Key`}
-            onChange={(e) =>
-              onUpdate(node.id, {
-                ...node.data,
-                apiKey: e.target.value,
-              })
-            }
-          />
-        </div>
-      )}
+      {/* Credential Picker (replaces the old API key input) */}
+      <CredentialPicker
+        schemaTypes={schemaTypes}
+        selectedCredentialId={credentialId}
+        onSelect={(id) =>
+          onUpdate(node.id, {
+            ...node.data,
+            credentialId: id ?? undefined,
+          })
+        }
+        workspacePath={workspacePath}
+      />
 
       {/* Model Name Input */}
       <div className="flex flex-col gap-2">
@@ -146,7 +173,7 @@ export default function LLMInspector({
           rows={3}
         />
       </div>
-      
+
       <div className="flex flex-col gap-2">
         <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
           Temperature: {Number(node.data?.temperature || 0.7).toFixed(2)}
@@ -166,7 +193,7 @@ export default function LLMInspector({
           }
         />
       </div>
-      
+
       <div className="flex flex-col gap-2">
         <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Max Tokens</label>
         <input

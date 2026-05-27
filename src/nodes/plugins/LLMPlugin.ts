@@ -24,6 +24,45 @@ const LLMPlugin: NodePlugin = {
   inspector: LLMInspector,
   executor: new LLMExecutor(),
   aliases: ["ollama"],
+  credentialSchemas: [
+    {
+      type: "openai-api-key",
+      label: "OpenAI API Key",
+      provider: "OpenAI",
+      icon: "🤖",
+      fields: [
+        { key: "apiKey", label: "API Key", type: "password", required: true, placeholder: "sk-..." },
+      ],
+    },
+    {
+      type: "anthropic-api-key",
+      label: "Anthropic API Key",
+      provider: "Anthropic",
+      icon: "🧠",
+      fields: [
+        { key: "apiKey", label: "API Key", type: "password", required: true, placeholder: "sk-ant-..." },
+      ],
+    },
+    {
+      type: "google-api-key",
+      label: "Google (Gemini) API Key",
+      provider: "Google",
+      icon: "💎",
+      fields: [
+        { key: "apiKey", label: "API Key", type: "password", required: true, placeholder: "AIza..." },
+      ],
+    },
+    {
+      type: "custom-api-key",
+      label: "Custom OpenAI-Compatible",
+      provider: "Other",
+      icon: "🔧",
+      fields: [
+        { key: "baseURL", label: "Base URL", type: "url", required: true, placeholder: "https://api.yourprovider.com/v1" },
+        { key: "apiKey", label: "API Key", type: "password", required: false, placeholder: "Enter API key (optional)" },
+      ],
+    },
+  ],
   // Default handles (target-left, source-right)
   concurrencyPool: (_nodeData) => {
     // Resolved dynamically in LLMExecutor via concurrencyGovernor

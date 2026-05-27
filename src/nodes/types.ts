@@ -17,7 +17,10 @@ export interface LLMNodeData {
   label: string;
   provider?: "Ollama" | "OpenAI" | "Anthropic" | "Google" | "Other";
   baseURL?: string;
+  /** @deprecated Inline API keys are migrated to the credential vault. Kept only for backward-compat reads during migration. */
   apiKey?: string;
+  /** ID of a credential in the vault (global or local). Resolved Rust-side at execution time. */
+  credentialId?: string;
   modelName?: string;
 
   // Legacy Ollama-only fields for backward compatibility

@@ -82,7 +82,11 @@ export const api = {
     });
   },
 
-  // Polymorphic Generic LLM Inference
+  // Polymorphic Generic LLM Inference.
+  // Pass `credentialId` (and optionally `credentialScope` + `workspacePath`) to have
+  // Rust resolve the secret from the vault server-side. The plaintext key never
+  // crosses back into the renderer. The legacy `apiKey` parameter is honored only
+  // when no credentialId is provided.
   async llmChat(
     provider: string,
     baseURL: string,
@@ -90,12 +94,18 @@ export const api = {
     modelName: string,
     messages: ChatMessage[],
     temperature: number,
-    maxTokens: number
+    maxTokens: number,
+    credentialId?: string | null,
+    credentialScope?: "global" | "local" | null,
+    workspacePath?: string | null
   ): Promise<string> {
     return invoke<string>("llm_chat", {
       provider,
       baseURL,
       apiKey,
+      credentialId: credentialId ?? null,
+      credentialScope: credentialScope ?? null,
+      workspacePath: workspacePath ?? null,
       modelName,
       messages,
       temperature,

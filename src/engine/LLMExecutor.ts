@@ -5,7 +5,7 @@ import { getUpstreamNodeData } from "./utils";
 
 export class LLMExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
-    const { node, nodes, edges, updateNodeData, showToast, visited } = context;
+    const { node, nodes, edges, updateNodeData, showToast, visited, workspacePath } = context;
 
     const provider = String(node.data?.provider || "Ollama");
     let defaultBaseURL = "";
@@ -16,7 +16,20 @@ export class LLMExecutor implements NodeExecutor {
 
     const baseURL = String(node.data?.baseURL !== undefined ? node.data?.baseURL : (node.data?.ollamaUrl !== undefined ? node.data?.ollamaUrl : defaultBaseURL));
     const modelName = String(node.data?.modelName !== undefined ? node.data?.modelName : (node.data?.model !== undefined ? node.data?.model : ""));
-    const apiKey = String(node.data?.apiKey || "");
+    // Credential resolution happens in Rust. We pass either the credentialId or
+    // the legacy inline apiKey (for not-yet-migrated nodes); never both meaningfully.
+    const credentialId = (node.data?.credentialId as string | undefined) ?? null;
+    const legacyApiKey = String(node.data?.apiKey || "");
+
+    // Providers that require a key but have neither a credentialId nor a legacy
+    // inline key should fail early with a clear, actionable error rather than
+    // surfacing a generic 401 from the remote API.
+    const needsKey = provider !== "Ollama";
+    if (needsKey && !credentialId && !legacyApiKey && provider !== "Other") {
+      throw new Error(
+        `No credential selected for ${provider}. Open the LLM inspector and pick or add one.`
+      );
+    }
 
     const systemPrompt = String(node.data?.systemPrompt || "");
     const temp = Number(node.data?.temperature || 0.7);
@@ -91,11 +104,14 @@ export class LLMExecutor implements NodeExecutor {
         const response = await api.llmChat(
           provider,
           baseURL,
-          apiKey,
+          legacyApiKey,
           modelName,
           llmMessages,
           temp,
-          maxT
+          maxT,
+          credentialId,
+          null,
+          workspacePath
         );
 
         // 4. Create standard JSON envelope

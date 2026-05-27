@@ -9,6 +9,8 @@ export interface ExecutionContext {
   chatInput?: string;
   executeNode?: (nodeType: string, context: ExecutionContext) => Promise<void>;
   visited?: Set<string>;
+  /** The workspace this execution belongs to. Needed for resolving local-scope credentials. */
+  workspacePath: string;
 }
 
 export interface NodeExecutor {

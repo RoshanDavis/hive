@@ -3,6 +3,7 @@ import { useReactFlow, MarkerType, type Node, type Edge } from "@xyflow/react";
 import { api } from "@/services/api";
 import { getConnectionBehavior } from "@/engine/connectivity";
 import { pluginRegistry } from "@/engine/pluginRegistry";
+import { migrateLegacyCredentials } from "@/services/migrateLegacyCredentials";
 import {
   type SpaceEntry,
   type SpaceData,
@@ -48,6 +49,22 @@ export function useWorkspaceSpaces({
         const config = await api.loadWorkspaceConfig(workspacePath);
         setSpaces(config.spaces);
         const spaceToLoad = config.active_space || config.spaces[0]?.id || "space_1";
+
+        // One-time migration of legacy inline LLM apiKey values into the
+        // workspace credential vault. Idempotent — safe to run on every load.
+        try {
+          const spaceIds = config.spaces.map((s) => s.id);
+          const result = await migrateLegacyCredentials(workspacePath, spaceIds);
+          if (result.migratedNodes > 0) {
+            showToast(
+              `Migrated ${result.migratedNodes} API key(s) into the credential vault`,
+              "success"
+            );
+          }
+        } catch (err) {
+          console.error("[CREDENTIAL MIGRATION] Failed:", err);
+        }
+
         setActiveSpaceId(spaceToLoad);
         await loadSpaceData(spaceToLoad);
       } catch (err) {
