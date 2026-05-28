@@ -1,6 +1,7 @@
 import type { NodePlugin } from "@/engine/plugin";
 import { LLMExecutor } from "@/engine/LLMExecutor";
 import { LLMInspector } from "@/components/inspectors";
+import LLMDefaultsEditor from "@/components/defaults/LLMDefaultsEditor";
 
 const LLMPlugin: NodePlugin = {
   type: "llm",
@@ -22,6 +23,7 @@ const LLMPlugin: NodePlugin = {
     chatHistoryLimit: 0,
   },
   inspector: LLMInspector,
+  defaultsEditor: LLMDefaultsEditor,
   executor: new LLMExecutor(),
   aliases: ["ollama"],
   credentialSchemas: [

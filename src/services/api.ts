@@ -14,6 +14,17 @@ export interface ChatMessage {
   sender?: string;
 }
 
+export interface ModelEntry {
+  name: string;
+  added_at: string;
+}
+
+export interface NodeDefaultsConfig {
+  version: number;
+  defaults: Record<string, Record<string, unknown>>;
+  models: Record<string, ModelEntry[]>;
+}
+
 // ─── API Client Service Layer ────────────────────────────────
 export const api = {
   // Workspaces Management
@@ -80,6 +91,23 @@ export const api = {
       temperature,
       maxTokens,
     });
+  },
+
+  // Node defaults (global + workspace)
+  async loadGlobalNodeDefaults(): Promise<NodeDefaultsConfig> {
+    return invoke<NodeDefaultsConfig>("load_global_node_defaults");
+  },
+
+  async saveGlobalNodeDefaults(config: NodeDefaultsConfig): Promise<void> {
+    return invoke<void>("save_global_node_defaults", { config });
+  },
+
+  async loadWorkspaceNodeDefaults(workspacePath: string): Promise<NodeDefaultsConfig> {
+    return invoke<NodeDefaultsConfig>("load_workspace_node_defaults", { workspacePath });
+  },
+
+  async saveWorkspaceNodeDefaults(workspacePath: string, config: NodeDefaultsConfig): Promise<void> {
+    return invoke<void>("save_workspace_node_defaults", { workspacePath, config });
   },
 
   // Polymorphic Generic LLM Inference.

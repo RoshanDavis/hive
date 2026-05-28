@@ -1,18 +1,12 @@
 import type { InspectorProps } from "./types";
 import DataConsole from "./shared/DataConsole";
 import CredentialPicker from "./shared/CredentialPicker";
-
-type ProviderType = "Ollama" | "OpenAI" | "Anthropic" | "Google" | "Other";
-
-// Maps a provider selection to the credential schema(s) the picker should accept.
-// Ollama runs locally and needs no credential, so it gets an empty list.
-const PROVIDER_SCHEMA_TYPES: Record<ProviderType, string[]> = {
-  Ollama: [],
-  OpenAI: ["openai-api-key"],
-  Anthropic: ["anthropic-api-key"],
-  Google: ["google-api-key"],
-  Other: ["custom-api-key"],
-};
+import ModelPicker from "./shared/ModelPicker";
+import {
+  PROVIDER_BASE_URL,
+  PROVIDER_SCHEMA_TYPES,
+  type ProviderType,
+} from "@/services/llmProviders";
 
 export default function LLMInspector({
   node,
@@ -32,23 +26,8 @@ export default function LLMInspector({
   const handleProviderChange = (newProvider: ProviderType) => {
     const updatedData = { ...node.data };
     updatedData.provider = newProvider;
-
-    if (newProvider === "Ollama") {
-      updatedData.baseURL = "http://localhost:11434";
-      updatedData.modelName = "";
-    } else if (newProvider === "OpenAI") {
-      updatedData.baseURL = "https://api.openai.com/v1";
-      updatedData.modelName = "";
-    } else if (newProvider === "Anthropic") {
-      updatedData.baseURL = "https://api.anthropic.com";
-      updatedData.modelName = "";
-    } else if (newProvider === "Google") {
-      updatedData.baseURL = "https://generativelanguage.googleapis.com/v1beta/openai";
-      updatedData.modelName = "";
-    } else if (newProvider === "Other") {
-      updatedData.baseURL = "";
-      updatedData.modelName = "";
-    }
+    updatedData.baseURL = PROVIDER_BASE_URL[newProvider];
+    updatedData.modelName = "";
 
     // Strip any lingering inline apiKey from legacy state — credentials live in the vault now.
     delete updatedData.apiKey;
@@ -120,30 +99,21 @@ export default function LLMInspector({
         workspacePath={workspacePath}
       />
 
-      {/* Model Name Input */}
-      <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model Name</label>
-        <input
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
-          type="text"
-          value={modelNameValue}
-          onChange={(e) =>
-            onUpdate(node.id, {
-              ...node.data,
-              modelName: e.target.value,
-              // Keep model synced for backwards compatibility
-              model: e.target.value,
-            })
-          }
-          placeholder={
-            provider === "Ollama" ? "e.g. llama3, mistral" :
-            provider === "OpenAI" ? "e.g. gpt-4o, gpt-3.5-turbo" :
-            provider === "Anthropic" ? "e.g. claude-3-5-sonnet-latest" :
-            provider === "Google" ? "e.g. gemini-1.5-flash" :
-            "Enter custom model identifier"
-          }
-        />
-      </div>
+      {/* Model picker — scoped dropdown (built-in / global / workspace) with inline add */}
+      <ModelPicker
+        provider={provider}
+        selectedModel={modelNameValue}
+        onSelect={(name) =>
+          onUpdate(node.id, {
+            ...node.data,
+            modelName: name,
+            // Keep model synced for backwards compatibility
+            model: name,
+          })
+        }
+        workspacePath={workspacePath}
+      />
+
 
       {/* Universal Parameters */}
       <div className="flex flex-col gap-2">

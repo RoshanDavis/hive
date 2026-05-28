@@ -38,6 +38,7 @@ import {
   type ContextMenuState,
 } from "@/types/workspace";
 import { useWorkspaceSpaces } from "@/hooks/useWorkspaceSpaces";
+import { NodeDefaultsProvider, useNodeDefaults } from "@/contexts/NodeDefaultsContext";
 import { useWorkspaceDragDrop } from "@/hooks/useWorkspaceDragDrop";
 import { useWorkspaceRunner } from "@/hooks/useWorkspaceRunner";
 
@@ -110,6 +111,9 @@ function WorkspaceEditorInner({
     setContextMenu,
   });
 
+  // ─── Node defaults context — merged global+workspace overrides ──
+  const { getMergedOverrides } = useNodeDefaults();
+
   // ─── Drag & Drop custom hook ───────────────────────────────
   const {
     activeDragNode,
@@ -120,6 +124,7 @@ function WorkspaceEditorInner({
   } = useWorkspaceDragDrop({
     setNodes,
     showToast,
+    getMergedOverrides,
   });
 
   // ─── Clipboard & Deletion Operations (Modular Custom Hook) ──
@@ -486,20 +491,23 @@ function WorkspaceEditorInner({
   );
 
   // ─── Add node from palette ─────────────────────────────────
+  // Layer overrides on top of plugin.defaultData:
+  //   plugin.defaultData ← globalDefaults[type] ← workspaceDefaults[type]
   const handleAddNode = useCallback(
     (definition: NodeDefinition) => {
       const id = `${definition.type}_${Date.now()}`;
       const offset = nodes.length * 40;
+      const overrides = getMergedOverrides(definition.type);
       const newNode: Node = {
         id,
         type: definition.type,
         position: { x: 200 + offset, y: 150 + offset },
-        data: { ...definition.defaultData },
+        data: { ...definition.defaultData, ...overrides },
       };
       setNodes((prev) => [...prev, newNode]);
       showToast(`Added ${definition.label} node`, "info");
     },
-    [nodes.length, setNodes, showToast]
+    [nodes.length, setNodes, showToast, getMergedOverrides]
   );
 
   // ─── Update edge type ──────────────────────────────────────
@@ -709,11 +717,13 @@ function WorkspaceEditorInner({
   );
 }
 
-// ─── Wrapper with ReactFlowProvider ─────────────────────────
+// ─── Wrapper with ReactFlowProvider + NodeDefaultsProvider ──────
 export default function WorkspaceEditor(props: WorkspaceEditorProps) {
   return (
-    <ReactFlowProvider>
-      <WorkspaceEditorInner {...props} />
-    </ReactFlowProvider>
+    <NodeDefaultsProvider workspacePath={props.workspacePath}>
+      <ReactFlowProvider>
+        <WorkspaceEditorInner {...props} />
+      </ReactFlowProvider>
+    </NodeDefaultsProvider>
   );
 }

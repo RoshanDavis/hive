@@ -9,6 +9,18 @@ export interface HandleConfig {
   style?: Record<string, unknown>;
 }
 
+/** Props passed to a plugin's defaults editor (rendered in the Nodes tab and SettingsModal). */
+export interface DefaultsEditorProps {
+  /** Current saved override values for this plugin (after merging plugin.defaultData). */
+  values: Record<string, unknown>;
+  /** Called on every field change. The values are the full override blob to persist. */
+  onUpdate: (next: Record<string, unknown>) => void;
+  /** Null on the landing-page Nodes tab (global scope); set inside a workspace. */
+  workspacePath: string | null;
+  /** Tells the editor whether it's editing global or workspace defaults. */
+  scope: "global" | "workspace";
+}
+
 export interface NodePlugin {
   /** Unique node type identifier */
   type: string;
@@ -30,6 +42,13 @@ export interface NodePlugin {
 
   /** Inspector panel component shown when the node is selected */
   inspector?: ComponentType<any>;
+
+  /**
+   * Optional lightweight editor for setting plugin defaults at global/workspace scope.
+   * Distinct from `inspector`: no Run/chat/credential UI. If omitted, AutoDefaultsEditor
+   * generates a field-by-field editor from `defaultData` keys.
+   */
+  defaultsEditor?: ComponentType<DefaultsEditorProps>;
 
   /** Executor that runs the node during workflow execution */
   executor?: NodeExecutor;

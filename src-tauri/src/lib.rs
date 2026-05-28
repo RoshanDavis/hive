@@ -31,6 +31,10 @@ pub fn run() {
             commands::credential_remove,
             commands::credential_transfer,
             commands::credential_resolve,
+            commands::load_global_node_defaults,
+            commands::save_global_node_defaults,
+            commands::load_workspace_node_defaults,
+            commands::save_workspace_node_defaults,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

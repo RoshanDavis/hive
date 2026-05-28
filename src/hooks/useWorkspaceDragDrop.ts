@@ -6,11 +6,14 @@ import { type ShowToastFunc } from "@/types/workspace";
 interface UseWorkspaceDragDropParams {
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   showToast: ShowToastFunc;
+  /** Returns the merged global+workspace overrides for a plugin type. */
+  getMergedOverrides?: (type: string) => Record<string, unknown>;
 }
 
 export function useWorkspaceDragDrop({
   setNodes,
   showToast,
+  getMergedOverrides,
 }: UseWorkspaceDragDropParams) {
   const [activeDragNode, setActiveDragNode] = useState<{
     type: string;
@@ -96,17 +99,18 @@ export function useWorkspaceDragDrop({
       if (!plugin) return;
 
       const id = `${type}_${Date.now()}`;
+      const overrides = getMergedOverrides ? getMergedOverrides(type) : {};
       const newNode: Node = {
         id,
         type,
         position,
-        data: { ...plugin.defaultData },
+        data: { ...plugin.defaultData, ...overrides },
       };
 
       setNodes((nds) => [...nds, newNode]);
       showToast(`Added ${plugin.meta.label} node`, "info");
     },
-    [reactFlowInstance, setNodes, showToast]
+    [reactFlowInstance, setNodes, showToast, getMergedOverrides]
   );
 
   return {

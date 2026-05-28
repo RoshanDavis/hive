@@ -2,12 +2,12 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::models::{
-    OllamaMessage, OllamaOptions, OllamaRequest, OllamaResponse, SpaceData, SpaceEntry,
-    Workspace, WorkspaceConfig,
+    NodeDefaultsConfig, OllamaMessage, OllamaOptions, OllamaRequest, OllamaResponse, SpaceData,
+    SpaceEntry, Workspace, WorkspaceConfig,
 };
 use crate::utils::{
-    cleanup_unused_directories, hive_dir, init_hive_structure, now_iso, read_workspaces,
-    write_workspaces, write_atomic,
+    cleanup_unused_directories, hive_dir, init_hive_structure, node_defaults_app_file, now_iso,
+    read_workspaces, write_workspaces, write_atomic,
 };
 use crate::vault::{
     get_or_create_master_key, global_vault_path, local_vault_path, CredentialMeta,
@@ -744,4 +744,61 @@ pub fn credential_resolve(
     workspace_path: Option<String>,
 ) -> Result<serde_json::Map<String, serde_json::Value>, String> {
     resolve_credential_values(&app, &id, scope.as_deref(), workspace_path.as_deref())
+}
+
+// ─── Node defaults IPC ────────────────────────────────────────
+
+fn read_node_defaults_file(path: &std::path::Path) -> Result<NodeDefaultsConfig, String> {
+    if !path.exists() {
+        return Ok(NodeDefaultsConfig::default());
+    }
+    let data = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read node defaults: {}", e))?;
+    serde_json::from_str(&data)
+        .map_err(|e| format!("Failed to parse node defaults: {}", e))
+}
+
+fn write_node_defaults_file(
+    path: &std::path::Path,
+    config: &NodeDefaultsConfig,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+    let data = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("Failed to serialize node defaults: {}", e))?;
+    write_atomic(path, data.as_bytes())
+}
+
+#[tauri::command]
+pub fn load_global_node_defaults(app: tauri::AppHandle) -> Result<NodeDefaultsConfig, String> {
+    let path = node_defaults_app_file(&app)?;
+    read_node_defaults_file(&path)
+}
+
+#[tauri::command]
+pub fn save_global_node_defaults(
+    app: tauri::AppHandle,
+    config: NodeDefaultsConfig,
+) -> Result<(), String> {
+    let path = node_defaults_app_file(&app)?;
+    write_node_defaults_file(&path, &config)
+}
+
+#[tauri::command]
+pub fn load_workspace_node_defaults(
+    workspace_path: String,
+) -> Result<NodeDefaultsConfig, String> {
+    let path = hive_dir(&workspace_path).join("node-defaults.json");
+    read_node_defaults_file(&path)
+}
+
+#[tauri::command]
+pub fn save_workspace_node_defaults(
+    workspace_path: String,
+    config: NodeDefaultsConfig,
+) -> Result<(), String> {
+    let path = hive_dir(&workspace_path).join("node-defaults.json");
+    write_node_defaults_file(&path, &config)
 }

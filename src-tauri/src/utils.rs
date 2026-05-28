@@ -61,6 +61,17 @@ pub fn write_workspaces(app: &tauri::AppHandle, workspaces: &[Workspace]) -> Res
     Ok(())
 }
 
+// ─── Node defaults file paths ─────────────────────────────────
+
+pub fn node_defaults_app_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    fs::create_dir_all(&app_data).map_err(|e| format!("Failed to create app data dir: {}", e))?;
+    Ok(app_data.join("node-defaults.json"))
+}
+
 // ─── Helper: get .hive path ─────────────────────────────────
 
 pub fn hive_dir(workspace_path: &str) -> PathBuf {

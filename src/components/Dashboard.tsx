@@ -4,6 +4,7 @@ import { ToastContainer } from "@/components/Toast";
 import { api, type Workspace } from "@/services/api";
 import { useToast } from "@/hooks/useToast";
 import { SettingsModal } from "@/components/settings";
+import NodesPage from "@/components/NodesPage";
 
 interface DashboardProps {
   onOpenWorkspace: (ws: Workspace) => void;
@@ -85,6 +86,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
 
   const navItems = [
     { icon: "🔲", label: "Dashboard" },
+    { icon: "🧩", label: "Nodes" },
   ];
 
   return (
@@ -121,6 +123,9 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
 
       {/* ─── Main Content ─── */}
       <main className="flex-1 flex flex-col relative w-full overflow-hidden">
+        {activeNav === 1 ? (
+          <NodesPage showToast={showToast} />
+        ) : (
         <div className="flex-1 flex flex-col p-4 sm:p-6 md:p-8 overflow-y-auto w-full">
           {/* Title / Hero */}
           <div className="text-center mb-10 mt-4 flex flex-col items-center select-none">
@@ -227,6 +232,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
             </>
           )}
         </div>
+        )}
       </main>
 
       {/* ─── Settings Modal ─── */}

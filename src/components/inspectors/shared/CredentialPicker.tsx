@@ -16,8 +16,12 @@ interface CredentialPickerProps {
   selectedCredentialId: string | null;
   /** Called when the user picks or clears a credential. */
   onSelect: (id: string | null) => void;
-  /** The workspace this picker lives in. Determines whether local credentials are visible / default scope when adding. */
-  workspacePath: string;
+  /**
+   * The workspace this picker lives in. Determines whether local credentials are
+   * visible / default scope when adding. Null in workspace-less contexts (e.g. the
+   * landing-page global node-defaults editor), where only global credentials apply.
+   */
+  workspacePath: string | null;
 }
 
 const SCOPE_LABEL: Record<CredentialScope, string> = {
@@ -46,7 +50,9 @@ export default function CredentialPicker({
     setLoading(true);
     setLoadError(null);
     try {
-      const list = await credentialService.list(workspacePath);
+      // Null workspacePath → backend returns global credentials only, which is
+      // exactly the safe subset for a workspace-less (global) context.
+      const list = await credentialService.list(workspacePath ?? undefined);
       setCredentials(list);
     } catch (err) {
       setLoadError(String(err));
@@ -182,7 +188,7 @@ export default function CredentialPicker({
 
 interface AddFormProps {
   acceptedSchemas: CredentialSchema[];
-  workspacePath: string;
+  workspacePath: string | null;
   onCancel: () => void;
   onCreated: (meta: CredentialMeta) => void;
 }
@@ -195,8 +201,9 @@ function AddCredentialMiniForm({
 }: AddFormProps) {
   const [schemaType, setSchemaType] = useState(acceptedSchemas[0]?.type ?? "");
   const [name, setName] = useState("");
-  // Workspace context defaults new credentials to local for privacy.
-  const [scope, setScope] = useState<CredentialScope>("local");
+  // Workspace context defaults new credentials to local for privacy. Without a
+  // workspace (global node-defaults context), only global credentials are valid.
+  const [scope, setScope] = useState<CredentialScope>(workspacePath ? "local" : "global");
   const [values, setValues] = useState<CredentialValues>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -234,7 +241,7 @@ function AddCredentialMiniForm({
         schema.type,
         schema.provider,
         values,
-        workspacePath
+        workspacePath ?? undefined
       );
       onCreated(meta);
     } catch (err) {
@@ -304,7 +311,7 @@ function AddCredentialMiniForm({
           value={scope}
           onChange={(e) => setScope(e.target.value as CredentialScope)}
         >
-          <option value="local">📁 This workspace only</option>
+          {workspacePath && <option value="local">📁 This workspace only</option>}
           <option value="global">🌐 All workspaces (global)</option>
         </select>
       </div>

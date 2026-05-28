@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { storage, type ConcurrencySettings } from "@/services/storage";
 import CredentialManager from "./CredentialManager";
+import NodeDefaultsPanel from "./NodeDefaultsPanel";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -99,6 +100,11 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
 
           {/* Section: Credentials */}
           <CredentialManager workspacePath={workspacePath} showToast={showToast} />
+
+          {/* Section: Node Defaults — workspace scope (landing page edits globals via Nodes tab) */}
+          {workspacePath && (
+            <NodeDefaultsPanel workspacePath={workspacePath} showToast={showToast} />
+          )}
 
           {/* Section: Concurrency Pools */}
           <div className="flex flex-col gap-4">

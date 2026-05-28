@@ -28,6 +28,35 @@ pub struct WorkspaceConfig {
     pub active_space: String,
 }
 
+// ─── Node defaults (global at app_data_dir, per-workspace at .hive) ─────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelEntry {
+    pub name: String,
+    pub added_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeDefaultsConfig {
+    pub version: u32,
+    /// Map of plugin type → partial node.data overrides.
+    #[serde(default)]
+    pub defaults: serde_json::Map<String, serde_json::Value>,
+    /// Map of provider (lowercased) → list of user-added model entries.
+    #[serde(default)]
+    pub models: std::collections::HashMap<String, Vec<ModelEntry>>,
+}
+
+impl Default for NodeDefaultsConfig {
+    fn default() -> Self {
+        NodeDefaultsConfig {
+            version: 1,
+            defaults: serde_json::Map::new(),
+            models: std::collections::HashMap::new(),
+        }
+    }
+}
+
 // ─── Space data (lives at .hive/spaces/space_<id>.json) ─────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
