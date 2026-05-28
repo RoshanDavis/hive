@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { WorkspaceConfig, SpaceData } from "@/types/workspace";
+import type { CustomNodeDefinition } from "@/types/customNodes";
 
 // ─── Tauri Return Models ─────────────────────────────────────
 export interface Workspace {
@@ -108,6 +109,45 @@ export const api = {
 
   async saveWorkspaceNodeDefaults(workspacePath: string, config: NodeDefaultsConfig): Promise<void> {
     return invoke<void>("save_workspace_node_defaults", { workspacePath, config });
+  },
+
+  // Custom nodes (global + workspace)
+  async listGlobalCustomNodes(): Promise<CustomNodeDefinition[]> {
+    return invoke<CustomNodeDefinition[]>("list_global_custom_nodes");
+  },
+
+  async listWorkspaceCustomNodes(workspacePath: string): Promise<CustomNodeDefinition[]> {
+    return invoke<CustomNodeDefinition[]>("list_workspace_custom_nodes", { workspacePath });
+  },
+
+  async saveGlobalCustomNode(def: CustomNodeDefinition): Promise<void> {
+    return invoke<void>("save_global_custom_node", { def });
+  },
+
+  async saveWorkspaceCustomNode(workspacePath: string, def: CustomNodeDefinition): Promise<void> {
+    return invoke<void>("save_workspace_custom_node", { workspacePath, def });
+  },
+
+  async deleteGlobalCustomNode(id: string): Promise<void> {
+    return invoke<void>("delete_global_custom_node", { id });
+  },
+
+  async deleteWorkspaceCustomNode(workspacePath: string, id: string): Promise<void> {
+    return invoke<void>("delete_workspace_custom_node", { workspacePath, id });
+  },
+
+  async customNodeTransfer(
+    id: string,
+    fromScope: "global" | "workspace",
+    toScope: "global" | "workspace",
+    workspacePath?: string | null
+  ): Promise<CustomNodeDefinition> {
+    return invoke<CustomNodeDefinition>("custom_node_transfer", {
+      id,
+      fromScope,
+      toScope,
+      workspacePath: workspacePath ?? null,
+    });
   },
 
   // Polymorphic Generic LLM Inference.

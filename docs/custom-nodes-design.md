@@ -1,16 +1,25 @@
 # Custom Nodes — Design Brief
 
-Status: **design only, not implemented.** This documents the recommended approach
-for letting users create custom node types in three tiers, scoped per-workspace
+Status: **Tier 1 implemented.** Tier 2 was folded into normal node development (see
+below — it needs no custom-node infrastructure). Tier 3 remains future work. This
+documents the approach for letting users create custom node types, scoped per-workspace
 with the option to promote to global.
 
 ## Goal
 
-Three tiers of custom nodes, each workspace-scoped with promote-to-global:
+Let users create custom node types, each workspace-scoped with promote-to-global. The
+original brief framed this as three tiers; in practice only two need dedicated
+infrastructure:
 
-1. **Presets/templates** — a saved configuration of an existing node type.
-2. **Configurable generic nodes** — built-in parameterized primitives (HTTP, etc.).
-3. **User-authored executors** — sandboxed user code.
+1. **Presets/templates** *(implemented)* — a saved configuration of an existing node
+   type. This is the whole custom-node system: a dynamic registry that synthesizes a
+   `NodePlugin` from an on-disk definition.
+2. ~~**Configurable generic nodes**~~ — *not a separate tier.* "Configurable generic
+   node" = a Tier-1 preset over a built-in primitive (HTTP, etc.). Shipping such a
+   primitive is ordinary node development; presets over it then work for free. See
+   [Tier 2](#tier-2--configurable-generic-nodes-not-a-separate-tier).
+3. **User-authored executors** *(future)* — sandboxed user code. The only tier that
+   needs genuinely new infrastructure.
 
 ## Relevant existing architecture (build on these — don't re-derive)
 
@@ -92,14 +101,24 @@ The synthesized plugin **reuses the base plugin's** `executor`, `inspector`,
 entries. Fastest authoring path: a "Save selected node as custom node" action that
 snapshots the node's current `data` as `presetData`.
 
-## Tier 2 — Configurable generic nodes
+## Tier 2 — Configurable generic nodes (not a separate tier)
 
-Really "Tier 1 over a richer set of primitives you author." Ship 3–5 generic
-built-in plugins — `httpRequest`, `promptTemplate`, `conditional`, `jsonTransform`,
-`delay` — as normal `NodePlugin`s with config-driven executors. A tier-2 custom node
-is just a preset over one of these. **Route any networked/secret primitive through a
-Rust command** (like `llm_chat`): CORS-free requests, vault `credentialId` injection,
-and an SSRF/allowlist chokepoint. Reuse the concurrency governor for pools.
+**This is not a phase of the custom-node effort.** A "configurable generic node" is
+just a Tier-1 preset over a built-in primitive. Since `synthesizePlugin`
+([src/services/customNodeLoader.ts](../src/services/customNodeLoader.ts)) reuses *any*
+base plugin's executor/inspector/handles generically, and `AutoDefaultsEditor`
+auto-generates the preset config form for any node without a custom `defaultsEditor`,
+the moment a new built-in primitive ships, presets over it work **for free** — no
+custom-node code changes.
+
+So the only remaining work is ordinary node development: author primitives like
+`httpRequest`, `promptTemplate`, `conditional`, `jsonTransform`, `delay` as normal
+`NodePlugin`s, on whatever timeline the product needs them.
+
+**Carry-over build rule (a property of the node, not the preset system):** when you add
+a networked/secret primitive such as an HTTP node, run it in Rust like `llm_chat` —
+CORS-free requests, vault `credentialId` injection, and an SSRF/allowlist chokepoint —
+rather than `fetch` in the renderer. Reuse the concurrency governor for pools.
 
 ## Tier 3 — User-authored executors (build last)
 
@@ -145,19 +164,21 @@ the same move as `credential_transfer`; model the UX on the existing transfer bu
    credential references / machine-specific bits don't — decide what's portable.
 5. **Versioning/migration.** Reuse the `version` + legacy-migration discipline from
    `storage.ts` / `commands.rs`.
-6. **Security threat model** for tiers 2–3: SSRF on the HTTP primitive, secret
-   exfiltration from scripts, resource exhaustion. Treat tier 3 like a plugin
-   marketplace threat model.
+6. **Security threat model** for the HTTP primitive and tier 3: SSRF on the HTTP
+   primitive, secret exfiltration from scripts, resource exhaustion. Treat tier 3 like
+   a plugin marketplace threat model.
 
 ## Recommended sequence
 
-- **Phase 1:** definition model + disk storage + **layered dynamic registry**
-  (namespacing + workspace swap + graceful-missing) + Tier 1 presets on top.
-  Exercises the whole pipeline at low risk; the dashed "+" stubs become entry points.
-- **Phase 2:** author 2–3 generic primitives (Rust-side for networked ones); presets
-  over them come free.
-- **Phase 3:** QuickJS-in-Rust sandbox + capability model + Monaco inspector + limits.
+- **Phase 1 — done:** definition model + disk storage + **layered dynamic registry**
+  (namespacing + workspace swap + graceful-missing) + Tier 1 presets on top. The dashed
+  "+" stubs are now live entry points.
+- **Ongoing (not a phase):** author generic primitives (`httpRequest`, etc.) as normal
+  built-ins when the product needs them, Rust-side for networked ones. Presets over them
+  come free — no custom-node changes required.
+- **Phase 2 (future) — Tier 3:** QuickJS-in-Rust sandbox + capability model + Monaco
+  inspector + limits. This is the only remaining work that needs new infrastructure.
 
-**Strong recommendation: do NOT start with tier 3.** Foundation + presets first —
-mostly reuse of existing systems (defaults, scoping, vault, envelope contract), and
-it proves the dynamic-registry refactor, which is the real structural change.
+**Tier 3 stays last.** It's the sole tier that adds structural complexity (a sandbox);
+everything else is reuse of existing systems (defaults, scoping, vault, envelope
+contract) already proven by the Tier-1 dynamic-registry work.

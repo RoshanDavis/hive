@@ -1,9 +1,15 @@
 import { useMemo, useState } from "react";
 import { pluginRegistry } from "@/engine/pluginRegistry";
+import { useRegistryVersion } from "@/hooks/useRegistryVersion";
+import { useCustomNodes } from "@/contexts/CustomNodesContext";
 import DefaultsEditorModal from "@/components/defaults/DefaultsEditorModal";
+import CustomNodeFormModal, {
+  type CustomNodeFormInitial,
+} from "@/components/customNodes/CustomNodeFormModal";
 import { rankedSearch } from "@/utils/rankedSearch";
 import NodeGridCard from "@/components/shared/NodeGridCard";
 import DashedAddCard from "@/components/shared/DashedAddCard";
+import { customTypeFor, isCustomType } from "@/types/customNodes";
 
 interface NodesPageProps {
   showToast: (msg: string, type: "success" | "error" | "info") => void;
@@ -12,8 +18,35 @@ interface NodesPageProps {
 export default function NodesPage({ showToast }: NodesPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [editingType, setEditingType] = useState<string | null>(null);
+  const [showCreateCustom, setShowCreateCustom] = useState(false);
+  const [editingCustom, setEditingCustom] = useState<CustomNodeFormInitial | null>(null);
 
-  const plugins = useMemo(() => pluginRegistry.getAll(), []);
+  const registryVersion = useRegistryVersion();
+  const { globalDefs } = useCustomNodes();
+  const plugins = useMemo(() => pluginRegistry.getAll(), [registryVersion]);
+
+  // Clicking a card: custom nodes open the custom-node editor; built-ins open
+  // the defaults editor.
+  const handleCardClick = (type: string) => {
+    if (isCustomType(type)) {
+      const def = globalDefs.find((d) => customTypeFor(d.id) === type);
+      if (def) {
+        setEditingCustom({
+          id: def.id,
+          baseType: def.baseType,
+          presetData: def.presetData,
+          name: def.name,
+          icon: def.icon,
+          color: def.color,
+          category: def.category,
+          scope: "global",
+          lockBaseType: true,
+        });
+      }
+    } else {
+      setEditingType(type);
+    }
+  };
   const filtered = useMemo(
     () =>
       rankedSearch(plugins, searchQuery, {
@@ -79,17 +112,17 @@ export default function NodesPage({ showToast }: NodesPageProps) {
             icon={p.meta.icon}
             label={p.meta.label}
             color={p.meta.color}
-            title={p.meta.description}
-            onClick={() => setEditingType(p.type)}
+            title={isCustomType(p.type) ? "Edit custom node" : p.meta.description}
+            onClick={() => handleCardClick(p.type)}
             showStripe
           />
         ))}
 
-        {/* Add custom node — stub */}
+        {/* Add custom node */}
         <DashedAddCard
           label="Add custom node"
           title="Add your own node type"
-          onClick={() => showToast("Custom nodes — coming soon", "info")}
+          onClick={() => setShowCreateCustom(true)}
         />
       </div>
 
@@ -101,6 +134,25 @@ export default function NodesPage({ showToast }: NodesPageProps) {
           scope="global"
           workspacePath={null}
           showToast={showToast}
+        />
+      )}
+
+      {showCreateCustom && (
+        <CustomNodeFormModal
+          isOpen={showCreateCustom}
+          onClose={() => setShowCreateCustom(false)}
+          showToast={showToast}
+          allowWorkspaceScope={false}
+        />
+      )}
+
+      {editingCustom && (
+        <CustomNodeFormModal
+          isOpen={editingCustom !== null}
+          onClose={() => setEditingCustom(null)}
+          showToast={showToast}
+          allowWorkspaceScope={false}
+          initial={editingCustom}
         />
       )}
     </div>

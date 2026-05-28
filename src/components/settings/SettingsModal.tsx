@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { storage, type ConcurrencySettings } from "@/services/storage";
 import CredentialManager from "./CredentialManager";
 import NodeDefaultsPanel from "./NodeDefaultsPanel";
+import CustomNodesPanel from "./CustomNodesPanel";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -105,6 +106,9 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
           {workspacePath && (
             <NodeDefaultsPanel workspacePath={workspacePath} showToast={showToast} />
           )}
+
+          {/* Section: Custom Nodes — workspace + global management */}
+          {workspacePath && <CustomNodesPanel showToast={showToast} />}
 
           {/* Section: Concurrency Pools */}
           <div className="flex flex-col gap-4">

@@ -1,3 +1,5 @@
+import { pluginRegistry } from "./pluginRegistry";
+
 export type FlowDirection = "one-way" | "bi-directional" | "read-only" | "write-only" | "read-write";
 export type AllowedFlowOption =
   | "one-way"
@@ -34,18 +36,27 @@ const CONNECTION_RULES: NodeConnectionRule[] = [
 /**
  * Resolves the rules and allowed configurations for a connection between two node types.
  */
+/** Resolve a custom node type (`custom:<id>`) to the built-in type it derives from. */
+function effectiveType(type: string): string {
+  return pluginRegistry.get(type)?.baseType ?? type;
+}
+
 export function getConnectionBehavior(
-  sourceType: string | undefined,
-  targetType: string | undefined,
+  rawSourceType: string | undefined,
+  rawTargetType: string | undefined,
   sourceHandle?: string | null | undefined,
   _targetHandle?: string | null | undefined
 ): { allowedOption: AllowedFlowOption; defaultFlow: FlowDirection } {
-  if (!sourceType || !targetType) {
+  if (!rawSourceType || !rawTargetType) {
     return {
       allowedOption: "one-way",
       defaultFlow: "one-way",
     };
   }
+
+  // Custom presets resolve to their base type so connection rules still match.
+  const sourceType = effectiveType(rawSourceType);
+  const targetType = effectiveType(rawTargetType);
 
   // Detect database connections (either source or target is a jsonStorage node)
   if (sourceType === "jsonStorage" || targetType === "jsonStorage") {

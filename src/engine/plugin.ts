@@ -73,4 +73,11 @@ export interface NodePlugin {
 
   /** Credential shapes this node type can consume. The picker filters by these. */
   credentialSchemas?: CredentialSchema[];
+
+  /**
+   * For synthesized custom-node plugins (`custom:<id>`): the built-in type whose
+   * behavior this node derives from. Connectivity rules resolve through this so a
+   * preset over e.g. `llm` keeps the base type's edge behavior.
+   */
+  baseType?: string;
 }

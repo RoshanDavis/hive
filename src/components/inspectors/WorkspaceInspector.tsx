@@ -6,6 +6,7 @@ interface WorkspaceInspectorProps {
   onAddNode: (definition: NodeDefinition) => void;
   onDragStartNode?: (type: string) => void;
   onDragEndNode?: () => void;
+  onCreateCustom?: () => void;
 }
 
 export default function WorkspaceInspector({
@@ -13,6 +14,7 @@ export default function WorkspaceInspector({
   onAddNode,
   onDragStartNode,
   onDragEndNode,
+  onCreateCustom,
 }: WorkspaceInspectorProps) {
   return (
     <>
@@ -31,6 +33,7 @@ export default function WorkspaceInspector({
           onAddNode={onAddNode}
           onDragStartNode={onDragStartNode}
           onDragEndNode={onDragEndNode}
+          onCreateCustom={onCreateCustom}
         />
       </div>
     </>

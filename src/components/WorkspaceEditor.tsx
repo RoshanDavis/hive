@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, useRef } from "react";
+import { useCallback, useState, useMemo, useRef, useEffect } from "react";
 import {
   ReactFlow,
   Background,
@@ -39,6 +39,9 @@ import {
 } from "@/types/workspace";
 import { useWorkspaceSpaces } from "@/hooks/useWorkspaceSpaces";
 import { NodeDefaultsProvider, useNodeDefaults } from "@/contexts/NodeDefaultsContext";
+import { useRegistryVersion } from "@/hooks/useRegistryVersion";
+import { isCustomType } from "@/types/customNodes";
+import { makeUnknownCustomPlugin } from "@/components/customNodes/unknownCustomPlugin";
 import { useWorkspaceDragDrop } from "@/hooks/useWorkspaceDragDrop";
 import { useWorkspaceRunner } from "@/hooks/useWorkspaceRunner";
 
@@ -48,9 +51,6 @@ interface WorkspaceEditorProps {
   workspacePath: string;
   onBack: () => void;
 }
-
-// Dynamic node type map from plugin registry — auto-includes all registered plugins + aliases
-const nodeTypes = pluginRegistry.getNodeTypesMap(GenericNodeShell);
 
 const edgeTypes = {
   custom: CustomConnectionEdge,
@@ -113,6 +113,25 @@ function WorkspaceEditorInner({
 
   // ─── Node defaults context — merged global+workspace overrides ──
   const { getMergedOverrides } = useNodeDefaults();
+
+  // Rebuild the React Flow node-types map whenever the registry changes so
+  // runtime-registered custom nodes (custom:<id>) get a component mapping.
+  const registryVersion = useRegistryVersion();
+  const nodeTypes = useMemo(
+    () => pluginRegistry.getNodeTypesMap(GenericNodeShell),
+    [registryVersion]
+  );
+
+  // Graceful-missing: a loaded space may reference a custom:<id> whose definition
+  // is gone. Register a visible placeholder so the node renders instead of being
+  // silently downgraded by React Flow. A real definition (if it loads) overwrites it.
+  useEffect(() => {
+    for (const n of nodes) {
+      if (isCustomType(n.type) && !pluginRegistry.get(n.type!)) {
+        pluginRegistry.registerCustom(makeUnknownCustomPlugin(n.type!), "workspace");
+      }
+    }
+  }, [nodes, registryVersion]);
 
   // ─── Drag & Drop custom hook ───────────────────────────────
   const {
@@ -671,6 +690,7 @@ function WorkspaceEditorInner({
         selectedEdge={selectedEdge}
         onUpdateEdgeData={handleUpdateEdgeData}
         onDeleteEdge={handleDeleteEdge}
+        showToast={showToast}
       />
 
       {/* Context Menu */}

@@ -1,13 +1,13 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::models::{
-    NodeDefaultsConfig, OllamaMessage, OllamaOptions, OllamaRequest, OllamaResponse, SpaceData,
-    SpaceEntry, Workspace, WorkspaceConfig,
+    CustomNodeDefinition, NodeDefaultsConfig, OllamaMessage, OllamaOptions, OllamaRequest,
+    OllamaResponse, SpaceData, SpaceEntry, Workspace, WorkspaceConfig,
 };
 use crate::utils::{
-    cleanup_unused_directories, hive_dir, init_hive_structure, node_defaults_app_file, now_iso,
-    read_workspaces, write_workspaces, write_atomic,
+    cleanup_unused_directories, custom_nodes_app_dir, hive_dir, init_hive_structure,
+    node_defaults_app_file, now_iso, read_workspaces, write_workspaces, write_atomic,
 };
 use crate::vault::{
     get_or_create_master_key, global_vault_path, local_vault_path, CredentialMeta,
@@ -801,4 +801,138 @@ pub fn save_workspace_node_defaults(
 ) -> Result<(), String> {
     let path = hive_dir(&workspace_path).join("node-defaults.json");
     write_node_defaults_file(&path, &config)
+}
+
+// ─── Custom nodes IPC ─────────────────────────────────────────
+
+fn custom_nodes_dir_for_scope(
+    app: &tauri::AppHandle,
+    scope: &str,
+    workspace_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    match scope {
+        "global" => custom_nodes_app_dir(app),
+        "workspace" => {
+            let wp = workspace_path
+                .ok_or_else(|| "Workspace scope requires workspace_path".to_string())?;
+            Ok(hive_dir(wp).join("custom-nodes"))
+        }
+        other => Err(format!("Unknown custom node scope: {}", other)),
+    }
+}
+
+/// Read every `<dir>/<id>/node.json`, skipping any folder whose definition is
+/// missing or unparseable (graceful — never fail the whole list on one bad file).
+fn read_custom_nodes_dir(dir: &Path) -> Result<Vec<CustomNodeDefinition>, String> {
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::new();
+    let entries =
+        fs::read_dir(dir).map_err(|e| format!("Failed to read custom-nodes dir: {}", e))?;
+    for entry in entries.flatten() {
+        let node_json = entry.path().join("node.json");
+        if node_json.is_file() {
+            if let Ok(data) = fs::read_to_string(&node_json) {
+                if let Ok(def) = serde_json::from_str::<CustomNodeDefinition>(&data) {
+                    out.push(def);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn write_custom_node(dir: &Path, def: &CustomNodeDefinition) -> Result<(), String> {
+    let node_dir = dir.join(&def.id);
+    fs::create_dir_all(&node_dir)
+        .map_err(|e| format!("Failed to create custom-node dir: {}", e))?;
+    let path = node_dir.join("node.json");
+    let json = serde_json::to_string_pretty(def)
+        .map_err(|e| format!("Failed to serialize custom node: {}", e))?;
+    write_atomic(&path, json.as_bytes())
+}
+
+fn delete_custom_node_dir(dir: &Path, id: &str) -> Result<(), String> {
+    let node_dir = dir.join(id);
+    if node_dir.exists() {
+        fs::remove_dir_all(&node_dir)
+            .map_err(|e| format!("Failed to delete custom node: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_global_custom_nodes(
+    app: tauri::AppHandle,
+) -> Result<Vec<CustomNodeDefinition>, String> {
+    read_custom_nodes_dir(&custom_nodes_app_dir(&app)?)
+}
+
+#[tauri::command]
+pub fn list_workspace_custom_nodes(
+    workspace_path: String,
+) -> Result<Vec<CustomNodeDefinition>, String> {
+    read_custom_nodes_dir(&hive_dir(&workspace_path).join("custom-nodes"))
+}
+
+#[tauri::command]
+pub fn save_global_custom_node(
+    app: tauri::AppHandle,
+    def: CustomNodeDefinition,
+) -> Result<(), String> {
+    write_custom_node(&custom_nodes_app_dir(&app)?, &def)
+}
+
+#[tauri::command]
+pub fn save_workspace_custom_node(
+    workspace_path: String,
+    def: CustomNodeDefinition,
+) -> Result<(), String> {
+    write_custom_node(&hive_dir(&workspace_path).join("custom-nodes"), &def)
+}
+
+#[tauri::command]
+pub fn delete_global_custom_node(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    delete_custom_node_dir(&custom_nodes_app_dir(&app)?, &id)
+}
+
+#[tauri::command]
+pub fn delete_workspace_custom_node(
+    workspace_path: String,
+    id: String,
+) -> Result<(), String> {
+    delete_custom_node_dir(&hive_dir(&workspace_path).join("custom-nodes"), &id)
+}
+
+/// Move a custom-node folder between scopes (workspace ⇄ global). Mirrors
+/// `credential_transfer`: read the def from the source, write it to the
+/// destination, then remove the source folder.
+#[tauri::command]
+pub fn custom_node_transfer(
+    app: tauri::AppHandle,
+    id: String,
+    from_scope: String,
+    to_scope: String,
+    workspace_path: Option<String>,
+) -> Result<CustomNodeDefinition, String> {
+    if from_scope == to_scope {
+        return Err("Source and destination scopes are the same".to_string());
+    }
+    let from_dir = custom_nodes_dir_for_scope(&app, &from_scope, workspace_path.as_deref())?;
+    let to_dir = custom_nodes_dir_for_scope(&app, &to_scope, workspace_path.as_deref())?;
+    let node_json = from_dir.join(&id).join("node.json");
+    if !node_json.is_file() {
+        return Err(format!(
+            "Custom node not found in {} scope: {}",
+            from_scope, id
+        ));
+    }
+    let data = fs::read_to_string(&node_json)
+        .map_err(|e| format!("Failed to read custom node: {}", e))?;
+    let def: CustomNodeDefinition = serde_json::from_str(&data)
+        .map_err(|e| format!("Failed to parse custom node: {}", e))?;
+    write_custom_node(&to_dir, &def)?;
+    delete_custom_node_dir(&from_dir, &id)?;
+    Ok(def)
 }

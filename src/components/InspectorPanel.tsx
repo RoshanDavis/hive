@@ -4,6 +4,10 @@ import { type NodeDefinition } from "@/nodes/types";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { ConnectionInspector, WorkspaceInspector } from "@/components/inspectors";
 import { storage } from "@/services/storage";
+import CustomNodeFormModal, {
+  stripRuntimeFields,
+} from "@/components/customNodes/CustomNodeFormModal";
+import { isCustomType } from "@/types/customNodes";
 
 interface InspectorPanelProps {
   workspaceName: string;
@@ -23,6 +27,7 @@ interface InspectorPanelProps {
   selectedEdge: Edge | null;
   onUpdateEdgeData?: (edgeId: string, edgeType: string) => void;
   onDeleteEdge?: (edgeId: string) => void;
+  showToast: (msg: string, kind: "success" | "error" | "info") => void;
 }
 
 export default function InspectorPanel({
@@ -43,9 +48,12 @@ export default function InspectorPanel({
   selectedEdge,
   onUpdateEdgeData,
   onDeleteEdge,
+  showToast,
 }: InspectorPanelProps) {
   const [width, setWidth] = useState(() => storage.getInspectorWidth(320));
   const [isResizing, setIsResizing] = useState(false);
+  const [showSaveCustom, setShowSaveCustom] = useState(false);
+  const [showCreateCustom, setShowCreateCustom] = useState(false);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -110,11 +118,25 @@ export default function InspectorPanel({
       {selectedNode ? (
         <>
           <div className="p-4 border-b border-border-subtle bg-card flex flex-col gap-1">
-            <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2">
-              {pluginRegistry.getIcon(selectedNode.type || '')}
-              {" "}
-              {String(selectedNode.data?.label || selectedNode.type)}
-            </h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2 min-w-0">
+                {pluginRegistry.getIcon(selectedNode.type || '')}
+                {" "}
+                <span className="truncate">
+                  {pluginRegistry.get(selectedNode.type || '')?.meta.label || selectedNode.type}
+                </span>
+              </h2>
+              {!isCustomType(selectedNode.type) && (
+                <button
+                  onClick={() => setShowSaveCustom(true)}
+                  title="Save this node's configuration as a reusable custom node"
+                  className="shrink-0 text-[11px] text-text-muted hover:text-accent border border-border-subtle hover:border-accent-dim rounded-md px-2 py-1 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1"
+                >
+                  <span>＋</span>
+                  <span>Save as custom</span>
+                </button>
+              )}
+            </div>
             <span className="text-[10px] uppercase tracking-widest font-bold text-accent bg-accent-glow self-start px-2 py-0.5 rounded-sm">{selectedNode.type}</span>
           </div>
 
@@ -215,6 +237,31 @@ export default function InspectorPanel({
           onAddNode={onAddNode}
           onDragStartNode={onDragStartNode}
           onDragEndNode={onDragEndNode}
+          onCreateCustom={() => setShowCreateCustom(true)}
+        />
+      )}
+
+      {showCreateCustom && (
+        <CustomNodeFormModal
+          isOpen={showCreateCustom}
+          onClose={() => setShowCreateCustom(false)}
+          showToast={showToast}
+          allowWorkspaceScope={true}
+        />
+      )}
+
+      {showSaveCustom && selectedNode && (
+        <CustomNodeFormModal
+          isOpen={showSaveCustom}
+          onClose={() => setShowSaveCustom(false)}
+          showToast={showToast}
+          allowWorkspaceScope={true}
+          initial={{
+            baseType: selectedNode.type || "",
+            presetData: stripRuntimeFields(selectedNode.data || {}),
+            name: String(selectedNode.data?.label || ""),
+            lockBaseType: true,
+          }}
         />
       )}
     </div>

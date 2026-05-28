@@ -4,8 +4,32 @@ import type { NodeExecutor } from "./types";
 import type { NodeDefinition } from "@/nodes/types";
 import type { CredentialSchema } from "@/types/credentialTypes";
 
+export type CustomScope = "global" | "workspace";
+
 class PluginRegistry {
   private plugins = new Map<string, NodePlugin>();
+  /** Tracks which dynamically-registered types are custom, and at what scope. */
+  private customScopes = new Map<string, CustomScope>();
+
+  // ─── Reactivity: version signal for useSyncExternalStore consumers ───
+  private version = 0;
+  private listeners = new Set<() => void>();
+
+  private bump(): void {
+    this.version += 1;
+    for (const cb of this.listeners) cb();
+  }
+
+  /** Subscribe to registry changes (register/unregister). Returns an unsubscribe fn. */
+  subscribe = (cb: () => void): (() => void) => {
+    this.listeners.add(cb);
+    return () => {
+      this.listeners.delete(cb);
+    };
+  };
+
+  /** Monotonic version, bumped on every registry mutation. */
+  getVersion = (): number => this.version;
 
   /** Register a plugin under its type and any aliases */
   register(plugin: NodePlugin): void {
@@ -15,6 +39,39 @@ class PluginRegistry {
         this.plugins.set(alias, plugin);
       }
     }
+  }
+
+  /** Register (or replace) a runtime custom-node plugin at the given scope. */
+  registerCustom(plugin: NodePlugin, scope: CustomScope): void {
+    this.plugins.set(plugin.type, plugin);
+    this.customScopes.set(plugin.type, scope);
+    this.bump();
+  }
+
+  /** Remove a single custom plugin by type. No-op for built-ins. */
+  unregisterCustom(type: string): void {
+    if (!this.customScopes.has(type)) return;
+    this.plugins.delete(type);
+    this.customScopes.delete(type);
+    this.bump();
+  }
+
+  /** Remove every custom plugin registered at the given scope (e.g. on workspace leave). */
+  clearCustomsByScope(scope: CustomScope): void {
+    let changed = false;
+    for (const [type, s] of this.customScopes.entries()) {
+      if (s === scope) {
+        this.plugins.delete(type);
+        this.customScopes.delete(type);
+        changed = true;
+      }
+    }
+    if (changed) this.bump();
+  }
+
+  /** Whether a type was registered as a custom node (any scope). */
+  isCustom(type: string): boolean {
+    return this.customScopes.has(type);
   }
 
   /** Get a plugin by type or alias */

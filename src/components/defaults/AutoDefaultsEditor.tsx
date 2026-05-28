@@ -4,6 +4,8 @@ import type { DefaultsEditorProps } from "@/engine/plugin";
 interface Props extends DefaultsEditorProps {
   /** Plugin type — used to look up the source defaultData for fallback typing. */
   pluginType: string;
+  /** defaultData keys to omit from the generated form (e.g. "label" when handled elsewhere). */
+  excludeKeys?: string[];
 }
 
 /**
@@ -11,12 +13,12 @@ interface Props extends DefaultsEditorProps {
  * Inputs are typed from the source value (string/number/boolean). Object/array fields
  * are read-only displayed as JSON so users at least see them.
  */
-export default function AutoDefaultsEditor({ pluginType, values, onUpdate }: Props) {
+export default function AutoDefaultsEditor({ pluginType, values, onUpdate, excludeKeys }: Props) {
   const plugin = pluginRegistry.get(pluginType);
   if (!plugin) return null;
 
   const sourceDefaults = plugin.defaultData;
-  const keys = Object.keys(sourceDefaults);
+  const keys = Object.keys(sourceDefaults).filter((k) => !excludeKeys?.includes(k));
 
   const updateKey = (k: string, v: unknown) => onUpdate({ ...values, [k]: v });
   const clearKey = (k: string) => {

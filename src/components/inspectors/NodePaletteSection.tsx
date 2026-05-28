@@ -1,6 +1,7 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { type NodeDefinition } from "@/nodes/types";
 import { pluginRegistry } from "@/engine/pluginRegistry";
+import { useRegistryVersion } from "@/hooks/useRegistryVersion";
 import { rankedSearch } from "@/utils/rankedSearch";
 import CollapsibleSection from "./CollapsibleSection";
 
@@ -8,22 +9,18 @@ interface NodePaletteSectionProps {
   onAddNode: (definition: NodeDefinition) => void;
   onDragStartNode?: (type: string) => void;
   onDragEndNode?: () => void;
+  /** Opens the custom-node authoring modal. Omitted = the "+" stub is inert. */
+  onCreateCustom?: () => void;
 }
 
 export default function NodePaletteSection({
   onAddNode,
   onDragStartNode,
   onDragEndNode,
+  onCreateCustom,
 }: NodePaletteSectionProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [showComingSoon, setShowComingSoon] = useState(false);
-
-  // Auto-dismiss the "coming soon" hint after a moment.
-  useEffect(() => {
-    if (!showComingSoon) return;
-    const t = setTimeout(() => setShowComingSoon(false), 2500);
-    return () => clearTimeout(t);
-  }, [showComingSoon]);
+  const registryVersion = useRegistryVersion();
 
   const filteredNodes = useMemo(
     () =>
@@ -31,7 +28,7 @@ export default function NodePaletteSection({
         primary: (def) => def.label,
         secondary: [{ value: (def) => def.description, score: 40 }],
       }),
-    [searchQuery]
+    [searchQuery, registryVersion]
   );
 
   const handleDragStart = (event: React.DragEvent, nodeType: string) => {
@@ -93,12 +90,12 @@ export default function NodePaletteSection({
           </div>
         ))}
 
-        {/* Add custom node — stub. Stays present regardless of search matches. */}
+        {/* Add custom node. Stays present regardless of search matches. */}
         <div
           className="node-palette-card"
           style={{ borderStyle: "dashed", cursor: "pointer" }}
-          onClick={() => setShowComingSoon(true)}
-          title="Create a custom node (coming soon)"
+          onClick={() => onCreateCustom?.()}
+          title="Create a custom node"
           id="add-custom-node"
         >
           <span className="text-2xl text-text-secondary select-none">＋</span>
@@ -107,12 +104,6 @@ export default function NodePaletteSection({
           </span>
         </div>
       </div>
-
-      {showComingSoon && (
-        <div className="mt-2 text-[11px] text-text-muted bg-accent-glow/40 border border-accent-dim/40 rounded-md px-2.5 py-1.5 animate-[fadeIn_0.15s_ease-out]">
-          ✨ Custom nodes are coming soon.
-        </div>
-      )}
     </CollapsibleSection>
   );
 }

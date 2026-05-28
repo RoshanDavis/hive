@@ -57,6 +57,24 @@ impl Default for NodeDefaultsConfig {
     }
 }
 
+// ─── Custom nodes (global at app_data_dir, per-workspace at .hive) ───────────
+// Folder-per-node: <base>/custom-nodes/<id>/node.json. The common fields are typed;
+// kind-specific fields (baseType/presetData, and future script fields) round-trip
+// through `extra` so the Rust side stays agnostic to the discriminated union.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomNodeDefinition {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub icon: String,
+    pub color: String,
+    pub category: String,
+    pub version: u32,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
 // ─── Space data (lives at .hive/spaces/space_<id>.json) ─────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

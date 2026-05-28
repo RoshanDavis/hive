@@ -72,6 +72,19 @@ pub fn node_defaults_app_file(app: &tauri::AppHandle) -> Result<PathBuf, String>
     Ok(app_data.join("node-defaults.json"))
 }
 
+// ─── Custom-node directory (global, at app_data_dir) ──────────
+
+pub fn custom_nodes_app_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let dir = app_data.join("custom-nodes");
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create custom-nodes dir: {}", e))?;
+    Ok(dir)
+}
+
 // ─── Helper: get .hive path ─────────────────────────────────
 
 pub fn hive_dir(workspace_path: &str) -> PathBuf {
