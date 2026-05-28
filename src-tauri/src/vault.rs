@@ -32,6 +32,22 @@ pub struct CredentialEntry {
     pub updated_at: String,
 }
 
+impl CredentialEntry {
+    /// Project an encrypted entry to the public metadata shape returned over IPC.
+    /// The scope is supplied by the vault, since entries don't know which file they live in.
+    pub fn to_meta(&self, scope: &str) -> CredentialMeta {
+        CredentialMeta {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            schema_type: self.schema_type.clone(),
+            provider: self.provider.clone(),
+            scope: scope.to_string(),
+            created_at: self.created_at.clone(),
+            updated_at: self.updated_at.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialMeta {
     pub id: String,
@@ -162,19 +178,7 @@ impl CredentialVault {
 
     pub fn list_meta(&self) -> Result<Vec<CredentialMeta>, String> {
         let vault = self.load()?;
-        Ok(vault
-            .credentials
-            .into_iter()
-            .map(|c| CredentialMeta {
-                id: c.id,
-                name: c.name,
-                schema_type: c.schema_type,
-                provider: c.provider,
-                scope: self.scope.clone(),
-                created_at: c.created_at,
-                updated_at: c.updated_at,
-            })
-            .collect())
+        Ok(vault.credentials.iter().map(|c| c.to_meta(&self.scope)).collect())
     }
 
     pub fn add(
@@ -186,29 +190,21 @@ impl CredentialVault {
     ) -> Result<CredentialMeta, String> {
         let (nonce, ciphertext) = self.encrypt_values(&values)?;
         let now = now_iso();
-        let id = Uuid::new_v4().to_string();
         let entry = CredentialEntry {
-            id: id.clone(),
-            name: name.clone(),
-            schema_type: schema_type.clone(),
-            provider: provider.clone(),
-            nonce,
-            encrypted_values: ciphertext,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-        };
-        let mut vault = self.load()?;
-        vault.credentials.push(entry);
-        self.save(&vault)?;
-        Ok(CredentialMeta {
-            id,
+            id: Uuid::new_v4().to_string(),
             name,
             schema_type,
             provider,
-            scope: self.scope.clone(),
+            nonce,
+            encrypted_values: ciphertext,
             created_at: now.clone(),
             updated_at: now,
-        })
+        };
+        let meta = entry.to_meta(&self.scope);
+        let mut vault = self.load()?;
+        vault.credentials.push(entry);
+        self.save(&vault)?;
+        Ok(meta)
     }
 
     pub fn update(
@@ -234,15 +230,7 @@ impl CredentialVault {
         }
         entry.updated_at = now_iso();
 
-        let meta = CredentialMeta {
-            id: entry.id.clone(),
-            name: entry.name.clone(),
-            schema_type: entry.schema_type.clone(),
-            provider: entry.provider.clone(),
-            scope: self.scope.clone(),
-            created_at: entry.created_at.clone(),
-            updated_at: entry.updated_at.clone(),
-        };
+        let meta = entry.to_meta(&self.scope);
         self.save(&vault)?;
         Ok(meta)
     }

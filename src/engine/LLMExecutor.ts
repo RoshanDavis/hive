@@ -21,11 +21,12 @@ export class LLMExecutor implements NodeExecutor {
     const credentialId = (node.data?.credentialId as string | undefined) ?? null;
     const legacyApiKey = String(node.data?.apiKey || "");
 
-    // Providers that require a key but have neither a credentialId nor a legacy
-    // inline key should fail early with a clear, actionable error rather than
-    // surfacing a generic 401 from the remote API.
-    const needsKey = provider !== "Ollama";
-    if (needsKey && !credentialId && !legacyApiKey && provider !== "Other") {
+    // Known cloud providers always need a key; Ollama is local and "Other" may
+    // point at an unauthenticated self-hosted endpoint, so we don't enforce
+    // there. Fail early with an actionable message instead of a generic 401.
+    const requiresCredential =
+      provider === "OpenAI" || provider === "Anthropic" || provider === "Google";
+    if (requiresCredential && !credentialId && !legacyApiKey) {
       throw new Error(
         `No credential selected for ${provider}. Open the LLM inspector and pick or add one.`
       );

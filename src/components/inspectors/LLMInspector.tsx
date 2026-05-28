@@ -1,7 +1,6 @@
 import type { InspectorProps } from "./types";
 import DataConsole from "./shared/DataConsole";
 import CredentialPicker from "./shared/CredentialPicker";
-import { pluginRegistry } from "@/engine/pluginRegistry";
 
 type ProviderType = "Ollama" | "OpenAI" | "Anthropic" | "Google" | "Other";
 
@@ -54,22 +53,11 @@ export default function LLMInspector({
     // Strip any lingering inline apiKey from legacy state — credentials live in the vault now.
     delete updatedData.apiKey;
 
-    // Switching provider may invalidate the picked credential. If it does, drop it
-    // so the inspector doesn't show a stale "Credential missing" banner forever.
-    const newSchemaTypes = PROVIDER_SCHEMA_TYPES[newProvider];
-    if (credentialId) {
-      const allSchemas = pluginRegistry.getCredentialSchemas();
-      // We don't know the credential's schemaType locally; the picker will re-validate
-      // against the new schemaTypes anyway. Just clear when the new provider expects
-      // none, or when the new provider's schemas are a disjoint set.
-      if (newSchemaTypes.length === 0) {
-        delete updatedData.credentialId;
-      } else {
-        // Heuristic: if all new schemas have a different `type` than any plausible
-        // match for the previous provider, clear. Picker will surface "missing" if not.
-        // (Cheap check — leave the picker to render the banner.)
-        void allSchemas;
-      }
+    // Switching to Ollama means no credential is needed; drop the reference so
+    // the inspector doesn't carry a stale id. For other transitions the picker
+    // detects schema mismatch and renders its "Credential missing" banner.
+    if (credentialId && PROVIDER_SCHEMA_TYPES[newProvider].length === 0) {
+      delete updatedData.credentialId;
     }
 
     onUpdate(node.id, updatedData);

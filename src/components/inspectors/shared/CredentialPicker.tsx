@@ -18,8 +18,6 @@ interface CredentialPickerProps {
   onSelect: (id: string | null) => void;
   /** The workspace this picker lives in. Determines whether local credentials are visible / default scope when adding. */
   workspacePath: string;
-  /** Show toast helper for non-blocking errors. */
-  onToast?: (msg: string, type: "success" | "error" | "info") => void;
 }
 
 const SCOPE_LABEL: Record<CredentialScope, string> = {
@@ -32,10 +30,10 @@ export default function CredentialPicker({
   selectedCredentialId,
   onSelect,
   workspacePath,
-  onToast,
 }: CredentialPickerProps) {
   const [credentials, setCredentials] = useState<CredentialMeta[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   // Schemas the inspector accepts, in display order.
@@ -46,15 +44,16 @@ export default function CredentialPicker({
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const list = await credentialService.list(workspacePath);
       setCredentials(list);
     } catch (err) {
-      onToast?.(`Failed to load credentials: ${err}`, "error");
+      setLoadError(String(err));
     } finally {
       setLoading(false);
     }
-  }, [workspacePath, onToast]);
+  }, [workspacePath]);
 
   useEffect(() => {
     refresh();
@@ -123,6 +122,13 @@ export default function CredentialPicker({
         )}
       </select>
 
+      {loadError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2 text-[11px] text-red-300 flex items-start gap-2">
+          <span>⚠️</span>
+          <span className="flex-1">Failed to load credentials: {loadError}</span>
+        </div>
+      )}
+
       {showMissingBanner && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2 text-[11px] text-red-300 flex items-center gap-2">
           <span>⚠️</span>
@@ -167,9 +173,7 @@ export default function CredentialPicker({
             setAddOpen(false);
             onSelect(meta.id);
             refresh();
-            onToast?.(`Saved credential "${meta.name}"`, "success");
           }}
-          onError={(msg) => onToast?.(msg, "error")}
         />
       )}
     </div>
@@ -181,7 +185,6 @@ interface AddFormProps {
   workspacePath: string;
   onCancel: () => void;
   onCreated: (meta: CredentialMeta) => void;
-  onError: (msg: string) => void;
 }
 
 function AddCredentialMiniForm({
@@ -189,7 +192,6 @@ function AddCredentialMiniForm({
   workspacePath,
   onCancel,
   onCreated,
-  onError,
 }: AddFormProps) {
   const [schemaType, setSchemaType] = useState(acceptedSchemas[0]?.type ?? "");
   const [name, setName] = useState("");
@@ -197,6 +199,7 @@ function AddCredentialMiniForm({
   const [scope, setScope] = useState<CredentialScope>("local");
   const [values, setValues] = useState<CredentialValues>({});
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const schema = useMemo(
     () => acceptedSchemas.find((s) => s.type === schemaType),
@@ -211,15 +214,16 @@ function AddCredentialMiniForm({
 
   const handleSave = async () => {
     if (!schema) return;
+    setError(null);
     const missing = schema.fields
       .filter((f) => f.required && !values[f.key]?.trim())
       .map((f) => f.label);
     if (missing.length > 0) {
-      onError(`Missing required fields: ${missing.join(", ")}`);
+      setError(`Missing required fields: ${missing.join(", ")}`);
       return;
     }
     if (!name.trim()) {
-      onError("Credential name is required");
+      setError("Credential name is required");
       return;
     }
     setSaving(true);
@@ -234,7 +238,7 @@ function AddCredentialMiniForm({
       );
       onCreated(meta);
     } catch (err) {
-      onError(`Failed to save credential: ${err}`);
+      setError(`Failed to save credential: ${err}`);
     } finally {
       setSaving(false);
     }
@@ -304,6 +308,12 @@ function AddCredentialMiniForm({
           <option value="global">🌐 All workspaces (global)</option>
         </select>
       </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-md px-2 py-1.5 text-[10.5px] text-red-300">
+          {error}
+        </div>
+      )}
 
       <div className="flex gap-2 mt-1">
         <button

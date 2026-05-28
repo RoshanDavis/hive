@@ -31,6 +31,24 @@ fn make_local_vault(workspace_path: &str) -> Result<CredentialVault, String> {
     ))
 }
 
+// Resolves the right vault for a scope string, validating that "local" was
+// given the workspace path it needs.
+fn vault_for_scope(
+    app: &tauri::AppHandle,
+    scope: &str,
+    workspace_path: Option<&str>,
+) -> Result<CredentialVault, String> {
+    match scope {
+        "global" => make_global_vault(app),
+        "local" => {
+            let wp = workspace_path
+                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
+            make_local_vault(wp)
+        }
+        other => Err(format!("Unknown credential scope: {}", other)),
+    }
+}
+
 fn resolve_credential_values(
     app: &tauri::AppHandle,
     credential_id: &str,
@@ -47,10 +65,11 @@ fn resolve_credential_values(
         }
     };
 
-    let resolved = match scope_hint {
-        Some("global") => global.resolve(credential_id)?.or(try_local(&local)?),
-        Some("local") => try_local(&local)?.or(global.resolve(credential_id)?),
-        _ => try_local(&local)?.or(global.resolve(credential_id)?),
+    // Local-first is the default; only "global" hint flips the lookup order.
+    let resolved = if scope_hint == Some("global") {
+        global.resolve(credential_id)?.or(try_local(&local)?)
+    } else {
+        try_local(&local)?.or(global.resolve(credential_id)?)
     };
 
     resolved.ok_or_else(|| format!("Credential not found: {}", credential_id))
@@ -668,15 +687,7 @@ pub fn credential_add(
     provider: String,
     values: serde_json::Map<String, serde_json::Value>,
 ) -> Result<CredentialMeta, String> {
-    let vault = match scope.as_str() {
-        "global" => make_global_vault(&app)?,
-        "local" => {
-            let wp = workspace_path
-                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
-            make_local_vault(&wp)?
-        }
-        other => return Err(format!("Unknown credential scope: {}", other)),
-    };
+    let vault = vault_for_scope(&app, &scope, workspace_path.as_deref())?;
     vault.add(name, schema_type, provider, values)
 }
 
@@ -689,15 +700,7 @@ pub fn credential_update(
     name: Option<String>,
     values: Option<serde_json::Map<String, serde_json::Value>>,
 ) -> Result<CredentialMeta, String> {
-    let vault = match scope.as_str() {
-        "global" => make_global_vault(&app)?,
-        "local" => {
-            let wp = workspace_path
-                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
-            make_local_vault(&wp)?
-        }
-        other => return Err(format!("Unknown credential scope: {}", other)),
-    };
+    let vault = vault_for_scope(&app, &scope, workspace_path.as_deref())?;
     vault.update(&id, name, values)
 }
 
@@ -708,15 +711,7 @@ pub fn credential_remove(
     workspace_path: Option<String>,
     id: String,
 ) -> Result<(), String> {
-    let vault = match scope.as_str() {
-        "global" => make_global_vault(&app)?,
-        "local" => {
-            let wp = workspace_path
-                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
-            make_local_vault(&wp)?
-        }
-        other => return Err(format!("Unknown credential scope: {}", other)),
-    };
+    let vault = vault_for_scope(&app, &scope, workspace_path.as_deref())?;
     vault.remove(&id)
 }
 
@@ -731,37 +726,12 @@ pub fn credential_transfer(
     if from_scope == to_scope {
         return Err("Source and destination scopes are the same".to_string());
     }
-    let source = match from_scope.as_str() {
-        "global" => make_global_vault(&app)?,
-        "local" => {
-            let wp = workspace_path
-                .clone()
-                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
-            make_local_vault(&wp)?
-        }
-        other => return Err(format!("Unknown source scope: {}", other)),
-    };
-    let dest = match to_scope.as_str() {
-        "global" => make_global_vault(&app)?,
-        "local" => {
-            let wp = workspace_path
-                .ok_or_else(|| "Local scope requires workspace_path".to_string())?;
-            make_local_vault(&wp)?
-        }
-        other => return Err(format!("Unknown destination scope: {}", other)),
-    };
+    let source = vault_for_scope(&app, &from_scope, workspace_path.as_deref())?;
+    let dest = vault_for_scope(&app, &to_scope, workspace_path.as_deref())?;
     let entry = source
         .take_entry(&id)?
         .ok_or_else(|| format!("Credential not found in {} vault: {}", from_scope, id))?;
-    let meta = CredentialMeta {
-        id: entry.id.clone(),
-        name: entry.name.clone(),
-        schema_type: entry.schema_type.clone(),
-        provider: entry.provider.clone(),
-        scope: to_scope.clone(),
-        created_at: entry.created_at.clone(),
-        updated_at: entry.updated_at.clone(),
-    };
+    let meta = entry.to_meta(&to_scope);
     dest.insert_entry(entry)?;
     Ok(meta)
 }

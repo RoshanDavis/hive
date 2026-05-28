@@ -9,6 +9,19 @@ import type {
   CredentialValues,
 } from "@/types/credentialTypes";
 
+// Backend writes timestamps as Unix seconds in a string (now_iso in utils.rs).
+// We format them as relative time for the row UI.
+function formatRelative(unixSeconds: string): string {
+  const n = Number(unixSeconds);
+  if (!Number.isFinite(n) || n <= 0) return unixSeconds;
+  const diffSec = Math.max(0, Math.floor(Date.now() / 1000 - n));
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 86400 * 30) return `${Math.floor(diffSec / 86400)}d ago`;
+  return new Date(n * 1000).toLocaleDateString();
+}
+
 interface CredentialManagerProps {
   /** When provided, the workspace section is visible alongside global. When omitted, only global credentials show. */
   workspacePath?: string;
@@ -108,8 +121,11 @@ export default function CredentialManager({
                 {cred.provider}
               </span>
             </div>
-            <span className="text-[10px] text-text-muted">
-              {schema?.label ?? cred.schemaType} · updated {cred.updatedAt}
+            <span
+              className="text-[10px] text-text-muted"
+              title={`Updated ${cred.updatedAt}`}
+            >
+              {schema?.label ?? cred.schemaType} · updated {formatRelative(cred.updatedAt)}
             </span>
           </div>
           <div className="flex items-center gap-1">

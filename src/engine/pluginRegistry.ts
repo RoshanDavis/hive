@@ -79,11 +79,6 @@ class PluginRegistry {
     }
     return Array.from(byType.values());
   }
-
-  /** Credential schemas declared by a specific node type. */
-  getCredentialSchemasForType(nodeType: string): CredentialSchema[] {
-    return this.get(nodeType)?.credentialSchemas || [];
-  }
 }
 
 export const pluginRegistry = new PluginRegistry();

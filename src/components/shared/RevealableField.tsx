@@ -6,8 +6,6 @@ interface RevealableFieldProps {
   onChange: (v: string) => void;
   placeholder?: string;
   disabled?: boolean;
-  /** Override the default small/compact styling for use in larger forms. */
-  size?: "sm" | "md";
 }
 
 // Text/url inputs render plainly. Password inputs render masked by default with
@@ -18,14 +16,10 @@ export default function RevealableField({
   onChange,
   placeholder,
   disabled,
-  size = "sm",
 }: RevealableFieldProps) {
   const [revealed, setRevealed] = useState(false);
   const isPassword = type === "password";
   const inputType = isPassword && !revealed ? "password" : "text";
-
-  const sizeClasses =
-    size === "sm" ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm";
 
   return (
     <div className="relative">
@@ -35,7 +29,7 @@ export default function RevealableField({
         disabled={disabled}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full bg-input border border-border-subtle rounded-md text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none ${sizeClasses} ${
+        className={`w-full bg-input border border-border-subtle rounded-md px-2 py-1.5 text-xs text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none ${
           isPassword ? "pr-8" : ""
         }`}
       />
