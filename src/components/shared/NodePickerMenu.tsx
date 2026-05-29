@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { rankedSearch } from "@/utils/rankedSearch";
+import { formInputClass } from "@/components/shared/FormField";
 
 interface NodePickerMenuProps {
   /** Plugin types to hide from the list (e.g. ones already added). */
@@ -71,7 +72,7 @@ export default function NodePickerMenu({
         <div className="px-4 pt-3">
           <input
             autoFocus
-            className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] transition-colors"
+            className={formInputClass}
             type="text"
             placeholder="Search nodes to add..."
             value={query}

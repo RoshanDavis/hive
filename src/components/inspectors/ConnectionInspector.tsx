@@ -5,6 +5,8 @@ import { getConnectionBehavior } from "@/engine/connectivity";
 import { getUpstreamNodeEnvelope } from "@/engine/utils";
 import DataConsole from "./shared/DataConsole";
 import DatabaseRecordFeed from "./shared/DatabaseRecordFeed";
+import { ACCENT, DATABASE } from "@/theme/colors";
+import { getChatMessages, getStorageRecords } from "@/engine/nodeData";
 
 // ─── Props ───────────────────────────────────────────────────
 interface ConnectionInspectorProps {
@@ -71,7 +73,7 @@ export default function ConnectionInspector({
 
     const writeEnvelope = getUpstreamNodeEnvelope(logicNode);
     const writePayload = writeEnvelope.metadata?.generatedFallback ? writeEnvelope.value : JSON.stringify(writeEnvelope, null, 2);
-    const records = (storageNode.data?.records as any[]) || [];
+    const records = getStorageRecords(storageNode.data);
 
     contentNodes = (
       <div className="flex flex-col gap-4">
@@ -105,7 +107,7 @@ export default function ConnectionInspector({
     if (isChatToOllama) {
       const systemPrompt = String(targetNode.data?.systemPrompt || "");
       const historyLimit = Number(targetNode.data?.chatHistoryLimit || 0);
-      const rawMessages = (sourceNode.data?.messages as any[]) || [];
+      const rawMessages = getChatMessages(sourceNode.data);
 
       let ollamaMsgs = [...rawMessages];
       if (historyLimit > 0 && ollamaMsgs.length > historyLimit) {
@@ -191,13 +193,13 @@ export default function ConnectionInspector({
               badgeColorClass = "text-accent bg-accent-glow/5 border-accent/20";
             } else if (edgeType === "read-write") {
               badgeLabel = "Read & Write Sync";
-              badgeColorClass = "text-[#38bdf8] bg-[#38bdf8]/5 border-[#38bdf8]/20";
+              badgeColorClass = "text-info bg-info/5 border-info/20";
             } else if (edgeType === "read-only") {
               badgeLabel = "Read-Only Context";
-              badgeColorClass = "text-[#38bdf8] bg-[#38bdf8]/5 border-[#38bdf8]/20";
+              badgeColorClass = "text-info bg-info/5 border-info/20";
             } else if (edgeType === "write-only") {
               badgeLabel = "Write-Only Output";
-              badgeColorClass = "text-[#38bdf8] bg-[#38bdf8]/5 border-[#38bdf8]/20";
+              badgeColorClass = "text-info bg-info/5 border-info/20";
             }
 
             return (
@@ -237,14 +239,14 @@ export default function ConnectionInspector({
 
               {/* Animated Flow Connector */}
               <div className="flex flex-col items-center justify-center shrink-0 w-10 select-none relative">
-                <span className={`text-base leading-none filter drop-shadow-[0_0_4px_rgba(212,230,0,0.4)] ${isDatabase ? "text-[#38bdf8]" : "text-accent"} ${isReverse ? "rotate-180" : ""}`}>➔</span>
+                <span className={`text-base leading-none filter drop-shadow-[0_0_4px_rgba(212,230,0,0.4)] ${isDatabase ? "text-info" : "text-accent"} ${isReverse ? "rotate-180" : ""}`}>➔</span>
                 <div className="w-8 h-0.5 bg-[#222] mt-1 relative overflow-hidden rounded-full border-t border-[#333]">
                   <div
                     className="absolute top-0 h-full w-2.5 rounded-full animate-[flowDash_1.6s_linear_infinite]"
                     style={{
                       background: isDatabase
-                        ? "linear-gradient(90deg, transparent, #38bdf8, transparent)"
-                        : "linear-gradient(90deg, transparent, #d4e600, transparent)",
+                        ? `linear-gradient(90deg, transparent, ${DATABASE}, transparent)`
+                        : `linear-gradient(90deg, transparent, ${ACCENT}, transparent)`,
                       animationDirection: isReverse ? "reverse" : "normal"
                     }}
                   ></div>
@@ -330,17 +332,17 @@ export default function ConnectionInspector({
                       onClick={() => onUpdateEdgeData?.(selectedEdge.id, t.id)}
                       className={`flex items-start text-left gap-3.5 p-3 rounded-lg border text-xs transition-all duration-150 cursor-pointer ${
                         isSelected
-                          ? "bg-[#38bdf8]/10 border-[#38bdf8] text-text-main shadow-[0_0_12px_rgba(56,189,248,0.12)]"
+                          ? "bg-info/10 border-info text-text-main shadow-[0_0_12px_rgba(56,189,248,0.12)]"
                           : "bg-card/40 border-border-card text-text-muted hover:bg-card-hover hover:border-border-subtle"
                       }`}
                     >
                       <span className="text-base select-none mt-0.5">{t.icon}</span>
                       <div className="flex flex-col min-w-0 grow">
                         <div className="flex items-center gap-1.5 justify-between">
-                          <span className={`font-semibold ${isSelected ? "text-[#38bdf8]" : "text-text-main"}`}>
+                          <span className={`font-semibold ${isSelected ? "text-info" : "text-text-main"}`}>
                             {t.label}
                           </span>
-                          <span className={`text-[10px] font-mono select-none ${isSelected ? "text-[#38bdf8]" : "text-[#52525b]"}`}>
+                          <span className={`text-[10px] font-mono select-none ${isSelected ? "text-info" : "text-[#52525b]"}`}>
                             {isSelected ? "● ACTIVE" : "○ SELECT"}
                           </span>
                         </div>
@@ -420,7 +422,7 @@ export default function ConnectionInspector({
           <button
             type="button"
             onClick={() => onDeleteEdge?.(selectedEdge.id)}
-            className="w-full bg-[#1c0e0e]/40 hover:bg-[#ef4444]/15 border border-[#ef4444]/20 hover:border-[#ef4444]/40 text-[#fca5a5] hover:text-[#f87171] rounded-lg py-2.5 px-4 text-xs font-semibold tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer duration-200 active:scale-[0.98]"
+            className="w-full bg-[#1c0e0e]/40 hover:bg-error/15 border border-error/20 hover:border-error/40 text-[#fca5a5] hover:text-[#f87171] rounded-lg py-2.5 px-4 text-xs font-semibold tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer duration-200 active:scale-[0.98]"
           >
             <span>🗑️</span>
             <span>Delete Connection</span>

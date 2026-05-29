@@ -29,6 +29,7 @@ import "@/nodes/plugins"; // Side-effect import: registers all node plugins
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import GenericNodeShell from "@/nodes/GenericNodeShell";
 import CustomConnectionEdge from "@/components/CustomConnectionEdge";
+import { EDGE, CANVAS } from "@/theme/colors";
 import { type NodeDefinition } from "@/nodes/types";
 import { useWorkspaceClipboard } from "@/hooks/useWorkspaceClipboard";
 import { getConnectionBehavior } from "@/engine/connectivity";
@@ -208,18 +209,18 @@ function WorkspaceEditorInner({
             },
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: "#d4e600",
+              color: EDGE.default,
               width: 16,
               height: 16,
             },
             markerStart: defaultFlow === "bi-directional" ? {
               type: MarkerType.ArrowClosed,
-              color: "#d4e600",
+              color: EDGE.default,
               width: 16,
               height: 16,
             } : undefined,
             style: {
-              stroke: "#d4e600",
+              stroke: EDGE.default,
               strokeWidth: 2,
             },
           },
@@ -556,7 +557,7 @@ function WorkspaceEditorInner({
               },
               markerStart: edgeType === "bi-directional" ? {
                 type: MarkerType.ArrowClosed,
-                color: "#d4e600",
+                color: EDGE.default,
                 width: 16,
                 height: 16,
               } : undefined,
@@ -648,7 +649,7 @@ function WorkspaceEditorInner({
           colorMode="dark"
           defaultEdgeOptions={{
             type: "custom",
-            style: { stroke: "#d4e600", strokeWidth: 2 },
+            style: { stroke: EDGE.default, strokeWidth: 2 },
           }}
           panOnDrag={[1, 2]}
           selectionOnDrag={true}
@@ -657,16 +658,16 @@ function WorkspaceEditorInner({
             variant={BackgroundVariant.Dots}
             gap={20}
             size={1.2}
-            color="#333333"
+            color={CANVAS.backgroundDots}
           />
           <Controls position="bottom-left" showInteractive={false} />
           <MiniMap
             position="bottom-right"
             nodeColor={(n) => pluginRegistry.getColor(n.type || '')}
-            maskColor="rgba(0, 0, 0, 0.7)"
+            maskColor={CANVAS.minimapMask}
             style={{
-              background: "#1a1a1a",
-              border: "1px solid #2a2a2a",
+              background: CANVAS.minimapBg,
+              border: `1px solid ${CANVAS.minimapBorder}`,
               borderRadius: "8px",
             }}
           />

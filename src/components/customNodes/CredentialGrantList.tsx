@@ -3,6 +3,7 @@ import { credentialService } from "@/services/credentialService";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import AddCredentialMiniForm from "@/components/inspectors/shared/AddCredentialMiniForm";
 import type { CredentialMeta, CredentialScope } from "@/types/credentialTypes";
+import { formLabelClass } from "@/components/shared/FormField";
 
 interface Props {
   /** Currently granted credential ids. */
@@ -69,7 +70,7 @@ export default function CredentialGrantList({ granted, onChange, workspacePath }
 
   return (
     <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
-      <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+      <label className={formLabelClass}>
         Credential grants
       </label>
 
@@ -88,7 +89,7 @@ export default function CredentialGrantList({ granted, onChange, workspacePath }
           <button
             type="button"
             onClick={() => revoke(c.id)}
-            className="ml-auto text-text-muted hover:text-[#ff6b6b] border border-border-subtle rounded px-1.5 cursor-pointer bg-card hover:bg-card-hover text-[11px]"
+            className="ml-auto text-text-muted hover:text-danger border border-border-subtle rounded px-1.5 cursor-pointer bg-card hover:bg-card-hover text-[11px]"
             title="Revoke grant"
           >
             ×
@@ -107,7 +108,7 @@ export default function CredentialGrantList({ granted, onChange, workspacePath }
               <button
                 type="button"
                 onClick={() => revoke(id)}
-                className="text-text-muted hover:text-[#ff6b6b] border border-border-subtle rounded px-1.5 cursor-pointer bg-card hover:bg-card-hover text-[11px]"
+                className="text-text-muted hover:text-danger border border-border-subtle rounded px-1.5 cursor-pointer bg-card hover:bg-card-hover text-[11px]"
                 title="Revoke grant"
               >
                 ×

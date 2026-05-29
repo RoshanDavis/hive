@@ -2,6 +2,7 @@ import type { InspectorProps } from "./types";
 import DataConsole from "./shared/DataConsole";
 import CredentialPicker from "./shared/CredentialPicker";
 import ModelPicker from "./shared/ModelPicker";
+import { formLabelClass, formInputClass } from "@/components/shared/FormField";
 import {
   PROVIDER_BASE_URL,
   PROVIDER_SCHEMA_TYPES,
@@ -51,9 +52,9 @@ export default function LLMInspector({
 
       {/* Provider Selector */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">LLM Provider</label>
+        <label className={formLabelClass}>LLM Provider</label>
         <select
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none cursor-pointer"
+          className={`${formInputClass} cursor-pointer`}
           value={provider}
           onChange={(e) => handleProviderChange(e.target.value as ProviderType)}
         >
@@ -68,9 +69,9 @@ export default function LLMInspector({
       {/* Dynamic Base URL Field */}
       {showBaseURL && (
         <div className="flex flex-col gap-2 animate-[fadeIn_0.15s_ease-out]">
-          <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Base URL</label>
+          <label className={formLabelClass}>Base URL</label>
           <input
-            className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+            className={formInputClass}
             type="text"
             value={baseURLValue}
             placeholder={provider === "Ollama" ? "http://localhost:11434" : "e.g. https://api.yourprovider.com/v1"}
@@ -117,9 +118,9 @@ export default function LLMInspector({
 
       {/* Universal Parameters */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">System Prompt</label>
+        <label className={formLabelClass}>System Prompt</label>
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none resize-y min-h-20 font-inherit"
+          className={`${formInputClass} resize-y min-h-20 font-inherit`}
           value={String(node.data?.systemPrompt || "")}
           onChange={(e) =>
             onUpdate(node.id, {
@@ -133,7 +134,7 @@ export default function LLMInspector({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <label className={formLabelClass}>
           Temperature: {Number(node.data?.temperature || 0.7).toFixed(2)}
         </label>
         <input
@@ -153,7 +154,7 @@ export default function LLMInspector({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Max Tokens</label>
+        <label className={formLabelClass}>Max Tokens</label>
         <input
           className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
           type="number"
@@ -169,7 +170,7 @@ export default function LLMInspector({
 
       <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+          <span className={formLabelClass}>
             Limit Chat History
           </span>
           <button
@@ -180,7 +181,7 @@ export default function LLMInspector({
               });
             }}
             className={`w-10 h-5.5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
-              isLimited ? "bg-[#d4e600]" : "bg-border-subtle"
+              isLimited ? "bg-accent" : "bg-border-subtle"
             }`}
             style={{ border: isLimited ? "none" : "1px solid #3a3a3a" }}
           >
@@ -198,7 +199,7 @@ export default function LLMInspector({
               History Turn Limit (messages)
             </label>
             <input
-              className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+              className={formInputClass}
               type="number"
               min="1"
               value={limitValue}
@@ -219,10 +220,10 @@ export default function LLMInspector({
       {!!node.data?.lastResponse && (
         <div className="flex flex-col gap-2 mt-2 border-t border-border-subtle pt-4">
           <div className="flex justify-between items-center">
-            <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Last Response</label>
+            <label className={formLabelClass}>Last Response</label>
             <button
               onClick={() => onUpdate(node.id, { ...node.data, lastResponse: "" })}
-              className="text-[10px] text-text-muted hover:text-[#ff6b6b] transition-colors cursor-pointer border-none bg-transparent"
+              className="text-[10px] text-text-muted hover:text-danger transition-colors cursor-pointer border-none bg-transparent"
               title="Clear response"
             >
               Clear

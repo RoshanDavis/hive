@@ -4,6 +4,7 @@ import { api } from "@/services/api";
 import { getConnectionBehavior } from "@/engine/connectivity";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { migrateLegacyCredentials } from "@/services/migrateLegacyCredentials";
+import { EDGE } from "@/theme/colors";
 import {
   type SpaceEntry,
   type SpaceData,
@@ -127,7 +128,7 @@ export function useWorkspaceSpaces({
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: "#d4e600",
+            color: EDGE.default,
             width: 16,
             height: 16,
           },
@@ -135,13 +136,13 @@ export function useWorkspaceSpaces({
             edgeType === "bi-directional"
               ? {
                   type: MarkerType.ArrowClosed,
-                  color: "#d4e600",
+                  color: EDGE.default,
                   width: 16,
                   height: 16,
                 }
               : undefined,
           style: {
-            stroke: "#d4e600",
+            stroke: EDGE.default,
             strokeWidth: 2,
           },
         };

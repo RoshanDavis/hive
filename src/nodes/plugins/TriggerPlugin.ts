@@ -1,5 +1,6 @@
 import type { NodePlugin } from "@/engine/plugin";
 import { TriggerInspector } from "@/components/inspectors";
+import { NODE_COLORS } from "@/theme/colors";
 
 const TriggerPlugin: NodePlugin = {
   type: "trigger",
@@ -8,7 +9,7 @@ const TriggerPlugin: NodePlugin = {
     icon: "⚡",
     description: "Starts the workflow when clicked",
     category: "input",
-    color: "#d4e600",
+    color: NODE_COLORS.trigger,
   },
   defaultData: { label: "Trigger" },
   inspector: TriggerInspector,

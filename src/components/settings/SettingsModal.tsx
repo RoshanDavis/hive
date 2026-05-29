@@ -196,7 +196,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                             <button
                               type="button"
                               onClick={() => handleAddPattern()}
-                              className="px-3 py-1.5 bg-[#d4e600] hover:bg-[#b0bf00] text-primary font-bold text-[10px] rounded-md transition-colors cursor-pointer border-none"
+                              className="px-3 py-1.5 bg-accent hover:bg-[#b0bf00] text-primary font-bold text-[10px] rounded-md transition-colors cursor-pointer border-none"
                             >
                               + Add
                             </button>
@@ -324,7 +324,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
           </button>
           <button
             onClick={handleSave}
-            className="px-5 py-2 bg-[#d4e600] hover:bg-[#b0bf00] active:scale-[0.98] text-primary font-bold text-xs rounded-lg transition-all shadow-[0_4px_12px_rgba(212,230,0,0.15)] cursor-pointer select-none"
+            className="px-5 py-2 bg-accent hover:bg-[#b0bf00] active:scale-[0.98] text-primary font-bold text-xs rounded-lg transition-all shadow-[0_4px_12px_rgba(212,230,0,0.15)] cursor-pointer select-none"
           >
             Save Changes
           </button>

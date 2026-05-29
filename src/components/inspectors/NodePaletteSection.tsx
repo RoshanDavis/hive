@@ -4,6 +4,7 @@ import { pluginRegistry } from "@/engine/pluginRegistry";
 import { useRegistryVersion } from "@/hooks/useRegistryVersion";
 import { rankedSearch } from "@/utils/rankedSearch";
 import CollapsibleSection from "./CollapsibleSection";
+import { formInputClass } from "@/components/shared/FormField";
 
 interface NodePaletteSectionProps {
   onAddNode: (definition: NodeDefinition) => void;
@@ -55,7 +56,7 @@ export default function NodePaletteSection({
     >
       <div className="mb-3">
         <input
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+          className={formInputClass}
           type="text"
           placeholder="Search nodes..."
           value={searchQuery}

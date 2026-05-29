@@ -4,6 +4,7 @@ import DataConsole from "./shared/DataConsole";
 import { api } from "@/services/api";
 import { credentialService } from "@/services/credentialService";
 import { useCustomNodes } from "@/contexts/CustomNodesContext";
+import { formLabelClass } from "@/components/shared/FormField";
 import {
   CUSTOM_TYPE_PREFIX,
   type CustomNodeScope,
@@ -26,9 +27,9 @@ function ConfigField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+      <label className={formLabelClass}>
         {field.label}
-        {field.required && <span className="text-[#ff6b6b]"> *</span>}
+        {field.required && <span className="text-danger"> *</span>}
       </label>
       {field.type === "boolean" ? (
         <input

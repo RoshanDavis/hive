@@ -1,6 +1,7 @@
 import type { ExecutionContext } from "./types";
 import { pluginRegistry } from "./pluginRegistry";
 import { getUpstreamNodeData, getUpstreamNodeEnvelope } from "./utils";
+import { getStorageRecords } from "./nodeData";
 import type { NodeOutputEnvelope } from "./types";
 
 export * from "./types";
@@ -71,7 +72,7 @@ export const executeNode = async (
         if (storageNode) {
           const payload = getUpstreamNodeData(context.node);
           if (payload !== null && payload !== undefined) {
-            const dbRecords = (storageNode.data?.records as any[]) || [];
+            const dbRecords = getStorageRecords(storageNode.data);
             const recordSource = String(context.node.data?.label || context.node.type || "Source");
             // Prevent duplicate entries from the SAME emitter if triggered repeatedly in the
             // same tick. Scoped by source so distinct upstream nodes writing identical content

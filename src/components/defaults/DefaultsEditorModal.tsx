@@ -148,7 +148,7 @@ export default function DefaultsEditorModal({
           <button
             type="button"
             onClick={handleResetAll}
-            className="text-[11px] text-text-muted hover:text-[#ff6b6b] border-none bg-transparent cursor-pointer underline"
+            className="text-[11px] text-text-muted hover:text-danger border-none bg-transparent cursor-pointer underline"
             title="Clear all overrides and revert to plugin defaults"
           >
             Reset all to plugin defaults

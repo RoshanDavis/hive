@@ -107,7 +107,7 @@ export default function JSONStorageInspector({
           📥 Export CSV
         </button>
         <button
-          className="flex-1 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-[#ff6b6b] hover:text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)] rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-danger hover:text-danger hover:bg-danger/10 rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleClear}
           disabled={records.length === 0 || isRunning}
         >

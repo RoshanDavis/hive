@@ -38,7 +38,7 @@ export default function NodeGridCard({
             e.stopPropagation();
             onClear();
           }}
-          className="absolute top-2 right-2 z-10 text-text-muted hover:text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)] w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-2 right-2 z-10 text-text-muted hover:text-danger hover:bg-danger/10 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
           title={clearTitle}
         >
           ✕

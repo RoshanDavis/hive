@@ -1,5 +1,6 @@
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import type { DefaultsEditorProps } from "@/engine/plugin";
+import { formLabelClass } from "@/components/shared/FormField";
 
 interface Props extends DefaultsEditorProps {
   /** Plugin type — used to look up the source defaultData for fallback typing. */
@@ -38,7 +39,7 @@ export default function AutoDefaultsEditor({ pluginType, values, onUpdate, exclu
         return (
           <div key={k} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+              <label className={formLabelClass}>
                 {k}
                 {overridden && (
                   <span className="ml-2 text-[9px] text-accent tracking-normal normal-case font-normal">

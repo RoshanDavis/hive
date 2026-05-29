@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { InspectorProps } from "./types";
+import { getChatMessages, getStorageRecords } from "@/engine/nodeData";
+import { formInputClass } from "@/components/shared/FormField";
 
 export default function ChatInspector({
   node,
@@ -31,9 +33,9 @@ export default function ChatInspector({
   const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
 
   // Map storage records to chat messages if connected and read permission is granted, otherwise fallback to local messages
-  const dbRecords = (connectedStorageNode?.data?.records as any[]) || [];
+  const dbRecords = getStorageRecords(connectedStorageNode?.data);
   const displayMessages = (connectedStorageNode && hasReadPermission)
-    ? dbRecords.map((rec: any) => {
+    ? dbRecords.map((rec) => {
         const src = (rec.source || "").toLowerCase();
         let role: "user" | "assistant" | "system" = "assistant";
         if (src === "user" || src === "you") {
@@ -43,7 +45,7 @@ export default function ChatInspector({
         }
         return { role, content: rec.content || "", sender: rec.source };
       })
-    : (node.data?.messages as any[]) || [];
+    : getChatMessages(node.data);
 
   const slicedMessages = displayMessages.slice(-visibleCount);
   const hasMore = displayMessages.length > visibleCount;
@@ -117,7 +119,7 @@ export default function ChatInspector({
       <div className="flex justify-between items-center mb-1">
         <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">Chat Conversation</div>
         {connectedStorageNode && (
-          <div className="text-[9px] font-semibold text-[#38bdf8] bg-[#38bdf8]/10 px-2 py-0.5 rounded flex items-center gap-1 border border-[#38bdf8]/20 select-none">
+          <div className="text-[9px] font-semibold text-info bg-info/10 px-2 py-0.5 rounded flex items-center gap-1 border border-info/20 select-none">
             <span>💾</span>
             <span>
               Linked: {String(connectedStorageNode.data?.label || "Storage")} (
@@ -167,7 +169,7 @@ export default function ChatInspector({
       
       <div className="flex flex-col gap-2">
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none min-h-15 resize-none"
+          className={`${formInputClass} min-h-15 resize-none`}
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyDown={(e) => {
@@ -189,7 +191,7 @@ export default function ChatInspector({
         </button>
       </div>
       <button
-        className="w-full rounded-md py-2.5 text-sm font-semibold transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary enabled:cursor-pointer enabled:hover:border-[#ff6b6b] enabled:hover:text-[#ff6b6b] enabled:hover:bg-[rgba(255,107,107,0.1)] enabled:hover:shadow-none disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full rounded-md py-2.5 text-sm font-semibold transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary enabled:cursor-pointer enabled:hover:border-danger enabled:hover:text-danger enabled:hover:bg-danger/10 enabled:hover:shadow-none disabled:opacity-40 disabled:cursor-not-allowed"
         onClick={handleClearHistory}
         disabled={!canClearHistory}
         title={canClearHistory ? undefined : "Linked storage is read-only — history can't be cleared from here"}

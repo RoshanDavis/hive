@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BUILT_IN_MODELS, normalizeProvider, type ProviderKey } from "@/services/builtInModels";
 import { nodeDefaultsService, type DefaultsScope } from "@/services/nodeDefaultsService";
 import type { ModelEntry } from "@/services/api";
+import { formLabelClass, formInputClass } from "@/components/shared/FormField";
 
 interface ModelPickerProps {
   /** Provider string from the inspector (e.g. "Ollama", "OpenAI"). Picker normalizes it. */
@@ -65,12 +66,12 @@ export default function ModelPicker({
 
   return (
     <div className="flex flex-col gap-2 animate-[fadeIn_0.15s_ease-out]">
-      <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+      <label className={formLabelClass}>
         Model
       </label>
 
       <select
-        className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none cursor-pointer"
+        className={`${formInputClass} cursor-pointer`}
         value={allKnownNames.has(selectedModel) ? selectedModel : ""}
         onChange={(e) => onSelect(e.target.value)}
       >

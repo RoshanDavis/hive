@@ -1,6 +1,7 @@
 import ModelPicker from "@/components/inspectors/shared/ModelPicker";
 import CredentialPicker from "@/components/inspectors/shared/CredentialPicker";
 import type { DefaultsEditorProps } from "@/engine/plugin";
+import { formLabelClass } from "@/components/shared/FormField";
 import {
   PROVIDER_BASE_URL,
   PROVIDER_SCHEMA_TYPES,
@@ -54,7 +55,7 @@ export default function LLMDefaultsEditor({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <label className={formLabelClass}>
           LLM Provider
         </label>
         <select
@@ -72,7 +73,7 @@ export default function LLMDefaultsEditor({
 
       {showBaseURL && (
         <div className="flex flex-col gap-2 animate-[fadeIn_0.15s_ease-out]">
-          <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+          <label className={formLabelClass}>
             Base URL
           </label>
           <input
@@ -113,7 +114,7 @@ export default function LLMDefaultsEditor({
       />
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <label className={formLabelClass}>
           System Prompt
         </label>
         <textarea
@@ -126,7 +127,7 @@ export default function LLMDefaultsEditor({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <label className={formLabelClass}>
           Temperature: {temperature.toFixed(2)}
         </label>
         <input
@@ -141,7 +142,7 @@ export default function LLMDefaultsEditor({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <label className={formLabelClass}>
           Max Tokens
         </label>
         <input

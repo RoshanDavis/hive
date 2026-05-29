@@ -2,6 +2,8 @@ import { api } from "@/services/api";
 import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
+import { getChatMessages } from "./nodeData";
+import type { ChatMessage } from "@/nodes/types";
 
 export class LLMExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
@@ -54,16 +56,16 @@ export class LLMExecutor implements NodeExecutor {
       // Filter to only allow upstream nodes that are in the active run path (visited Set)
       const visitedNodes = upstreamNodes.filter(n => !visited || visited.has(n.id));
 
-      let llmMessages: any[] = [];
+      let llmMessages: ChatMessage[] = [];
 
       // Check if we are retrying and already have a saved lastInputMessages
       if (node.data?.lastInputMessages && Array.isArray(node.data.lastInputMessages) && node.data.lastInputMessages.length > 0) {
-        llmMessages = [...node.data.lastInputMessages];
+        llmMessages = [...(node.data.lastInputMessages as ChatMessage[])];
       } else {
         // 1. If an upstream Chat node exists on the active run path, load the full conversation log
         const chatNode = visitedNodes.find(n => n.type === "chat");
         if (chatNode) {
-          let rawMessages = chatNode.data?.messages as any[] || [];
+          let rawMessages = getChatMessages(chatNode.data);
           if (historyLimit > 0 && rawMessages.length > historyLimit) {
             rawMessages = rawMessages.slice(-historyLimit);
           }

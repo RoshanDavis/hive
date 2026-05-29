@@ -26,7 +26,7 @@ export default function OutputInspector({
       </div>
 
       <button
-        className="w-full rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-[#ff6b6b] hover:text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)] hover:shadow-none"
+        className="w-full rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-danger hover:text-danger hover:bg-danger/10 hover:shadow-none"
         onClick={() =>
           onUpdate(node.id, {
             ...node.data,
