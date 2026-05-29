@@ -1,0 +1,15 @@
+[package]
+name = "hive-sandbox"
+version = "0.1.0"
+edition = "2021"
+description = "Tauri-free sandbox core for Hive's Tier-3 custom script nodes (QuickJS runtime + gated fetch + SSRF guards)."
+
+[lib]
+name = "hive_sandbox"
+
+[dependencies]
+rquickjs = { version = "0.12.0", features = ["futures"] }
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["rt", "net", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
