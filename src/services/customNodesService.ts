@@ -34,7 +34,7 @@ async function loadWorkspace(path: string, force = false): Promise<CustomNodeDef
 
 function registerDefs(defs: CustomNodeDefinition[], scope: CustomNodeScope): void {
   for (const def of defs) {
-    const plugin = synthesizePlugin(def);
+    const plugin = synthesizePlugin(def, scope);
     if (plugin) pluginRegistry.registerCustom(plugin, scope);
   }
 }

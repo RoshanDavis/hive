@@ -31,17 +31,35 @@ export default function NodesPage({ showToast }: NodesPageProps) {
     if (isCustomType(type)) {
       const def = globalDefs.find((d) => customTypeFor(d.id) === type);
       if (def) {
-        setEditingCustom({
+        const common = {
           id: def.id,
-          baseType: def.baseType,
-          presetData: def.presetData,
           name: def.name,
           icon: def.icon,
           color: def.color,
           category: def.category,
-          scope: "global",
-          lockBaseType: true,
-        });
+          scope: "global" as const,
+        };
+        if (def.kind === "script") {
+          setEditingCustom({
+            ...common,
+            kind: "script",
+            runtime: def.runtime,
+            entry: def.entry,
+            configSchema: def.configSchema,
+            network: def.network,
+            credentials: def.credentials,
+            limits: def.limits,
+            handles: def.handles,
+          });
+        } else {
+          setEditingCustom({
+            ...common,
+            kind: "preset",
+            baseType: def.baseType,
+            presetData: def.presetData,
+            lockBaseType: true,
+          });
+        }
       }
     } else {
       setEditingType(type);

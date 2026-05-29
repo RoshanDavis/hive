@@ -42,6 +42,8 @@ pub fn run() {
             commands::delete_global_custom_node,
             commands::delete_workspace_custom_node,
             commands::custom_node_transfer,
+            commands::run_script,
+            commands::open_custom_node_script,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

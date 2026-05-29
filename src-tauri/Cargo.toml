@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/sandbox"]
+resolver = "2"
+
 [package]
 name = "hive"
 version = "0.1.0"
@@ -35,3 +39,4 @@ aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
+hive-sandbox = { path = "crates/sandbox" }

@@ -299,6 +299,12 @@ pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), St
                 obj.remove("outputContent");
             }
         }
+
+        // `logs` is transient per-run output (e.g. custom script nodes): regenerated on
+        // every run and shown only in the inspector, so it never belongs in the space file.
+        if let Some(obj) = node.data.as_object_mut() {
+            obj.remove("logs");
+        }
     }
 
     let spaces_dir = hive_dir(&workspace_path).join("spaces");
@@ -936,3 +942,211 @@ pub fn custom_node_transfer(
     delete_custom_node_dir(&from_dir, &id)?;
     Ok(def)
 }
+
+// ─── Tier-3 script nodes (sandboxed user executors) ───────────
+//
+// Source (`script.js`) and capability grants live on disk in the node folder and
+// are read here — the renderer only supplies per-instance `input` + `config`, so a
+// buggy/compromised renderer cannot widen a script's limits. Execution is synchronous
+// inside an isolated QuickJS runtime; `ctx.fetch` is a gated, blocking host call whose
+// allowlist + credential grants are enforced Rust-side. The sandbox itself (QuickJS
+// runtime + gated fetch + SSRF guards) lives in the Tauri-free `hive_sandbox` crate;
+// here we only read the on-disk definition/grants and supply a `CredentialResolver`.
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScriptLimitsRaw {
+    timeout_ms: Option<u64>,
+    memory_bytes: Option<usize>,
+}
+
+/// Bridges the sandbox crate's credential lookup to the Tauri vault. The plaintext is
+/// resolved here, server-side, and never crosses back into the renderer or the JS heap.
+struct VaultResolver {
+    app: tauri::AppHandle,
+    workspace_path: Option<String>,
+}
+
+impl hive_sandbox::CredentialResolver for VaultResolver {
+    fn resolve(
+        &self,
+        credential_id: &str,
+    ) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+        resolve_credential_values(&self.app, credential_id, None, self.workspace_path.as_deref())
+    }
+}
+
+/// Read the on-disk entry filename for a custom node, defaulting to "script.js".
+fn script_entry_for(folder: &Path) -> String {
+    let node_json = folder.join("node.json");
+    if let Ok(data) = fs::read_to_string(&node_json) {
+        if let Ok(def) = serde_json::from_str::<CustomNodeDefinition>(&data) {
+            if let Some(entry) = def.extra.get("entry").and_then(|v| v.as_str()) {
+                return entry.to_string();
+            }
+        }
+    }
+    "script.js".to_string()
+}
+
+/// Source + clamped limits + capability grants for a script node, read off disk.
+struct PreparedScript {
+    source: String,
+    timeout_ms: u64,
+    memory_bytes: usize,
+    network: hive_sandbox::NetworkGrant,
+    credentials: Vec<String>,
+}
+
+/// Read a script node's source, limits, and grants off disk. Enforces kind/runtime.
+fn prepare_script(
+    app: &tauri::AppHandle,
+    scope: &str,
+    id: &str,
+    workspace_path: Option<&str>,
+) -> Result<PreparedScript, String> {
+    let folder = custom_nodes_dir_for_scope(app, scope, workspace_path)?.join(id);
+    let node_json = folder.join("node.json");
+    let data = fs::read_to_string(&node_json)
+        .map_err(|e| format!("Failed to read custom node definition: {}", e))?;
+    let def: CustomNodeDefinition =
+        serde_json::from_str(&data).map_err(|e| format!("Failed to parse node.json: {}", e))?;
+
+    if def.kind != "script" {
+        return Err("This custom node is not a script node".to_string());
+    }
+    let runtime_kind = def.extra.get("runtime").and_then(|v| v.as_str()).unwrap_or("js");
+    if runtime_kind != "js" {
+        return Err(format!("Unsupported script runtime: {}", runtime_kind));
+    }
+
+    let entry = def
+        .extra
+        .get("entry")
+        .and_then(|v| v.as_str())
+        .unwrap_or("script.js");
+    let source = fs::read_to_string(folder.join(entry))
+        .map_err(|e| format!("Failed to read script source ({}): {}", entry, e))?;
+    if source.len() > hive_sandbox::MAX_SOURCE_BYTES {
+        return Err(format!(
+            "Script source exceeds {} bytes",
+            hive_sandbox::MAX_SOURCE_BYTES
+        ));
+    }
+
+    let limits: Option<ScriptLimitsRaw> = def
+        .extra
+        .get("limits")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+    let timeout_ms = hive_sandbox::clamp_timeout_ms(
+        limits
+            .as_ref()
+            .and_then(|l| l.timeout_ms)
+            .unwrap_or(hive_sandbox::DEFAULT_TIMEOUT_MS),
+    );
+    let memory_bytes = hive_sandbox::clamp_memory_bytes(
+        limits
+            .as_ref()
+            .and_then(|l| l.memory_bytes)
+            .unwrap_or(hive_sandbox::DEFAULT_MEMORY_BYTES),
+    );
+
+    // Network grant (default: disabled). Credentials: ids the script may inject.
+    let network = def
+        .extra
+        .get("network")
+        .and_then(|v| {
+            let mode = v.get("mode").and_then(|m| m.as_str()).unwrap_or("none").to_string();
+            let allow = v
+                .get("allow")
+                .and_then(|a| a.as_array())
+                .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            Some(hive_sandbox::NetworkGrant { mode, allow })
+        })
+        .unwrap_or_default();
+    let credentials: Vec<String> = def
+        .extra
+        .get("credentials")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    Ok(PreparedScript {
+        source,
+        timeout_ms,
+        memory_bytes,
+        network,
+        credentials,
+    })
+}
+
+#[tauri::command]
+pub async fn run_script(
+    app: tauri::AppHandle,
+    scope: String,
+    id: String,
+    workspace_path: Option<String>,
+    input: serde_json::Value,
+    config: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let prepared = prepare_script(&app, &scope, &id, workspace_path.as_deref())?;
+    let input_json = serde_json::to_string(&input).map_err(|e| e.to_string())?;
+    let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
+
+    let resolver: std::sync::Arc<dyn hive_sandbox::CredentialResolver> =
+        std::sync::Arc::new(VaultResolver {
+            app: app.clone(),
+            workspace_path: workspace_path.clone(),
+        });
+    let fetch_env = hive_sandbox::FetchEnv {
+        resolver: Some(resolver),
+        network: prepared.network,
+        credentials: prepared.credentials,
+    };
+
+    tokio::task::spawn_blocking(move || {
+        hive_sandbox::run_quickjs(
+            &prepared.source,
+            &input_json,
+            &config_json,
+            prepared.timeout_ms,
+            prepared.memory_bytes,
+            fetch_env,
+        )
+    })
+    .await
+    .map_err(|e| format!("Script task failed: {}", e))?
+}
+
+/// Ensure the node's script file exists (seeding a starter template if absent), then
+/// reveal it in the OS file manager so the user can open it in their own editor. We
+/// deliberately reveal rather than launch: on Windows the default handler for `.js`
+/// would *execute* the file via Windows Script Host.
+#[tauri::command]
+pub fn open_custom_node_script(
+    app: tauri::AppHandle,
+    scope: String,
+    id: String,
+    workspace_path: Option<String>,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let folder = custom_nodes_dir_for_scope(&app, &scope, workspace_path.as_deref())?.join(&id);
+    fs::create_dir_all(&folder)
+        .map_err(|e| format!("Failed to create custom-node folder: {}", e))?;
+
+    let entry = script_entry_for(&folder);
+    let script_path = folder.join(&entry);
+    if !script_path.exists() {
+        write_atomic(&script_path, hive_sandbox::STARTER_SCRIPT.as_bytes())?;
+    }
+
+    app.opener()
+        .reveal_item_in_dir(&script_path)
+        .map_err(|e| format!("Failed to reveal script file: {}", e))?;
+    Ok(())
+}
+
+// Sandbox unit tests (QuickJS execution + SSRF guards + credential gating) live in the
+// `hive-sandbox` crate and run natively everywhere: `cargo test -p hive-sandbox`.

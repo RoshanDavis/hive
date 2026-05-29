@@ -1,4 +1,4 @@
-import type { NodePlugin } from "@/engine/plugin";
+import type { HandleConfig, NodePlugin } from "@/engine/plugin";
 
 export type CustomNodeScope = "global" | "workspace";
 
@@ -27,11 +27,61 @@ export interface PresetCustomNode extends CustomNodeBase {
   presetData: Record<string, unknown>;
 }
 
+/** One configSchema entry — renders as a per-instance config input in the inspector. */
+export interface ScriptField {
+  key: string;
+  label: string;
+  type: "string" | "number" | "boolean" | "select" | "password";
+  required?: boolean;
+  default?: unknown;
+  /** Choices for `type: "select"`. */
+  options?: string[];
+}
+
 /**
- * Discriminated union of all custom-node kinds. Phase 1 ships `preset` only;
- * a `script` variant (Tier 3) extends this union later.
+ * Network capability grant for a script node's `fetch`. `none` blocks all network;
+ * `allowlist` permits only hosts matching one of the `allow` globs (Phase B).
  */
-export type CustomNodeDefinition = PresetCustomNode;
+export interface NetworkGrant {
+  mode: "none" | "allowlist";
+  /** Host globs, e.g. "api.github.com", "*.example.com". */
+  allow: string[];
+}
+
+/** Resource ceilings requested by a definition. Rust clamps these to hard maxima. */
+export interface ScriptLimits {
+  timeoutMs: number;
+  memoryBytes: number;
+}
+
+/**
+ * Tier 3 — a script node: behavior comes from user-authored code executed in a
+ * Rust-side sandbox (rquickjs). The source lives in `<node>/script.js` on disk
+ * (the single source of truth) and is never carried through the renderer or
+ * `node.json` — only the metadata + capability grants below are persisted here.
+ */
+export interface ScriptCustomNode extends CustomNodeBase {
+  kind: "script";
+  /** Only "js" is implemented; "wasm" is reserved (see design doc). */
+  runtime: "js" | "wasm";
+  /** Source filename within the node folder. Defaults to "script.js". */
+  entry: string;
+  /** Drives the per-instance inspector form; values are passed to the script as `config`. */
+  configSchema: ScriptField[];
+  /** Network allowlist for the script's `fetch` (Phase B). */
+  network: NetworkGrant;
+  /** credentialIds the script may reference for server-side header injection (Phase B). */
+  credentials: string[];
+  limits: ScriptLimits;
+  /** Custom handle layout (Phase C). When omitted, the engine default (in/out) applies. */
+  handles?: HandleConfig[];
+}
+
+/**
+ * Discriminated union of all custom-node kinds: `preset` (Tier 1) and `script`
+ * (Tier 3). Discriminate on `kind`.
+ */
+export type CustomNodeDefinition = PresetCustomNode | ScriptCustomNode;
 
 /** The on-disk registry type prefix used to namespace custom nodes. */
 export const CUSTOM_TYPE_PREFIX = "custom:";

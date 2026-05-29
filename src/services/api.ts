@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { WorkspaceConfig, SpaceData } from "@/types/workspace";
-import type { CustomNodeDefinition } from "@/types/customNodes";
+import type { CustomNodeDefinition, CustomNodeScope } from "@/types/customNodes";
+import type { NodeOutputEnvelope } from "@/engine/types";
+
+export interface ScriptRunResult {
+  output: NodeOutputEnvelope;
+  logs: string[];
+}
 
 // ─── Tauri Return Models ─────────────────────────────────────
 export interface Workspace {
@@ -146,6 +152,39 @@ export const api = {
       id,
       fromScope,
       toScope,
+      workspacePath: workspacePath ?? null,
+    });
+  },
+
+  // Tier-3 script nodes. Source + grants are read off disk by Rust; the renderer
+  // only supplies per-instance input + config. The plaintext of any granted
+  // credential is injected server-side and never crosses back into the renderer.
+  async runScript(args: {
+    scope: CustomNodeScope;
+    id: string;
+    workspacePath: string | null;
+    input: NodeOutputEnvelope;
+    config: Record<string, unknown>;
+  }): Promise<ScriptRunResult> {
+    return invoke<ScriptRunResult>("run_script", {
+      scope: args.scope,
+      id: args.id,
+      workspacePath: args.workspacePath ?? null,
+      input: args.input,
+      config: args.config,
+    });
+  },
+
+  // Ensure the node's script.js exists (writing a starter template if absent),
+  // then open it with the OS default editor via tauri-plugin-opener.
+  async openCustomNodeScript(
+    scope: CustomNodeScope,
+    id: string,
+    workspacePath: string | null
+  ): Promise<void> {
+    return invoke<void>("open_custom_node_script", {
+      scope,
+      id,
       workspacePath: workspacePath ?? null,
     });
   },

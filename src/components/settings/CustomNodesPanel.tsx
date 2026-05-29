@@ -18,17 +18,35 @@ export default function CustomNodesPanel({ showToast }: Props) {
   const { globalDefs, workspaceDefs, deleteCustomNode } = useCustomNodes();
 
   const openEdit = (def: CustomNodeDefinition, scope: CustomNodeScope) => {
-    setEditing({
+    const common = {
       id: def.id,
-      baseType: def.baseType,
-      presetData: def.presetData,
       name: def.name,
       icon: def.icon,
       color: def.color,
       category: def.category,
       scope,
-      lockBaseType: true,
-    });
+    };
+    if (def.kind === "script") {
+      setEditing({
+        ...common,
+        kind: "script",
+        runtime: def.runtime,
+        entry: def.entry,
+        configSchema: def.configSchema,
+        network: def.network,
+        credentials: def.credentials,
+        limits: def.limits,
+        handles: def.handles,
+      });
+    } else {
+      setEditing({
+        ...common,
+        kind: "preset",
+        baseType: def.baseType,
+        presetData: def.presetData,
+        lockBaseType: true,
+      });
+    }
   };
 
   const handleDelete = async (scope: CustomNodeScope, id: string) => {
