@@ -18,6 +18,8 @@ Tauri 2 desktop app. Rust backend in `src-tauri/`, React 19 + TypeScript fronten
 
 Path alias: `@/*` → `src/*` (configured in both `tsconfig.json` and `vite.config.ts`). Always use it for cross-module imports.
 
+Deeper per-system design docs live in `docs/` (start at [docs/architecture-overview.md](docs/architecture-overview.md)): node engine, workflow execution, credential vault, workspace persistence, node defaults, custom nodes. The sections below are the terse working summary; the docs explain data flow, edge cases, and why. Each doc carries a "living document" header recording the commit it was verified against — **when you change a system, update its doc in the same change and bump that commit**, and trust the code over the prose if they ever disagree.
+
 ### Frontend: plugin-based node engine
 
 The visual workflow editor is built around a plugin registry, not hardcoded node types. The pieces fit together like this:
@@ -58,6 +60,19 @@ A new node starts from `plugin.defaultData`, but users can override those defaul
 - **Shared LLM provider config** lives in `src/services/llmProviders.ts` (`ProviderType`, `PROVIDER_BASE_URL`, `PROVIDER_SCHEMA_TYPES`) — used by both `LLMInspector` and `LLMDefaultsEditor`; keep them in sync there, not duplicated.
 - **Adding a defaults editor to a node type**: set `defaultsEditor` on the plugin (or rely on `AutoDefaultsEditor`). Node cards (`src/components/shared/NodeGridCard.tsx`), the dashed add card (`DashedAddCard.tsx`), the node picker popup (`NodePickerMenu.tsx`), and the ranked search (`src/utils/rankedSearch.ts`) are reusable across these surfaces.
 
+### Custom nodes (dynamic registry)
+
+Users can author their own node types, workspace-scoped with promote-to-global. The full design + threat model is in [docs/custom-nodes-design.md](docs/custom-nodes-design.md) — read it before touching this area. Summary:
+
+- **One mechanism: turn on-disk definitions into registered plugins at runtime.** `src/engine/pluginRegistry.ts` is layered — built-ins register at startup; customs register via `registerCustom(plugin, scope)` / `clearCustomsByScope(scope)`, with a monotonic `version` (`subscribe`/`getVersion`) for `useSyncExternalStore`. Because the engine, palette, connectivity, and node-defaults all read the registry, once a custom node is registered everything works.
+- **Two kinds** (`src/types/customNodes.ts`, discriminated by `kind`): `preset` (a saved config over a `baseType` built-in — reuses the base plugin's executor/inspector/handles, only `meta` + `defaultData` differ, **zero new code runs**) and `script` (a sandboxed user-authored JS executor).
+- **Loader + lifecycle** — `src/services/customNodeLoader.ts` `synthesizePlugin(def, scope)` builds a `NodePlugin` per definition; `src/services/customNodesService.ts` + `src/contexts/CustomNodesContext.tsx` own disk/registry CRUD. `CustomNodesProvider` (mounted in `App.tsx`) loads global customs once at app start and **swaps** workspace customs on workspace enter/leave (same lifecycle as `NodeDefaultsProvider`). A `custom:<id>` reference with no definition on disk degrades to a visible placeholder (`unknownCustomPlugin.tsx`), never crashes.
+- **Script nodes run in Rust, never the renderer.** The `run_script` command executes `script.js` in an isolated QuickJS runtime (`rquickjs`) with server-clamped memory/stack/time limits. The sandbox itself (QuickJS exec + gated `fetch` + SSRF guards) lives in the **Tauri-free `src-tauri/crates/sandbox` (`hive-sandbox`) crate** behind a `CredentialResolver` trait; the Tauri side implements it with `VaultResolver`. **Disk is authoritative for code AND capability grants** — `run_script` reads the source + network/credential/limit grants off disk by scope+id+workspace; the renderer only supplies per-instance `input` + `config`, so it cannot widen a script's reach.
+- **Script contract (synchronous):** the source file is the body of `(ctx) => { … }` where `ctx = { input, config, log, fetch }`; the **return value** becomes the output envelope (no `setOutput`). `ctx.fetch(url, opts)` is **blocking** and gated: host must match the `network.allow` globs, private/loopback targets are blocked unless listed exactly, and the host is validated post-DNS with connection pinning (closes DNS-rebinding TOCTOU). Credentials are injected server-side by `credentialId` and never enter the JS heap.
+- **Adapter + UI** — one `src/engine/ScriptExecutor.ts` implements `NodeExecutor` for every script node. `ScriptNodeInspector.tsx` provides per-instance config, run/output/logs, "Open script in editor", and a dangling-credential banner. Authoring is `src/components/customNodes/CustomNodeFormModal.tsx` (Preset|Script toggle). Surfaces mirror node-defaults: global on the Nodes tab (`NodesPage.tsx`), workspace in `SettingsModal` (`src/components/settings/CustomNodesPanel.tsx`).
+- **Editor is bring-your-own** — no embedded code editor. `open_custom_node_script` seeds a starter `script.js` if missing and **reveals it in the OS file manager** (does not launch it — on Windows the default `.js` handler executes via Windows Script Host).
+- **Adding to this area**: extend `synthesizePlugin` for new kinds; keep grant enforcement server-side; reuse the credential vault + concurrency governor patterns. The import/marketplace grant-consent flow is **deferred** (no import action exists yet).
+
 ### Connection rules
 
 `src/engine/connectivity.ts` (`getConnectionBehavior`) decides edge legality and default flow direction (`one-way`, `bi-directional`, `read-only`, `write-only`, `read-write`) based on source/target node types and which handle is used. Chat ↔ LLM defaults to `bi-directional`; anything touching `jsonStorage` resolves to a database edge (read-only / write-only / read-write). New node-pair behaviors go in `CONNECTION_RULES`.
@@ -72,6 +87,8 @@ A new node starts from `plugin.defaultData`, but users can override those defaul
 
 LLM inference is handled in Rust (`llm_chat` command) to avoid CORS and keep API keys off the renderer. It dispatches by `provider` to OpenAI-compatible, Anthropic, or Ollama HTTP shapes. It accepts either a `credentialId` (preferred — resolved from the vault server-side) or a raw `apiKey` (legacy / migration fallback). `ollama_chat` is the older direct path.
 
+The Rust side is a Cargo workspace: the `hive` bin/lib plus `crates/sandbox` (`hive-sandbox`), the Tauri-free QuickJS sandbox used by `run_script` (see Custom nodes above). Keep the sandbox GUI/Tauri-free so it stays natively unit-testable — run its tests with `cargo test -p hive-sandbox`. (`cargo test` over the whole workspace drags in the GUI crate, whose bare test harness fails to load on Windows with `STATUS_ENTRYPOINT_NOT_FOUND` due to a missing Common-Controls v6 manifest; the design doc documents the manifest workaround if you ever add GUI-crate tests.)
+
 ### Workspace persistence (`.hive/` layout)
 
 The app manages "workspaces" — user-chosen folders on disk. The app-data registry (`workspaces.json` in Tauri's `app_data_dir`) only stores `{ name, path }` pointers; everything else lives inside the workspace folder under `.hive/`:
@@ -84,9 +101,11 @@ The app manages "workspaces" — user-chosen folders on disk. The app-data regis
   chats/<space_id>/<nodeId>.json     # chat history, decoupled from space file
   credentials.vault        # encrypted local-scope credentials (AES-256-GCM)
   node-defaults.json       # per-workspace node-default overrides + user models
+  custom-nodes/<id>/node.json   # workspace-scoped custom node definition
+  custom-nodes/<id>/script.js   # tier-3 script source (kept out of node.json)
 ```
 
-The global credential vault lives separately at `app_data_dir/credentials.vault`. Both vault files are encrypted with the same master key from the OS keychain. Global node defaults live alongside it at `app_data_dir/node-defaults.json` (see Node defaults above).
+The global credential vault lives separately at `app_data_dir/credentials.vault`. Both vault files are encrypted with the same master key from the OS keychain. Global node defaults live alongside it at `app_data_dir/node-defaults.json`, and global custom nodes at `app_data_dir/custom-nodes/<id>/` (see Node defaults and Custom nodes above).
 
 `save_space` in `commands.rs` strips `records`/`messages`/`outputContent` out of nodes before writing the space file and persists them to their own files; `load_space` reattaches them. This keeps space JSON small and stable across runs. `commands.rs` also auto-migrates the legacy `databases/` folder to `storage/` and cleans up legacy empty dirs (`assets/`, `agents/`, `data/`, etc.) on load.
 
@@ -98,4 +117,5 @@ All disk writes go through `write_atomic` in `utils.rs` (write-to-tempfile + ren
 - New executor: implement `NodeExecutor.execute(ctx)`. To read upstream input use `getUpstreamNodeEnvelope`. To write output, update node data with both `lastResponse` and `outputEnvelope`. For LLM-style work, wrap the network call in `concurrencyGovernor.enqueue(pool, ...)`. If the node needs auth, pass `node.data.credentialId` + `ctx.workspacePath` to a Tauri command that resolves the secret server-side — never decrypt credentials in the renderer for execution.
 - New Tauri command: add it in `commands.rs`, register in `lib.rs` `invoke_handler![]`, and add a typed wrapper in `src/services/api.ts`. Use `write_atomic` for disk writes.
 - Node defaults: reading merged defaults at create time goes through `useNodeDefaults().getMergedOverrides` (never read the service directly in render). After editing defaults, call the context `refresh()` so changes apply without a workspace reload. A node type gets a custom defaults form via `defaultsEditor`; otherwise `AutoDefaultsEditor` handles it.
+- Custom nodes: build on the dynamic registry (`registerCustom`/`synthesizePlugin`) — see `docs/custom-nodes-design.md`. For script nodes, keep code + capability grants authoritative on disk and enforce all sandbox/network/credential policy server-side in `run_script`/`hive-sandbox`; never trust the renderer for grants. Edit script source via the on-disk `script.js` + reveal-in-file-manager, not an embedded editor.
 - Backward compatibility: prefer adding entries to `aliases` and the legacy migration paths in `storage.ts` / `commands.rs` rather than breaking saved data.
