@@ -32,10 +32,10 @@ export default function LLMInspector({
     // Strip any lingering inline apiKey from legacy state — credentials live in the vault now.
     delete updatedData.apiKey;
 
-    // Switching to Ollama means no credential is needed; drop the reference so
-    // the inspector doesn't carry a stale id. For other transitions the picker
-    // detects schema mismatch and renders its "Credential missing" banner.
-    if (credentialId && PROVIDER_SCHEMA_TYPES[newProvider].length === 0) {
+    // A credential belongs to the provider it was created for. On any provider change,
+    // drop the stale reference so execution can't send the wrong secret to the new
+    // provider; the user re-selects/creates one via the picker.
+    if (credentialId && newProvider !== provider) {
       delete updatedData.credentialId;
     }
 

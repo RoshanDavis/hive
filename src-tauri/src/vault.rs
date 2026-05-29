@@ -262,6 +262,13 @@ impl CredentialVault {
         Ok(Some(values))
     }
 
+    /// Read an entry without modifying the vault. Used by transfers so the source is
+    /// only mutated after the destination write succeeds (no data loss on partial failure).
+    pub fn get_entry(&self, id: &str) -> Result<Option<CredentialEntry>, String> {
+        let vault = self.load()?;
+        Ok(vault.credentials.iter().find(|c| c.id == id).cloned())
+    }
+
     pub fn take_entry(&self, id: &str) -> Result<Option<CredentialEntry>, String> {
         let mut vault = self.load()?;
         let pos = match vault.credentials.iter().position(|c| c.id == id) {

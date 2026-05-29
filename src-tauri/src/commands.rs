@@ -14,6 +14,16 @@ use crate::vault::{
     CredentialVault,
 };
 
+/// Shared HTTP client for outbound LLM calls. Explicit connect + overall timeouts so a
+/// stalled or unresponsive provider can't hang the Tauri command (and the run loop) forever.
+fn llm_http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))
+}
+
 // ─── Credential vault helpers ────────────────────────────────
 
 fn make_global_vault(app: &tauri::AppHandle) -> Result<CredentialVault, String> {
@@ -481,13 +491,19 @@ pub async fn ollama_chat(
         },
     };
 
-    let client = reqwest::Client::new();
+    let client = llm_http_client()?;
     let res = client
         .post(format!("{}/api/chat", ollama_url))
         .json(&req_body)
         .send()
         .await
         .map_err(|e| format!("Failed to send request to Ollama: {}", e))?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let err_text = res.text().await.unwrap_or_default();
+        return Err(format!("Ollama returned error status ({}): {}", status, err_text));
+    }
 
     let resp_data: OllamaResponse = res
         .json()
@@ -557,7 +573,7 @@ pub async fn llm_chat(
         }
 
         let key = api_key.unwrap_or_default();
-        let client = reqwest::Client::new();
+        let client = llm_http_client()?;
         let mut req = client.post(format!("{}/chat/completions", url));
         
         if !key.is_empty() {
@@ -618,7 +634,7 @@ pub async fn llm_chat(
             }
         }
 
-        let client = reqwest::Client::new();
+        let client = llm_http_client()?;
         let req = client.post(format!("{}/v1/messages", url))
             .header("x-api-key", &key)
             .header("anthropic-version", "2023-06-01")
@@ -734,11 +750,19 @@ pub fn credential_transfer(
     }
     let source = vault_for_scope(&app, &from_scope, workspace_path.as_deref())?;
     let dest = vault_for_scope(&app, &to_scope, workspace_path.as_deref())?;
+    // Write to the destination first, then remove from the source. If the destination
+    // write fails the source is untouched; if the source removal fails we roll the
+    // destination write back. Either way the credential is never lost from both scopes.
     let entry = source
-        .take_entry(&id)?
+        .get_entry(&id)?
         .ok_or_else(|| format!("Credential not found in {} vault: {}", from_scope, id))?;
     let meta = entry.to_meta(&to_scope);
     dest.insert_entry(entry)?;
+    if let Err(e) = source.remove(&id) {
+        // Best-effort rollback so we don't leave a duplicate in both vaults.
+        let _ = dest.remove(&id);
+        return Err(format!("Failed to remove credential from source vault: {}", e));
+    }
     Ok(meta)
 }
 

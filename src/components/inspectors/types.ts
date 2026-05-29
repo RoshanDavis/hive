@@ -4,7 +4,7 @@ export interface InspectorProps {
   node: Node;
   onUpdate: (nodeId: string, data: Record<string, unknown>) => void;
   isRunning?: boolean;
-  runningStartNodeIds?: Set<string>;
+  runningStartNodeIds?: Map<string, number>;
   onRun?: (nodeId: string) => void;
   onCancel?: (nodeId?: string) => void;
   onChatSend?: (nodeId: string, text: string) => void;

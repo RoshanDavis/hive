@@ -52,6 +52,16 @@ A [Tauri 2](https://tauri.app/) desktop app: a visual, node-graph editor for bui
 
 **Renderer ↔ backend rule:** the frontend never calls `invoke` directly — every IPC call goes through the typed wrappers in [src/services/api.ts](../src/services/api.ts). The backend never returns decrypted secrets to the renderer.
 
+### Security posture: why CSP is disabled
+
+[src-tauri/tauri.conf.json](../src-tauri/tauri.conf.json) sets `security.csp: null`, i.e. no Content-Security-Policy is enforced on the WebView. This is a deliberate, documented trade-off, not an oversight:
+
+- **No remote-content surface.** The WebView only ever loads the locally bundled app (`dist/`); there is no remote origin, and the frontend never calls `invoke` directly or evaluates server-supplied HTML. The classic CSP threat — injected remote script/styles in a page that talks to a privileged origin — does not apply.
+- **Untrusted code is already isolated elsewhere.** The one place user-authored code runs is tier-3 script nodes, and those execute in the Rust-side QuickJS sandbox (`hive-sandbox`) with hard resource ceilings and SSRF-guarded `fetch` — never in the renderer. CSP would not add a meaningful layer there.
+- **Cost vs. benefit.** React Flow and Tailwind v4 lean on inline styles, so a correct policy would need `style-src 'unsafe-inline'` (and careful auditing of dynamic style/`filter` usage on edges), which weakens the policy while still requiring full-UI re-testing on every dependency bump.
+
+**Future hardening:** if the app ever loads remote content or embeds a real code editor in the renderer, enable an explicit, restrictive CSP at that point (start from `default-src 'self'` + the minimal `style-src` exceptions React Flow needs) rather than leaving it `null`.
+
 ## The central abstraction: plugins
 
 Hive has no hardcoded node types. A `NodePlugin` ([src/engine/plugin.ts](../src/engine/plugin.ts)) bundles everything a node type needs (metadata, default data, React component, inspector, executor, handles, credential schemas, …) and is registered in a singleton registry. The engine, palette, connectivity rules, node-defaults, and custom nodes all consume the registry, so adding a node type — built-in *or* user-authored — is uniform. See [node-engine.md](node-engine.md).

@@ -38,12 +38,19 @@ export function NodeDefaultsProvider({ workspacePath, children }: ProviderProps)
 
   const refresh = useCallback(async () => {
     nodeDefaultsService.invalidate(wsRef.current);
-    const [g, w] = await Promise.all([
-      nodeDefaultsService.loadGlobal(),
-      nodeDefaultsService.loadWorkspace(wsRef.current),
-    ]);
-    setGlobal(g);
-    setWorkspace(w);
+    // Load each scope independently: a genuine read failure for one scope (corrupt/unreadable
+    // file) shouldn't blank the other, and must not throw out of the effect. On failure we keep
+    // the previous in-memory state; the service refuses to cache/save empty so disk stays intact.
+    try {
+      setGlobal(await nodeDefaultsService.loadGlobal());
+    } catch (err) {
+      console.error("Failed to load global node defaults:", err);
+    }
+    try {
+      setWorkspace(await nodeDefaultsService.loadWorkspace(wsRef.current));
+    } catch (err) {
+      console.error("Failed to load workspace node defaults:", err);
+    }
   }, []);
 
   useEffect(() => {

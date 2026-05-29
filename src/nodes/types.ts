@@ -1,4 +1,5 @@
 import type { Node } from "@xyflow/react";
+import type { NodeOutputEnvelope } from "@/engine/types";
 
 // ─── Node data types ─────────────────────────────────────────
 export interface TriggerNodeData {
@@ -59,6 +60,7 @@ export interface JSONStorageRecord {
   timestamp: string;
   source: string;
   content: string;
+  envelope?: NodeOutputEnvelope;
 }
 
 export interface JSONStorageNodeData {

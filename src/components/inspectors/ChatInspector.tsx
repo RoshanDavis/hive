@@ -93,7 +93,12 @@ export default function ChatInspector({
     }
   };
 
+  // When read-only storage drives the view, the displayed messages come from records
+  // this node can't write to, so clearing local messages would do nothing visible.
+  const canClearHistory = !(connectedStorageNode && !hasWritePermission);
+
   const handleClearHistory = () => {
+    if (!canClearHistory) return;
     onUpdate(node.id, {
       ...node.data,
       messages: [],
@@ -184,8 +189,10 @@ export default function ChatInspector({
         </button>
       </div>
       <button
-        className="w-full rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-[#ff6b6b] hover:text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)] hover:shadow-none"
+        className="w-full rounded-md py-2.5 text-sm font-semibold transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary enabled:cursor-pointer enabled:hover:border-[#ff6b6b] enabled:hover:text-[#ff6b6b] enabled:hover:bg-[rgba(255,107,107,0.1)] enabled:hover:shadow-none disabled:opacity-40 disabled:cursor-not-allowed"
         onClick={handleClearHistory}
+        disabled={!canClearHistory}
+        title={canClearHistory ? undefined : "Linked storage is read-only — history can't be cleared from here"}
       >
         Clear History
       </button>

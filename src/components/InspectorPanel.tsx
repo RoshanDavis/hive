@@ -20,7 +20,7 @@ interface InspectorPanelProps {
   onRetryWorkflow?: (nodeId: string) => void;
   onCancelWorkflow?: (nodeId?: string) => void;
   isRunning: boolean;
-  runningStartNodeIds?: Set<string>;
+  runningStartNodeIds?: Map<string, number>;
   nodes?: Node[];
   edges?: Edge[];
   onDragStartNode?: (type: string) => void;

@@ -72,16 +72,22 @@ export const executeNode = async (
           const payload = getUpstreamNodeData(context.node);
           if (payload !== null && payload !== undefined) {
             const dbRecords = (storageNode.data?.records as any[]) || [];
-            // Prevent duplicate entries of the same content if triggered repeatedly in the same tick
+            const recordSource = String(context.node.data?.label || context.node.type || "Source");
+            // Prevent duplicate entries from the SAME emitter if triggered repeatedly in the
+            // same tick. Scoped by source so distinct upstream nodes writing identical content
+            // (fan-in) are not collapsed into one record.
             const isDuplicate = dbRecords.some(
-              (rec) => rec.content === payload && Date.now() - Number(rec.id) < 500
+              (rec) =>
+                rec.content === payload &&
+                rec.source === recordSource &&
+                Date.now() - Number(rec.id) < 500
             );
             if (!isDuplicate) {
               const envelope = getUpstreamNodeEnvelope(context.node);
               const newRecord = {
                 id: Date.now().toString(),
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                source: String(context.node.data?.label || context.node.type || "Source"),
+                source: recordSource,
                 content: payload,
                 envelope: envelope
               };

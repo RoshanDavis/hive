@@ -86,6 +86,9 @@ interface RunControl {
   // True while the run loop is still executing. Once false, the run is in its
   // post-loop fade window and can be torn down directly by a cancel.
   inLoop: boolean;
+  // Guards the running-count decrement so a run is only ever released once,
+  // even though both the run's finally and a cancel can race to release it.
+  countReleased: boolean;
 }
 
 export function useWorkspaceRunner({
@@ -96,7 +99,11 @@ export function useWorkspaceRunner({
   showToast,
   workspacePath,
 }: UseWorkspaceRunnerParams) {
-  const [runningStartNodeIds, setRunningStartNodeIds] = useState<Set<string>>(new Set<string>());
+  // Ref-counted by start signature so concurrent runs of the same workflow don't collide:
+  // a Set would store one entry for two runs, so finishing one would mark the other stopped.
+  const [runningStartNodeIds, setRunningStartNodeIds] = useState<Map<string, number>>(
+    new Map<string, number>()
+  );
   // Pending fade-out timers, keyed by runId so a stale timer can never clear a newer run's borders.
   const fadeTimeoutsRef = useRef<Map<string, number>>(new Map());
   // Re-execution bookkeeping, keyed by the workflow's start signature.
@@ -111,6 +118,22 @@ export function useWorkspaceRunner({
     (runId: string) => activeRunsRef.current.get(runId)?.cancelled === true,
     []
   );
+
+  // Drop a run from the running ref-count exactly once. Decrements the count for the
+  // run's start signature and removes the key only when it reaches zero.
+  const releaseRunCount = useCallback((runId: string) => {
+    const control = activeRunsRef.current.get(runId);
+    if (!control || control.countReleased) return;
+    control.countReleased = true;
+    const key = control.startKey;
+    setRunningStartNodeIds((prev) => {
+      const next = new Map(prev);
+      const count = (next.get(key) ?? 0) - 1;
+      if (count > 0) next.set(key, count);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
 
   // Clear the status borders for every node owned by the given run ids.
   // `error`/`waiting` are cleared too here because cancelling is a hard stop.
@@ -136,11 +159,11 @@ export function useWorkspaceRunner({
     async (startNodeIds: string[], chatInput?: string) => {
       const startKey = startNodeIds.join(",");
       const runId = `${++runCounterRef.current}-${Date.now()}`;
-      activeRunsRef.current.set(runId, { startKey, cancelled: false, inLoop: true });
+      activeRunsRef.current.set(runId, { startKey, cancelled: false, inLoop: true, countReleased: false });
 
       setRunningStartNodeIds((prev) => {
-        const next = new Set(prev);
-        next.add(startKey);
+        const next = new Map(prev);
+        next.set(startKey, (next.get(startKey) ?? 0) + 1);
         return next;
       });
 
@@ -197,6 +220,7 @@ export function useWorkspaceRunner({
           delete newData.lastInputMessages;
           delete newData.lastInputText;
           delete newData.lastInputSender;
+          delete newData.lastInputEnvelope;
         }
         if (!inScope(n.id)) {
           return { ...n, data: newData as Record<string, unknown> };
@@ -450,12 +474,8 @@ export function useWorkspaceRunner({
         const control = activeRunsRef.current.get(runId);
         if (control) control.inLoop = false;
 
-        // Always drop this run from the running set.
-        setRunningStartNodeIds((prev) => {
-          const next = new Set(prev);
-          next.delete(startKey);
-          return next;
-        });
+        // Always drop this run from the running ref-count.
+        releaseRunCount(runId);
 
         if (isCancelled(runId)) {
           // cancelWorkflow already cleared the borders for this run; a late executor write
@@ -490,7 +510,7 @@ export function useWorkspaceRunner({
         }
       }
     },
-    [nodes, edges, setNodes, showToast, handleUpdateNodeData, workspacePath, isCancelled, clearBordersForRuns]
+    [nodes, edges, setNodes, showToast, handleUpdateNodeData, workspacePath, isCancelled, clearBordersForRuns, releaseRunCount]
   );
 
   // Stop running/waiting workflows. With a nodeId, cancels just the run that owns that node;
@@ -504,19 +524,23 @@ export function useWorkspaceRunner({
       if (nodeId) {
         const node = nodes.find((n) => n.id === nodeId);
         const rid = node?.data?.statusRunId as string | undefined;
-        targetRunIds = rid && runs.has(rid) ? [rid] : Array.from(runs.keys());
+        // Only cancel the run that actually owns this node. If the node has no live
+        // run, do nothing — never fall back to cancelling every active workflow.
+        if (!rid || !runs.has(rid)) return;
+        targetRunIds = [rid];
       } else {
         targetRunIds = Array.from(runs.keys());
       }
 
       const cancelledSet = new Set(targetRunIds);
-      const startKeys = new Set<string>();
 
       targetRunIds.forEach((rid) => {
         const r = runs.get(rid);
         if (!r) return;
         r.cancelled = true;
-        startKeys.add(r.startKey);
+        // Release the running ref-count now for snappy UI; the run's finally is guarded
+        // against a double release, so it won't decrement again when its loop exits.
+        releaseRunCount(rid);
         const t = fadeTimeoutsRef.current.get(rid);
         if (t) {
           clearTimeout(t);
@@ -531,15 +555,9 @@ export function useWorkspaceRunner({
 
       clearBordersForRuns(cancelledSet);
 
-      setRunningStartNodeIds((prev) => {
-        const next = new Set(prev);
-        startKeys.forEach((k) => next.delete(k));
-        return next;
-      });
-
       showToast("Workflow cancelled", "info");
     },
-    [nodes, clearBordersForRuns, showToast]
+    [nodes, clearBordersForRuns, showToast, releaseRunCount]
   );
 
   const executeWorkflow = useCallback(

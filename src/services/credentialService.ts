@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "./api";
 import type {
   CredentialMeta,
   CredentialScope,
@@ -7,9 +7,7 @@ import type {
 
 export const credentialService = {
   async list(workspacePath?: string): Promise<CredentialMeta[]> {
-    return invoke<CredentialMeta[]>("credential_list", {
-      workspacePath: workspacePath ?? null,
-    });
+    return api.credentialList(workspacePath ?? null);
   },
 
   async add(
@@ -20,14 +18,7 @@ export const credentialService = {
     values: CredentialValues,
     workspacePath?: string
   ): Promise<CredentialMeta> {
-    return invoke<CredentialMeta>("credential_add", {
-      scope,
-      workspacePath: workspacePath ?? null,
-      name,
-      schemaType,
-      provider,
-      values,
-    });
+    return api.credentialAdd(scope, name, schemaType, provider, values, workspacePath ?? null);
   },
 
   async update(
@@ -37,13 +28,7 @@ export const credentialService = {
     values: CredentialValues | null,
     workspacePath?: string
   ): Promise<CredentialMeta> {
-    return invoke<CredentialMeta>("credential_update", {
-      scope,
-      workspacePath: workspacePath ?? null,
-      id,
-      name,
-      values,
-    });
+    return api.credentialUpdate(scope, id, name, values, workspacePath ?? null);
   },
 
   async remove(
@@ -51,11 +36,7 @@ export const credentialService = {
     id: string,
     workspacePath?: string
   ): Promise<void> {
-    return invoke<void>("credential_remove", {
-      scope,
-      workspacePath: workspacePath ?? null,
-      id,
-    });
+    return api.credentialRemove(scope, id, workspacePath ?? null);
   },
 
   async transfer(
@@ -64,12 +45,7 @@ export const credentialService = {
     toScope: CredentialScope,
     workspacePath?: string
   ): Promise<CredentialMeta> {
-    return invoke<CredentialMeta>("credential_transfer", {
-      id,
-      fromScope,
-      toScope,
-      workspacePath: workspacePath ?? null,
-    });
+    return api.credentialTransfer(id, fromScope, toScope, workspacePath ?? null);
   },
 
   // Plaintext-returning resolve. Only used by Settings UI when the user is
@@ -81,10 +57,6 @@ export const credentialService = {
     scope?: CredentialScope,
     workspacePath?: string
   ): Promise<CredentialValues> {
-    return invoke<CredentialValues>("credential_resolve", {
-      id,
-      scope: scope ?? null,
-      workspacePath: workspacePath ?? null,
-    });
+    return api.credentialResolve(id, scope ?? null, workspacePath ?? null);
   },
 };

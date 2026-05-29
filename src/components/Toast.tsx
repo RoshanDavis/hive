@@ -14,9 +14,16 @@ export function ToastContainer({ toasts }: ToastContainerProps) {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="toast-container">
+    <div className="toast-container" aria-live="polite" aria-relevant="additions">
       {toasts.map((toast) => (
-        <div key={toast.id} className={`toast ${toast.type}`} id={`toast-${toast.id}`}>
+        <div
+          key={toast.id}
+          className={`toast ${toast.type}`}
+          id={`toast-${toast.id}`}
+          role={toast.type === "error" ? "alert" : "status"}
+          aria-live={toast.type === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
+        >
           <span className="toast-icon">
             {toast.type === "success" && "✓"}
             {toast.type === "error" && "✕"}

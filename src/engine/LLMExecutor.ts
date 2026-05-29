@@ -58,7 +58,6 @@ export class LLMExecutor implements NodeExecutor {
 
       // Check if we are retrying and already have a saved lastInputMessages
       if (node.data?.lastInputMessages && Array.isArray(node.data.lastInputMessages) && node.data.lastInputMessages.length > 0) {
-        console.log(`[LLM EXECUTOR] Reusing saved lastInputMessages from previous run:`, node.data.lastInputMessages);
         llmMessages = [...node.data.lastInputMessages];
       } else {
         // 1. If an upstream Chat node exists on the active run path, load the full conversation log

@@ -176,14 +176,33 @@ export default function SpacesSidebar({
                 ? "text-[11px]"
                 : "text-[13.5px]";
 
+            const compactBoxClass = `w-10 h-10 rounded-md flex items-center justify-center font-bold transition-all border ${
+              activeSpaceId === space.id
+                ? "text-primary bg-accent border-accent shadow-[0_0_12px_rgba(212,230,0,0.3)] hover:bg-accent-dim"
+                : "text-[#a5a5a5] border-white/20 bg-transparent hover:text-text-main hover:bg-card"
+            }`;
+
+            // In edit mode use a plain container so the rename <input> is never a
+            // descendant of a <button> (invalid HTML + focus/blur conflicts).
+            if (editingId === space.id) {
+              return (
+                <div key={space.id} className={compactBoxClass} id={`space-${space.id}`}>
+                  <input
+                    className={`w-full text-center bg-transparent border-none outline-none text-inherit font-black uppercase tracking-tighter p-0 m-0 ${fontClass}`}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={handleKeyDown}
+                    autoFocus
+                  />
+                </div>
+              );
+            }
+
             return (
               <button
                 key={space.id}
-                className={`w-10 h-10 rounded-md flex items-center justify-center font-bold cursor-pointer transition-all border ${
-                  activeSpaceId === space.id
-                    ? "text-primary bg-accent border-accent shadow-[0_0_12px_rgba(212,230,0,0.3)] hover:bg-accent-dim"
-                    : "text-[#a5a5a5] border-white/20 bg-transparent hover:text-text-main hover:bg-card"
-                }`}
+                className={`${compactBoxClass} cursor-pointer`}
                 onClick={() => onSwitchSpace(space.id)}
                 onDoubleClick={(e) => startRename(space, e)}
                 onContextMenu={(e) => {
@@ -194,21 +213,9 @@ export default function SpacesSidebar({
                 title={`Space: ${space.label} (double-click to rename)`}
                 id={`space-${space.id}`}
               >
-                {editingId === space.id ? (
-                  <input
-                    className={`w-full text-center bg-transparent border-none outline-none text-inherit font-black uppercase tracking-tighter p-0 m-0 ${fontClass}`}
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={handleKeyDown}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span className={`${fontClass} tracking-tighter uppercase font-black`}>
-                    {displayLabel}
-                  </span>
-                )}
+                <span className={`${fontClass} tracking-tighter uppercase font-black`}>
+                  {displayLabel}
+                </span>
               </button>
             );
           } else {
@@ -220,14 +227,46 @@ export default function SpacesSidebar({
                 ? "text-[9.5px]"
                 : "text-[12px]";
 
+            const rowClass = `w-full px-3 py-2 flex items-center gap-3 rounded-lg text-sm font-medium transition-all border text-left min-w-0 ${
+              activeSpaceId === space.id
+                ? "text-accent bg-accent-glow/10 border-accent shadow-[0_0_12px_rgba(212,230,0,0.08)]"
+                : "text-[#a5a5a5] border-white/20 bg-transparent hover:text-text-main hover:bg-card/50"
+            }`;
+
+            const avatar = (
+              <div
+                className={`w-7 h-7 rounded-md flex items-center justify-center font-black uppercase shrink-0 border transition-all ${avatarFontClass} ${
+                  activeSpaceId === space.id
+                    ? "bg-accent text-primary border-accent"
+                    : "bg-primary/30 text-[#b5b5b5] border-border-subtle"
+                }`}
+              >
+                {displayLabel}
+              </div>
+            );
+
+            // In edit mode use a plain container so the rename <input> is never a
+            // descendant of a <button> (invalid HTML + focus/blur conflicts).
+            if (editingId === space.id) {
+              return (
+                <div key={space.id} className={rowClass} id={`space-${space.id}`}>
+                  {avatar}
+                  <input
+                    className="grow min-w-0 bg-transparent border-none outline-none text-[11.5px] tracking-wide text-text-main p-0 m-0"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={handleKeyDown}
+                    autoFocus
+                  />
+                </div>
+              );
+            }
+
             return (
               <button
                 key={space.id}
-                className={`w-full px-3 py-2 flex items-center gap-3 rounded-lg text-sm font-medium cursor-pointer transition-all border text-left min-w-0 ${
-                  activeSpaceId === space.id
-                    ? "text-accent bg-accent-glow/10 border-accent shadow-[0_0_12px_rgba(212,230,0,0.08)]"
-                    : "text-[#a5a5a5] border-white/20 bg-transparent hover:text-text-main hover:bg-card/50"
-                }`}
+                className={`${rowClass} cursor-pointer`}
                 onClick={() => onSwitchSpace(space.id)}
                 onDoubleClick={(e) => startRename(space, e)}
                 onContextMenu={(e) => {
@@ -238,31 +277,8 @@ export default function SpacesSidebar({
                 title={`Space: ${space.label} (double-click to rename)`}
                 id={`space-${space.id}`}
               >
-                {/* Space Icon/Avatar (Yellow Rounded Square when active) */}
-                <div
-                  className={`w-7 h-7 rounded-md flex items-center justify-center font-black uppercase shrink-0 border transition-all ${avatarFontClass} ${
-                    activeSpaceId === space.id
-                      ? "bg-accent text-primary border-accent"
-                      : "bg-primary/30 text-[#b5b5b5] border-border-subtle"
-                  }`}
-                >
-                  {displayLabel}
-                </div>
-
-                {/* Space Name */}
-                {editingId === space.id ? (
-                  <input
-                    className="grow min-w-0 bg-transparent border-none outline-none text-[11.5px] tracking-wide text-text-main p-0 m-0"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={handleKeyDown}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span className="truncate grow text-[11.5px] tracking-wide">{space.label}</span>
-                )}
+                {avatar}
+                <span className="truncate grow text-[11.5px] tracking-wide">{space.label}</span>
               </button>
             );
           }

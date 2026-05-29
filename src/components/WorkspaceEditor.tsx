@@ -307,9 +307,15 @@ function WorkspaceEditorInner({
               if (count > 1) {
                 deleteSelected();
               } else {
-                if (pluginRegistry.get(node.type || '')?.meta.category === 'storage') {
+                const delPlugin = pluginRegistry.get(node.type || '');
+                if (delPlugin?.meta.category === 'storage') {
                   api.deleteStorageHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
                     console.error("Failed to delete storage history:", err);
+                  });
+                }
+                if (node.type === 'chat' || delPlugin?.baseType === 'chat') {
+                  api.deleteChatHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
+                    console.error("Failed to delete chat history:", err);
                   });
                 }
                 setNodes((nds) => nds.filter((n) => n.id !== node.id));
@@ -490,9 +496,15 @@ function WorkspaceEditorInner({
               icon: "🗑️",
               danger: true,
               onClick: () => {
-                if (pluginRegistry.get(singleNode.type || '')?.meta.category === 'storage') {
+                const delPlugin = pluginRegistry.get(singleNode.type || '');
+                if (delPlugin?.meta.category === 'storage') {
                   api.deleteStorageHistory(workspacePath, activeSpaceId, singleNode.id).catch((err) => {
                     console.error("Failed to delete storage history:", err);
+                  });
+                }
+                if (singleNode.type === 'chat' || delPlugin?.baseType === 'chat') {
+                  api.deleteChatHistory(workspacePath, activeSpaceId, singleNode.id).catch((err) => {
+                    console.error("Failed to delete chat history:", err);
                   });
                 }
                 setNodes((nds) => nds.filter((n) => n.id !== singleNode.id));

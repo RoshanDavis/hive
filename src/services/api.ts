@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import type { WorkspaceConfig, SpaceData } from "@/types/workspace";
 import type { CustomNodeDefinition, CustomNodeScope } from "@/types/customNodes";
 import type { NodeOutputEnvelope } from "@/engine/types";
+import type {
+  CredentialMeta,
+  CredentialScope,
+  CredentialValues,
+} from "@/types/credentialTypes";
 
 export interface ScriptRunResult {
   output: NodeOutputEnvelope;
@@ -76,6 +81,11 @@ export const api = {
   // Database / JSON Storage
   async deleteStorageHistory(workspacePath: string, spaceId: string, databaseNodeId: string): Promise<void> {
     return invoke<void>("delete_storage_history", { workspacePath, spaceId, databaseNodeId });
+  },
+
+  // Chat history (persisted per chat node under .hive/chats/<spaceId>/<nodeId>.json)
+  async deleteChatHistory(workspacePath: string, spaceId: string, chatNodeId: string): Promise<void> {
+    return invoke<void>("delete_chat_history", { workspacePath, spaceId, chatNodeId });
   },
 
   // OS Notification Action
@@ -217,6 +227,87 @@ export const api = {
       messages,
       temperature,
       maxTokens,
+    });
+  },
+
+  // Credential vault. Secrets are encrypted at rest and resolved server-side;
+  // `credentialResolve` returns plaintext and is for the Settings editor only —
+  // executors must pass a credentialId to `llmChat`/`runScript` instead.
+  async credentialList(workspacePath?: string | null): Promise<CredentialMeta[]> {
+    return invoke<CredentialMeta[]>("credential_list", {
+      workspacePath: workspacePath ?? null,
+    });
+  },
+
+  async credentialAdd(
+    scope: CredentialScope,
+    name: string,
+    schemaType: string,
+    provider: string,
+    values: CredentialValues,
+    workspacePath?: string | null
+  ): Promise<CredentialMeta> {
+    return invoke<CredentialMeta>("credential_add", {
+      scope,
+      workspacePath: workspacePath ?? null,
+      name,
+      schemaType,
+      provider,
+      values,
+    });
+  },
+
+  async credentialUpdate(
+    scope: CredentialScope,
+    id: string,
+    name: string | null,
+    values: CredentialValues | null,
+    workspacePath?: string | null
+  ): Promise<CredentialMeta> {
+    return invoke<CredentialMeta>("credential_update", {
+      scope,
+      workspacePath: workspacePath ?? null,
+      id,
+      name,
+      values,
+    });
+  },
+
+  async credentialRemove(
+    scope: CredentialScope,
+    id: string,
+    workspacePath?: string | null
+  ): Promise<void> {
+    return invoke<void>("credential_remove", {
+      scope,
+      workspacePath: workspacePath ?? null,
+      id,
+    });
+  },
+
+  async credentialTransfer(
+    id: string,
+    fromScope: CredentialScope,
+    toScope: CredentialScope,
+    workspacePath?: string | null
+  ): Promise<CredentialMeta> {
+    return invoke<CredentialMeta>("credential_transfer", {
+      id,
+      fromScope,
+      toScope,
+      workspacePath: workspacePath ?? null,
+    });
+  },
+
+  async credentialResolve(
+    id: string,
+    scope?: CredentialScope | null,
+    workspacePath?: string | null
+  ): Promise<CredentialValues> {
+    return invoke<CredentialValues>("credential_resolve", {
+      id,
+      scope: scope ?? null,
+      workspacePath: workspacePath ?? null,
     });
   },
 };

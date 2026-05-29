@@ -41,7 +41,7 @@ All registered in [lib.rs](../src-tauri/src/lib.rs), implemented in [commands.rs
 |---|---|
 | `credential_list` | global metas, plus local metas if a workspace path is given |
 | `credential_add` / `credential_update` / `credential_remove` | CRUD into the scope's vault |
-| `credential_transfer` | move an entry between scopes (global ⇄ local) — take from source, insert into dest |
+| `credential_transfer` | move an entry between scopes (global ⇄ local) — insert into dest first, then remove from source (rollback on failure) so the credential is never lost from both vaults |
 | `credential_resolve` | decrypt + return values (inspector UX only) |
 
 `vault_for_scope(scope, workspace_path)` picks the right vault and validates that `"local"` got a workspace path.

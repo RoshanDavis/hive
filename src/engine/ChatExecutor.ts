@@ -94,7 +94,6 @@ export class ChatExecutor implements NodeExecutor {
 
         // Check if we are retrying and already have a saved lastInputText
         if (chatNode.data?.lastInputText !== undefined && chatNode.data?.lastInputText !== null) {
-          console.log(`[CHAT EXECUTOR] Reusing saved lastInputText from previous run:`, chatNode.data.lastInputText);
           resolvedMessage = String(chatNode.data.lastInputText);
           senderLabel = String(chatNode.data.lastInputSender || "Agent");
         } else {

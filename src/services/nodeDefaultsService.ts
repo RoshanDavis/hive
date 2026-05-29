@@ -7,20 +7,22 @@ export type DefaultsScope = "global" | "workspace";
 let globalCache: NodeDefaultsConfig | null = null;
 const workspaceCache = new Map<string, NodeDefaultsConfig>();
 
-function emptyConfig(): NodeDefaultsConfig {
-  return { version: 1, defaults: {}, models: {} };
-}
-
 async function ensureGlobal(): Promise<NodeDefaultsConfig> {
   if (globalCache) return globalCache;
+  // The backend returns an empty config for a missing file, so a thrown error here is a
+  // genuine failure (corruption / unreadable / IPC). Don't cache empty — that would let a
+  // subsequent save overwrite the real file with a blank document. Surface it instead.
+  let cfg: NodeDefaultsConfig;
   try {
-    globalCache = await api.loadGlobalNodeDefaults();
-  } catch {
-    globalCache = emptyConfig();
+    cfg = await api.loadGlobalNodeDefaults();
+  } catch (err) {
+    console.error("Failed to load global node defaults:", err);
+    throw err;
   }
   // Defensive: backend may return null/undefined fields on first load.
-  globalCache.defaults = globalCache.defaults ?? {};
-  globalCache.models = globalCache.models ?? {};
+  cfg.defaults = cfg.defaults ?? {};
+  cfg.models = cfg.models ?? {};
+  globalCache = cfg;
   return globalCache;
 }
 
@@ -30,8 +32,9 @@ async function ensureWorkspace(workspacePath: string): Promise<NodeDefaultsConfi
   let cfg: NodeDefaultsConfig;
   try {
     cfg = await api.loadWorkspaceNodeDefaults(workspacePath);
-  } catch {
-    cfg = emptyConfig();
+  } catch (err) {
+    console.error("Failed to load workspace node defaults:", err);
+    throw err;
   }
   cfg.defaults = cfg.defaults ?? {};
   cfg.models = cfg.models ?? {};

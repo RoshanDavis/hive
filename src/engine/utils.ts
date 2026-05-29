@@ -16,13 +16,13 @@ export function getUpstreamNodeData(upstreamNode: Node): string | null {
   const plugin = pluginRegistry.get(upstreamNode.type || "");
   if (plugin?.getOutput) {
     const envelope = plugin.getOutput(upstreamNode.data as Record<string, unknown>);
-    if (envelope.value) return envelope.value;
+    if (envelope.value !== undefined && envelope.value !== null) return envelope.value;
   }
 
   // 2. Read from standardized outputEnvelope
   if (upstreamNode.data.outputEnvelope) {
     const env = upstreamNode.data.outputEnvelope as NodeOutputEnvelope;
-    if (env.value) return env.value;
+    if (env.value !== undefined && env.value !== null) return env.value;
   }
 
   // 3. Fallback chain for backward compatibility with nodes

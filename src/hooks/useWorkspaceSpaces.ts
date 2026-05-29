@@ -266,6 +266,15 @@ export function useWorkspaceSpaces({
       const newEntry: SpaceEntry = { id: newId, label: newLabel, order: nextOrder };
       setSpaces((prev) => [...prev, newEntry]);
 
+      // Persist the new space as active so it survives a reload (mirrors handleSwitchSpace).
+      try {
+        const config = await api.loadWorkspaceConfig(workspacePath);
+        config.active_space = newId;
+        await api.saveWorkspaceConfig(workspacePath, config);
+      } catch (_err) {
+        // Non-critical: in-memory switch below still takes effect this session.
+      }
+
       // Switch to the new space
       isInitialLoadRef.current = true;
       setActiveSpaceId(newId);

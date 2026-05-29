@@ -30,6 +30,14 @@ export default function LLMDefaultsEditor({
   const showBaseURL = provider === "Ollama" || provider === "Other";
   const schemaTypes = PROVIDER_SCHEMA_TYPES[provider];
 
+  // Defaults must never store plaintext secrets — only a credentialId. Strip any legacy
+  // inline apiKey on every save so editing an old default converges to vault-only storage.
+  const commit = (next: Record<string, unknown>) => {
+    const cleaned = { ...next };
+    delete cleaned.apiKey;
+    onUpdate(cleaned);
+  };
+
   const handleProviderChange = (next: ProviderType) => {
     const updated: Record<string, unknown> = {
       ...values,
@@ -40,7 +48,7 @@ export default function LLMDefaultsEditor({
     };
     // Drop a stale credential when the new provider needs none (Ollama).
     if (PROVIDER_SCHEMA_TYPES[next].length === 0) delete updated.credentialId;
-    onUpdate(updated);
+    commit(updated);
   };
 
   return (
@@ -72,7 +80,7 @@ export default function LLMDefaultsEditor({
             type="text"
             value={baseURL}
             onChange={(e) =>
-              onUpdate({ ...values, baseURL: e.target.value, ollamaUrl: e.target.value })
+              commit({ ...values, baseURL: e.target.value, ollamaUrl: e.target.value })
             }
           />
         </div>
@@ -83,7 +91,7 @@ export default function LLMDefaultsEditor({
           <CredentialPicker
             schemaTypes={schemaTypes}
             selectedCredentialId={credentialId}
-            onSelect={(id) => onUpdate({ ...values, credentialId: id ?? undefined })}
+            onSelect={(id) => commit({ ...values, credentialId: id ?? undefined })}
             workspacePath={workspacePath}
           />
           {scope === "global" && (
@@ -99,7 +107,7 @@ export default function LLMDefaultsEditor({
         provider={provider}
         selectedModel={modelName}
         onSelect={(name) =>
-          onUpdate({ ...values, modelName: name, model: name })
+          commit({ ...values, modelName: name, model: name })
         }
         workspacePath={workspacePath}
       />
@@ -112,7 +120,7 @@ export default function LLMDefaultsEditor({
           className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim resize-y min-h-[80px]"
           value={systemPrompt}
           rows={3}
-          onChange={(e) => onUpdate({ ...values, systemPrompt: e.target.value })}
+          onChange={(e) => commit({ ...values, systemPrompt: e.target.value })}
           placeholder="You are a helpful AI assistant."
         />
       </div>
@@ -127,7 +135,7 @@ export default function LLMDefaultsEditor({
           max="2"
           step="0.05"
           value={temperature}
-          onChange={(e) => onUpdate({ ...values, temperature: parseFloat(e.target.value) })}
+          onChange={(e) => commit({ ...values, temperature: parseFloat(e.target.value) })}
           className="w-full"
         />
       </div>
@@ -139,7 +147,7 @@ export default function LLMDefaultsEditor({
         <input
           type="number"
           value={maxTokens}
-          onChange={(e) => onUpdate({ ...values, maxTokens: parseInt(e.target.value, 10) || 0 })}
+          onChange={(e) => commit({ ...values, maxTokens: parseInt(e.target.value, 10) || 0 })}
           className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
         />
       </div>

@@ -91,10 +91,11 @@ export default function CustomConnectionEdge({
 
         {/* 2. Left Track: Forward flow */}
         <path
-          style={{ 
-            stroke: strokeColor, 
-            strokeWidth: selected ? 2.5 : 1.8, 
-            fill: "none", 
+          style={{
+            ...style,
+            stroke: strokeColor,
+            strokeWidth: selected ? 2.5 : 1.8,
+            fill: "none",
             pointerEvents: "none",
             filter: glowShadow || undefined
           }}
@@ -104,11 +105,12 @@ export default function CustomConnectionEdge({
 
         {/* 3. Right Track: Backward flow */}
         <path
-          style={{ 
-            stroke: strokeColor, 
-            strokeWidth: selected ? 2.5 : 1.8, 
-            fill: "none", 
-            pointerEvents: "none" 
+          style={{
+            ...style,
+            stroke: strokeColor,
+            strokeWidth: selected ? 2.5 : 1.8,
+            fill: "none",
+            pointerEvents: "none"
           }}
           className="animated-edge-backward"
           d={backwardPath}
