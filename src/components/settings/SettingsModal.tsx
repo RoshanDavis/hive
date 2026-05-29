@@ -146,7 +146,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                           onClick={() => setLocalEnabled(!localEnabled)}
                           className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${localEnabled ? 'bg-accent' : 'bg-input'}`}
                         >
-                          <div className={`w-4 h-4 rounded-full bg-[#0a0a0a] shadow-md transform duration-200 ${localEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                          <div className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${localEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
                         </button>
                       </div>
                       {localEnabled && (
@@ -196,14 +196,14 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                             <button
                               type="button"
                               onClick={() => handleAddPattern()}
-                              className="px-3 py-1.5 bg-[#d4e600] hover:bg-[#b0bf00] text-[#0a0a0a] font-bold text-[10px] rounded-md transition-colors cursor-pointer border-none"
+                              className="px-3 py-1.5 bg-[#d4e600] hover:bg-[#b0bf00] text-primary font-bold text-[10px] rounded-md transition-colors cursor-pointer border-none"
                             >
                               + Add
                             </button>
                           </div>
 
                           {/* tags list */}
-                          <div className="flex flex-wrap gap-1.5 min-h-[30px] p-2 bg-input/20 border border-border-subtle rounded-md">
+                          <div className="flex flex-wrap gap-1.5 min-h-7.5 p-2 bg-input/20 border border-border-subtle rounded-md">
                             {patterns.length === 0 ? (
                               <span className="text-[9.5px] text-text-muted italic flex items-center px-1">No custom patterns. All hosts run in Cloud pool.</span>
                             ) : (
@@ -239,7 +239,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                   <div className="flex flex-col gap-1 max-w-md">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-text-main">Cloud Model Pool</span>
-                      <span className="px-2 py-0.5 text-[9px] font-bold bg-[#60a5fa]/10 border border-[#60a5fa]/25 text-[#60a5fa] rounded-full">Remote APIs</span>
+                      <span className="px-2 py-0.5 text-[9px] font-bold bg-node-notify/10 border border-node-notify/25 text-node-notify rounded-full">Remote APIs</span>
                     </div>
                     <p className="text-[10.5px] text-text-secondary leading-normal">
                       Controls parallel HTTP connections to cloud models (OpenAI, Anthropic, Google). Since cloud calls run on remote servers, limits are only useful for rate-limiting.
@@ -252,7 +252,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                         onClick={() => setCloudEnabled(!cloudEnabled)}
                         className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${cloudEnabled ? 'bg-accent' : 'bg-input'}`}
                       >
-                        <div className={`w-4 h-4 rounded-full bg-[#0a0a0a] shadow-md transform duration-200 ${cloudEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                        <div className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${cloudEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
                       </button>
                     </div>
                     {cloudEnabled && (
@@ -276,7 +276,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                   <div className="flex flex-col gap-1 max-w-md">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-text-main">General Tasks</span>
-                      <span className="px-2 py-0.5 text-[9px] font-bold bg-[#34d399]/10 border border-[#34d399]/25 text-[#34d399] rounded-full">Utility Nodes</span>
+                      <span className="px-2 py-0.5 text-[9px] font-bold bg-node-chat/10 border border-node-chat/25 text-node-chat rounded-full">Utility Nodes</span>
                     </div>
                     <p className="text-[10.5px] text-text-secondary leading-normal">
                       Concurrency for instant workflows like notifications, local workspace state saves, and JSON database updates. Typically runs without limits to prevent blocking execution.
@@ -289,7 +289,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                         onClick={() => setGeneralEnabled(!generalEnabled)}
                         className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${generalEnabled ? 'bg-accent' : 'bg-input'}`}
                       >
-                        <div className={`w-4 h-4 rounded-full bg-[#0a0a0a] shadow-md transform duration-200 ${generalEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                        <div className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${generalEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
                       </button>
                     </div>
                     {generalEnabled && (
@@ -324,7 +324,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
           </button>
           <button
             onClick={handleSave}
-            className="px-5 py-2 bg-[#d4e600] hover:bg-[#b0bf00] active:scale-[0.98] text-[#0a0a0a] font-bold text-xs rounded-lg transition-all shadow-[0_4px_12px_rgba(212,230,0,0.15)] cursor-pointer select-none"
+            className="px-5 py-2 bg-[#d4e600] hover:bg-[#b0bf00] active:scale-[0.98] text-primary font-bold text-xs rounded-lg transition-all shadow-[0_4px_12px_rgba(212,230,0,0.15)] cursor-pointer select-none"
           >
             Save Changes
           </button>

@@ -458,7 +458,7 @@ export default function CustomNodeFormModal({
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                className="w-full h-[38px] bg-input border border-border-subtle rounded-md cursor-pointer"
+                className="w-full h-9.5 bg-input border border-border-subtle rounded-md cursor-pointer"
               />
             </div>
             <div className="flex flex-col gap-1.5 flex-1">

@@ -117,7 +117,7 @@ export default function LLMDefaultsEditor({
           System Prompt
         </label>
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim resize-y min-h-[80px]"
+          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim resize-y min-h-20"
           value={systemPrompt}
           rows={3}
           onChange={(e) => commit({ ...values, systemPrompt: e.target.value })}

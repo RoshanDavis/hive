@@ -553,6 +553,7 @@
 
 .concurrency-card-input[type=number] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .concurrency-add-card {

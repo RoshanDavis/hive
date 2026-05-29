@@ -119,7 +119,7 @@ export default function LLMInspector({
       <div className="flex flex-col gap-2">
         <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">System Prompt</label>
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none resize-y min-h-[80px] font-inherit"
+          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none resize-y min-h-20 font-inherit"
           value={String(node.data?.systemPrompt || "")}
           onChange={(e) =>
             onUpdate(node.id, {
@@ -180,7 +180,7 @@ export default function LLMInspector({
               });
             }}
             className={`w-10 h-5.5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
-              isLimited ? "bg-[#d4e600]" : "bg-[#2a2a2a]"
+              isLimited ? "bg-[#d4e600]" : "bg-border-subtle"
             }`}
             style={{ border: isLimited ? "none" : "1px solid #3a3a3a" }}
           >

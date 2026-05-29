@@ -108,7 +108,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
           </button>
         ))}
 
-        <div className="flex-grow" />
+        <div className="grow" />
 
         {/* Settings button */}
         <button

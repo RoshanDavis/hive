@@ -103,7 +103,7 @@ function renderInput(
           rows={3}
           value={String(currentValue ?? "")}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim resize-y min-h-[64px]"
+          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim resize-y min-h-16"
         />
       );
     }

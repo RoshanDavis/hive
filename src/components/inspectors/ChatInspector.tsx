@@ -113,7 +113,7 @@ export default function ChatInspector({
   };
 
   return (
-    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[calc(100vh-280px)] min-h-[380px]">
+    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[calc(100vh-280px)] min-h-95">
       <div className="flex justify-between items-center mb-1">
         <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">Chat Conversation</div>
         {connectedStorageNode && (
@@ -156,7 +156,7 @@ export default function ChatInspector({
           return (
             <div key={idx} className={`flex flex-col gap-1 max-w-[90%] ${msg.role === "user" ? "self-end" : "self-start"}`}>
               <div className={`text-[10px] font-semibold text-text-muted uppercase ${msg.role === "user" ? "text-right text-accent-dim" : ""}`}>{msg.role === "user" ? "You" : (msg.sender || "Agent")}</div>
-              <div className={`bg-card px-3 py-2 rounded-md text-[13px] text-text-main leading-relaxed whitespace-pre-wrap break-words border border-border-subtle ${msg.role === "user" ? "bg-accent-glow border-accent-dim rounded-br-sm" : "bg-input rounded-bl-sm"}`}>{msg.content}</div>
+              <div className={`bg-card px-3 py-2 rounded-md text-[13px] text-text-main leading-relaxed whitespace-pre-wrap wrap-break-word border border-border-subtle ${msg.role === "user" ? "bg-accent-glow border-accent-dim rounded-br-sm" : "bg-input rounded-bl-sm"}`}>{msg.content}</div>
             </div>
           );
         })}
@@ -167,7 +167,7 @@ export default function ChatInspector({
       
       <div className="flex flex-col gap-2">
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none min-h-[60px] resize-none"
+          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none min-h-15 resize-none"
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyDown={(e) => {

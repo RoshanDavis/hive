@@ -308,7 +308,7 @@ export default function SpacesSidebar({
       )}
 
       {/* Spacer pushing settings to bottom */}
-      <div className="flex-grow" />
+      <div className="grow" />
 
       {/* Settings Button */}
       {isCompact ? (
