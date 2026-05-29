@@ -176,6 +176,7 @@ function WorkspaceEditorInner({
     executeWorkflow,
     handleChatSend,
     retryWorkflow,
+    cancelWorkflow,
   } = useWorkspaceRunner({
     nodes,
     edges,
@@ -681,6 +682,7 @@ function WorkspaceEditorInner({
         onRunWorkflow={executeWorkflow}
         onChatSend={handleChatSend}
         onRetryWorkflow={retryWorkflow}
+        onCancelWorkflow={cancelWorkflow}
         isRunning={isRunning}
         runningStartNodeIds={runningStartNodeIds}
         nodes={nodes}

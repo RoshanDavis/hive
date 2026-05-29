@@ -68,6 +68,9 @@ function getAncestorNodeIds(startNodeIds: string[], edges: Edge[]): Set<string> 
   return ancestors;
 }
 
+// How long the solid-green / pending borders linger after a workflow terminates before they fade out.
+const FADE_DELAY_MS = 1500;
+
 interface UseWorkspaceRunnerParams {
   nodes: Node[];
   edges: Edge[];
@@ -75,6 +78,14 @@ interface UseWorkspaceRunnerParams {
   handleUpdateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   showToast: ShowToastFunc;
   workspacePath: string;
+}
+
+interface RunControl {
+  startKey: string;
+  cancelled: boolean;
+  // True while the run loop is still executing. Once false, the run is in its
+  // post-loop fade window and can be torn down directly by a cancel.
+  inLoop: boolean;
 }
 
 export function useWorkspaceRunner({
@@ -86,25 +97,52 @@ export function useWorkspaceRunner({
   workspacePath,
 }: UseWorkspaceRunnerParams) {
   const [runningStartNodeIds, setRunningStartNodeIds] = useState<Set<string>>(new Set<string>());
-  const successTimeoutsRef = useRef<Map<string, number>>(new Map());
+  // Pending fade-out timers, keyed by runId so a stale timer can never clear a newer run's borders.
+  const fadeTimeoutsRef = useRef<Map<string, number>>(new Map());
+  // Re-execution bookkeeping, keyed by the workflow's start signature.
   const executedNodeIdsMapRef = useRef<Map<string, Set<string>>>(new Map());
+  // Every active run gets a control record so it can be cancelled mid-flight.
+  const activeRunsRef = useRef<Map<string, RunControl>>(new Map());
+  const runCounterRef = useRef(0);
 
   const isRunning = runningStartNodeIds.size > 0;
+
+  const isCancelled = useCallback(
+    (runId: string) => activeRunsRef.current.get(runId)?.cancelled === true,
+    []
+  );
+
+  // Clear the status borders for every node owned by the given run ids.
+  // `error`/`waiting` are cleared too here because cancelling is a hard stop.
+  const clearBordersForRuns = useCallback(
+    (runIds: Set<string>) => {
+      setNodes((nds) =>
+        nds.map((n) => {
+          const rid = n.data.statusRunId as string | undefined;
+          if (rid && runIds.has(rid)) {
+            return {
+              ...n,
+              data: { ...n.data, status: undefined, statusRunId: undefined, error: undefined },
+            };
+          }
+          return n;
+        })
+      );
+    },
+    [setNodes]
+  );
 
   const runWorkflow = useCallback(
     async (startNodeIds: string[], chatInput?: string) => {
       const startKey = startNodeIds.join(",");
+      const runId = `${++runCounterRef.current}-${Date.now()}`;
+      activeRunsRef.current.set(runId, { startKey, cancelled: false, inLoop: true });
+
       setRunningStartNodeIds((prev) => {
         const next = new Set(prev);
         next.add(startKey);
         return next;
       });
-
-      const existingTimeout = successTimeoutsRef.current.get(startKey);
-      if (existingTimeout) {
-        clearTimeout(existingTimeout);
-        successTimeoutsRef.current.delete(startKey);
-      }
 
       if (!chatInput) {
         showToast("Workflow started", "info");
@@ -112,10 +150,14 @@ export function useWorkspaceRunner({
 
       const isResuming = !!chatInput;
 
-      console.log("[RUNWORKFLOW] startNodeIds:", startNodeIds, "chatInput:", chatInput, "isResuming:", isResuming);
+      console.log("[RUNWORKFLOW] runId:", runId, "startNodeIds:", startNodeIds, "isResuming:", isResuming);
 
       // Find reachable downstream nodes and any storage nodes connected to starting Chat nodes
       const reachableDownstreamIds = getReachableNodeIds(startNodeIds, edges);
+      // Ancestors of the start node(s). Used to (a) re-seed already-run upstream nodes on a
+      // retry, and (b) recognize a pause node reached via a loop-back as a return path (end)
+      // rather than a fresh forward halt (waiting for input).
+      const ancestorIds = getAncestorNodeIds(startNodeIds, edges);
       const startingStorageNodeIds = new Set<string>();
       startNodeIds.forEach((sid) => {
         const connectedEdges = edges.filter(
@@ -126,53 +168,55 @@ export function useWorkspaceRunner({
         });
       });
 
-      const nodesToClear = new Set<string>([
-        ...startNodeIds,
-        ...Array.from(startingStorageNodeIds),
-        ...Array.from(reachableDownstreamIds)
-      ]);
-
-      console.log("[RUNWORKFLOW] reachableDownstreamIds:", Array.from(reachableDownstreamIds));
-      console.log("[RUNWORKFLOW] startingStorageNodeIds:", Array.from(startingStorageNodeIds));
-
       const hasTriggerStart = startNodeIds.some((sid) => {
         const n = nodes.find((node) => node.id === sid);
         return n?.type && !pluginRegistry.get(n.type)?.executor;
       });
       const isFreshRun = hasTriggerStart || !!chatInput;
 
-      const currentNodes = nodes.map((n) => {
-        let newStatus = n.data.status;
-        const newData = { ...n.data };
+      // A node is "in scope" for this run if the run is responsible for its status.
+      // Out-of-scope nodes (e.g. successful ancestors during a retry, or another
+      // workflow's nodes) keep their existing status & run ownership untouched so we
+      // never clobber a different run's borders.
+      const inScope = (nodeId: string): boolean =>
+        startNodeIds.includes(nodeId) ||
+        startingStorageNodeIds.has(nodeId) ||
+        reachableDownstreamIds.has(nodeId);
 
+      // The status an in-scope node should start the run with.
+      const initStatusFor = (nodeId: string): string | undefined => {
+        if (startNodeIds.includes(nodeId)) return undefined;
+        if (startingStorageNodeIds.has(nodeId)) return "pending";
+        if (reachableDownstreamIds.has(nodeId)) return "pending";
+        return undefined;
+      };
+
+      const currentNodes = nodes.map((n) => {
+        const newData = { ...n.data };
         if (isFreshRun) {
           delete newData.lastInputMessages;
           delete newData.lastInputText;
           delete newData.lastInputSender;
         }
-
-        if (startNodeIds.includes(n.id)) {
-          newStatus = undefined;
-        } else if (startingStorageNodeIds.has(n.id)) {
-          newStatus = "pending";
-        } else if (reachableDownstreamIds.has(n.id)) {
-          newStatus = "pending";
+        if (!inScope(n.id)) {
+          return { ...n, data: newData as Record<string, unknown> };
         }
-        console.log(`[RUNWORKFLOW] init node status: ${n.id} (${n.type}) -> old: ${n.data.status}, new: ${newStatus}`);
+        const newStatus = initStatusFor(n.id);
         return {
           ...n,
           data: {
             ...newData,
             status: newStatus,
+            statusRunId: newStatus === undefined ? undefined : runId,
           } as Record<string, unknown>,
         };
       });
 
+      // Stamp `statusRunId` alongside every status write so cleanup can tell which run owns a node.
       const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>) => {
         const index = currentNodes.findIndex((n) => n.id === nodeId);
         if (index !== -1) {
           const oldNode = currentNodes[index];
-          console.log(`[RUNWORKFLOW] localUpdateNodeData: ${nodeId} (${oldNode.type}) - status change: ${oldNode.data.status} -> ${data.status}`);
           currentNodes[index] = { ...currentNodes[index], data: { ...data } };
 
           // Mirror status updates onto connected storage nodes for pause-capable nodes
@@ -187,12 +231,12 @@ export function useWorkspaceRunner({
 
             if (storageNode) {
               const newStorageStatus = data.status === "waiting" ? undefined : data.status;
+              const newStorageRunId = newStorageStatus === undefined ? undefined : data.statusRunId;
               const storageIndex = currentNodes.findIndex((n) => n.id === storageNode.id);
               if (storageIndex !== -1) {
-                console.log(`[RUNWORKFLOW] Mirroring chat status to storage ${storageNode.id} (${newStorageStatus})`);
                 currentNodes[storageIndex] = {
                   ...currentNodes[storageIndex],
-                  data: { ...currentNodes[storageIndex].data, status: newStorageStatus },
+                  data: { ...currentNodes[storageIndex].data, status: newStorageStatus, statusRunId: newStorageRunId },
                 };
                 handleUpdateNodeData(storageNode.id, currentNodes[storageIndex].data);
               }
@@ -202,35 +246,38 @@ export function useWorkspaceRunner({
         handleUpdateNodeData(nodeId, data);
       };
 
+      // Write a status transition for a node, stamping the owning run.
+      const applyStatus = (nodeId: string, baseData: Record<string, unknown>, status: string | undefined) => {
+        localUpdateNodeData(nodeId, {
+          ...baseData,
+          status,
+          statusRunId: status === undefined ? undefined : runId,
+        });
+      };
+
       let haltedAtChat = false;
-      let hasError = false;
 
       try {
         // Initialize node statuses in the React flow state
         setNodes((nds) =>
           nds.map((n) => {
-            let newStatus = n.data.status;
             const newData = { ...n.data };
-
             if (isFreshRun) {
               delete newData.lastInputMessages;
               delete newData.lastInputText;
               delete newData.lastInputSender;
               delete newData.lastInputEnvelope;
             }
-
-            if (startNodeIds.includes(n.id)) {
-              newStatus = undefined;
-            } else if (startingStorageNodeIds.has(n.id)) {
-              newStatus = "pending";
-            } else if (reachableDownstreamIds.has(n.id)) {
-              newStatus = "pending";
+            if (!inScope(n.id)) {
+              return { ...n, data: newData };
             }
+            const newStatus = initStatusFor(n.id);
             return {
               ...n,
               data: {
                 ...newData,
                 status: newStatus,
+                statusRunId: newStatus === undefined ? undefined : runId,
               },
             };
           })
@@ -241,11 +288,6 @@ export function useWorkspaceRunner({
         }
         const executedNodeIds = executedNodeIdsMapRef.current.get(startKey)!;
 
-        // Clear executed node history if starting from a fresh Trigger node
-        const hasTriggerStart = startNodeIds.some((sid) => {
-          const n = currentNodes.find((node) => node.id === sid);
-          return n?.type && !pluginRegistry.get(n.type)?.executor;
-        });
         if (hasTriggerStart) {
           executedNodeIds.clear();
         } else {
@@ -256,8 +298,7 @@ export function useWorkspaceRunner({
           });
 
           // And find all successfully executed upstream ancestors, and add them to executedNodeIds!
-          const ancestors = getAncestorNodeIds(startNodeIds, edges);
-          ancestors.forEach((ancId) => {
+          ancestorIds.forEach((ancId) => {
             const ancNode = currentNodes.find((n) => n.id === ancId);
             if (ancNode?.data?.status === "success") {
               executedNodeIds.add(ancId);
@@ -270,36 +311,33 @@ export function useWorkspaceRunner({
         const queue = [...startNodeIds];
 
         while (queue.length > 0) {
+          if (isCancelled(runId)) break;
+
           const currentId = queue.shift()!;
           const isVisited = visited.has(currentId);
           const currentNode = currentNodes.find((n) => n.id === currentId);
-          console.log(`[RUNWORKFLOW] Loop iteration. currentId: ${currentId}, type: ${currentNode?.type}, isVisited: ${isVisited}, queue:`, [...queue]);
           if (!currentNode) continue;
 
           // Normally skip visited nodes, but allow pause-capable nodes (like Chat) to execute again as downstream receivers.
           if (isVisited) {
             const nodePlugin = pluginRegistry.get(currentNode.type || '');
-            if (nodePlugin?.canPauseWorkflow) {
-              console.log(`[RUNWORKFLOW] Allowing visited ${currentNode.type} node ${currentId} to execute again as downstream receiver.`);
-            } else {
-              console.log(`[RUNWORKFLOW] Skipping already visited node: ${currentId}`);
+            if (!nodePlugin?.canPauseWorkflow) {
               continue;
             }
           }
           visited.add(currentId);
 
           // Set status to executing
-          localUpdateNodeData(currentId, { ...currentNode.data, status: "executing" });
+          applyStatus(currentId, currentNode.data, "executing");
           const updatedNode = currentNodes.find((n) => n.id === currentId)!;
 
           // Introduce a short visual delay (e.g., 600ms)
           await new Promise<void>((resolve) => setTimeout(resolve, 600));
+          if (isCancelled(runId)) break;
 
           const postExecNodePlugin = pluginRegistry.get(updatedNode.type || '');
           const isStartingPauseNode =
             postExecNodePlugin?.canPauseWorkflow && startNodeIds.includes(updatedNode.id) && !isVisited;
-
-          console.log(`[RUNWORKFLOW] Executing node ${currentId} (${updatedNode.type}). isStartingPauseNode: ${isStartingPauseNode}`);
 
           try {
             await executeNode(updatedNode.type || "default", {
@@ -313,14 +351,24 @@ export function useWorkspaceRunner({
               workspacePath,
             });
 
+            // A cancel may have landed while the executor was awaiting (e.g. a network call).
+            if (isCancelled(runId)) break;
+
             // Re-fetch the node from currentNodes to ensure we preserve any data updates made during executeNode
             const postExecNode = currentNodes.find((n) => n.id === currentId) || updatedNode;
 
             // Decide propagation downstream
             // If the node can pause workflow and is NOT a starting node, pause execution downstream
             if (postExecNodePlugin?.canPauseWorkflow && !isStartingPauseNode) {
+              // A pause node reached as a receiver is a return path (ends the cycle) when:
+              //  - it already ran earlier in this run (isVisited — e.g. the originating Chat), or
+              //  - execution looped back to a node upstream of the start (ancestorIds — e.g. a
+              //    retry from a mid-loop node lands back on the originating Chat), or
+              //  - a bi-directional edge points to an already-executed node.
+              // Otherwise it's a fresh forward halt waiting for user input.
               const isReturnPath =
                 isVisited ||
+                ancestorIds.has(currentId) ||
                 edges.some(
                   (e) =>
                     e.source === currentId &&
@@ -329,13 +377,11 @@ export function useWorkspaceRunner({
                 );
 
               if (isReturnPath) {
-                console.log(`[RUNWORKFLOW] Chat node ${currentId} return path complete. Setting to success.`);
-                localUpdateNodeData(currentId, { ...postExecNode.data, status: "success" });
+                applyStatus(currentId, postExecNode.data, "success");
                 executedNodeIds.add(currentId);
                 continue;
               } else {
-                console.log(`[RUNWORKFLOW] Chat node ${currentId} forward path halted waiting for input. Setting to waiting.`);
-                localUpdateNodeData(currentId, { ...postExecNode.data, status: "waiting" });
+                applyStatus(currentId, postExecNode.data, "waiting");
                 executedNodeIds.add(currentId);
                 haltedAtChat = true;
                 continue;
@@ -350,23 +396,19 @@ export function useWorkspaceRunner({
                   (e.target === currentId && e.data?.edgeType === "bi-directional")
               );
               if (postExecNodePlugin?.canPauseWorkflow && hasBiDirectionalEdge) {
-                console.log(`[RUNWORKFLOW] Starting Chat node ${currentId} has bi-directional edge. Setting to pending.`);
-                localUpdateNodeData(currentId, { ...postExecNode.data, status: "pending" });
+                applyStatus(currentId, postExecNode.data, "pending");
               } else {
-                console.log(`[RUNWORKFLOW] Node ${currentId} execution finished. Setting to success.`);
-                localUpdateNodeData(currentId, { ...postExecNode.data, status: "success" });
+                applyStatus(currentId, postExecNode.data, "success");
               }
               executedNodeIds.add(currentId);
             }
           } catch (err) {
+            // If the run was cancelled, swallow the abort rather than surfacing it as an error.
+            if (isCancelled(runId)) break;
             console.error(`[RUNWORKFLOW] Error executing node ${currentId}:`, err);
             const postExecNode = currentNodes.find((n) => n.id === currentId) || updatedNode;
             const errorMessage = err instanceof Error ? err.message : String(err);
-            localUpdateNodeData(currentId, {
-              ...postExecNode.data,
-              status: "error",
-              error: errorMessage,
-            });
+            applyStatus(currentId, { ...postExecNode.data, error: errorMessage }, "error");
             throw err;
           }
 
@@ -391,68 +433,113 @@ export function useWorkspaceRunner({
             })
             .map((e) => (e.source === currentId ? e.target : e.source));
 
-          console.log(`[RUNWORKFLOW] Propagating from ${currentId} to downstream targets:`, downstreamTargets);
           queue.push(...downstreamTargets);
         }
 
-        if (haltedAtChat) {
-          showToast("Workflow paused at Chat. Awaiting message...", "info");
-        } else {
-          showToast("Workflow completed ✓", "success");
+        if (!isCancelled(runId)) {
+          if (haltedAtChat) {
+            showToast("Workflow paused at Chat. Awaiting message...", "info");
+          } else {
+            showToast("Workflow completed ✓", "success");
+          }
         }
       } catch (err) {
-        hasError = true;
         showToast(`Workflow failed: ${err}`, "error");
       } finally {
-        console.log("[RUNWORKFLOW] finally block reached. haltedAtChat:", haltedAtChat);
+        // The run loop has exited; mark it so a late cancel can tear it down directly.
+        const control = activeRunsRef.current.get(runId);
+        if (control) control.inLoop = false;
 
-        if (hasError) {
-          console.log("[RUNWORKFLOW] Clearing pending/waiting statuses for failed workflow downstream nodes:", startKey);
-          currentNodes.forEach((n) => {
-            if (nodesToClear.has(n.id)) {
-              const latest = currentNodes.find((latestNode) => latestNode.id === n.id);
-              if (
-                latest &&
-                (latest.data.status === "pending" ||
-                  latest.data.status === "executing" ||
-                  latest.data.status === "waiting")
-              ) {
-                console.log(`[RUNWORKFLOW] Resetting unreached node status for ${n.id} (${latest.data.status} -> undefined)`);
-                localUpdateNodeData(n.id, { ...latest.data, status: undefined });
-              }
-            }
-          });
-        }
-
-        if (!hasError) {
-          // Keep the green borders visible for 1.5 seconds after the entire workflow completes or halts, then clear success and pending states for this cluster
-          const timeoutId = window.setTimeout(() => {
-            console.log("[RUNWORKFLOW] Clearing success/pending node statuses for starting cluster:", startKey);
-            currentNodes.forEach((n) => {
-              if (nodesToClear.has(n.id)) {
-                const latest = currentNodes.find((latestNode) => latestNode.id === n.id);
-                if (
-                  latest &&
-                  (latest.data.status === "success" || latest.data.status === "pending")
-                ) {
-                  console.log(`[RUNWORKFLOW] Clearing status for node ${n.id} (${latest.data.status} -> undefined)`);
-                  localUpdateNodeData(n.id, { ...latest.data, status: undefined });
-                }
-              }
-            });
-            successTimeoutsRef.current.delete(startKey);
-          }, 1500);
-          successTimeoutsRef.current.set(startKey, timeoutId);
-        }
-
+        // Always drop this run from the running set.
         setRunningStartNodeIds((prev) => {
           const next = new Set(prev);
           next.delete(startKey);
           return next;
         });
+
+        if (isCancelled(runId)) {
+          // cancelWorkflow already cleared the borders for this run; a late executor write
+          // may have re-stamped a node, so clear once more to be safe, then tear down.
+          clearBordersForRuns(new Set([runId]));
+          const t = fadeTimeoutsRef.current.get(runId);
+          if (t) {
+            clearTimeout(t);
+            fadeTimeoutsRef.current.delete(runId);
+          }
+          activeRunsRef.current.delete(runId);
+        } else {
+          // Terminal cleanup for both success and error: linger briefly, then fade out every node
+          // this run still owns. `error` (red) and `waiting` (yellow, awaiting user input) are kept;
+          // `success`/`pending`/`executing` fade back to idle.
+          const timeoutId = window.setTimeout(() => {
+            setNodes((nds) =>
+              nds.map((n) => {
+                if (n.data.statusRunId !== runId) return n;
+                const s = n.data.status;
+                if (s === "error" || s === "waiting") return n;
+                if (s === "success" || s === "pending" || s === "executing") {
+                  return { ...n, data: { ...n.data, status: undefined, statusRunId: undefined } };
+                }
+                return n;
+              })
+            );
+            fadeTimeoutsRef.current.delete(runId);
+            activeRunsRef.current.delete(runId);
+          }, FADE_DELAY_MS);
+          fadeTimeoutsRef.current.set(runId, timeoutId);
+        }
       }
     },
-    [nodes, edges, setNodes, showToast, handleUpdateNodeData, setRunningStartNodeIds, workspacePath]
+    [nodes, edges, setNodes, showToast, handleUpdateNodeData, workspacePath, isCancelled, clearBordersForRuns]
+  );
+
+  // Stop running/waiting workflows. With a nodeId, cancels just the run that owns that node;
+  // otherwise cancels every active run.
+  const cancelWorkflow = useCallback(
+    (nodeId?: string) => {
+      const runs = activeRunsRef.current;
+      if (runs.size === 0) return;
+
+      let targetRunIds: string[];
+      if (nodeId) {
+        const node = nodes.find((n) => n.id === nodeId);
+        const rid = node?.data?.statusRunId as string | undefined;
+        targetRunIds = rid && runs.has(rid) ? [rid] : Array.from(runs.keys());
+      } else {
+        targetRunIds = Array.from(runs.keys());
+      }
+
+      const cancelledSet = new Set(targetRunIds);
+      const startKeys = new Set<string>();
+
+      targetRunIds.forEach((rid) => {
+        const r = runs.get(rid);
+        if (!r) return;
+        r.cancelled = true;
+        startKeys.add(r.startKey);
+        const t = fadeTimeoutsRef.current.get(rid);
+        if (t) {
+          clearTimeout(t);
+          fadeTimeoutsRef.current.delete(rid);
+        }
+        // If the loop already exited (fade window), tear down now.
+        // Otherwise the still-running loop's finally will clean up when it sees `cancelled`.
+        if (!r.inLoop) {
+          runs.delete(rid);
+        }
+      });
+
+      clearBordersForRuns(cancelledSet);
+
+      setRunningStartNodeIds((prev) => {
+        const next = new Set(prev);
+        startKeys.forEach((k) => next.delete(k));
+        return next;
+      });
+
+      showToast("Workflow cancelled", "info");
+    },
+    [nodes, clearBordersForRuns, showToast]
   );
 
   const executeWorkflow = useCallback(
@@ -501,5 +588,6 @@ export function useWorkspaceRunner({
     executeWorkflow,
     handleChatSend,
     retryWorkflow,
+    cancelWorkflow,
   };
 }

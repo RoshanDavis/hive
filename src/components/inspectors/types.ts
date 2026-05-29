@@ -6,6 +6,7 @@ export interface InspectorProps {
   isRunning?: boolean;
   runningStartNodeIds?: Set<string>;
   onRun?: (nodeId: string) => void;
+  onCancel?: (nodeId?: string) => void;
   onChatSend?: (nodeId: string, text: string) => void;
   nodes?: Node[];
   edges?: Edge[];

@@ -18,6 +18,7 @@ interface InspectorPanelProps {
   onRunWorkflow: (triggerNodeId?: string) => void;
   onChatSend?: (nodeId: string, text: string) => void;
   onRetryWorkflow?: (nodeId: string) => void;
+  onCancelWorkflow?: (nodeId?: string) => void;
   isRunning: boolean;
   runningStartNodeIds?: Set<string>;
   nodes?: Node[];
@@ -39,6 +40,7 @@ export default function InspectorPanel({
   onRunWorkflow,
   onChatSend,
   onRetryWorkflow,
+  onCancelWorkflow,
   isRunning,
   runningStartNodeIds,
   nodes,
@@ -142,6 +144,17 @@ export default function InspectorPanel({
 
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
 
+            {/* Stop control — shown whenever a workflow is running/waiting */}
+            {isRunning && onCancelWorkflow && (
+              <button
+                onClick={() => onCancelWorkflow(selectedNode.id)}
+                className="w-full bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-2 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm"
+              >
+                <span>⏹</span>
+                <span>Stop Workflow</span>
+              </button>
+            )}
+
             {/* Error Message & Retry Action Banner */}
             {selectedNode.data?.status === "error" && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3.5 flex flex-col gap-3 relative backdrop-blur-md">
@@ -166,7 +179,7 @@ export default function InspectorPanel({
                     </button>
                   )}
                   <button
-                    onClick={() => onUpdateNodeData(selectedNode.id, { ...selectedNode.data, status: undefined, error: undefined })}
+                    onClick={() => onUpdateNodeData(selectedNode.id, { ...selectedNode.data, status: undefined, statusRunId: undefined, error: undefined })}
                     className="flex-1 bg-primary/45 hover:bg-card-hover border border-border-subtle rounded-md py-1.5 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm text-text-secondary hover:text-text-main"
                   >
                     <span>🗑️</span>
@@ -204,6 +217,7 @@ export default function InspectorPanel({
                     isRunning={isRunning}
                     runningStartNodeIds={runningStartNodeIds}
                     onRun={onRunWorkflow}
+                    onCancel={onCancelWorkflow}
                     onChatSend={onChatSend}
                     nodes={nodes}
                     edges={edges}
