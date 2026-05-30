@@ -29,6 +29,7 @@ import "@/nodes/plugins"; // Side-effect import: registers all node plugins
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import GenericNodeShell from "@/nodes/GenericNodeShell";
 import CustomConnectionEdge from "@/components/CustomConnectionEdge";
+import { EDGE, CANVAS, getStatusColor } from "@/theme/colors";
 import { type NodeDefinition } from "@/nodes/types";
 import { useWorkspaceClipboard } from "@/hooks/useWorkspaceClipboard";
 import { getConnectionBehavior } from "@/engine/connectivity";
@@ -208,18 +209,18 @@ function WorkspaceEditorInner({
             },
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: "#d4e600",
+              color: EDGE.default,
               width: 16,
               height: 16,
             },
             markerStart: defaultFlow === "bi-directional" ? {
               type: MarkerType.ArrowClosed,
-              color: "#d4e600",
+              color: EDGE.default,
               width: 16,
               height: 16,
             } : undefined,
             style: {
-              stroke: "#d4e600",
+              stroke: EDGE.default,
               strokeWidth: 2,
             },
           },
@@ -556,7 +557,7 @@ function WorkspaceEditorInner({
               },
               markerStart: edgeType === "bi-directional" ? {
                 type: MarkerType.ArrowClosed,
-                color: "#d4e600",
+                color: EDGE.default,
                 width: 16,
                 height: 16,
               } : undefined,
@@ -648,7 +649,7 @@ function WorkspaceEditorInner({
           colorMode="dark"
           defaultEdgeOptions={{
             type: "custom",
-            style: { stroke: "#d4e600", strokeWidth: 2 },
+            style: { stroke: EDGE.default, strokeWidth: 2 },
           }}
           panOnDrag={[1, 2]}
           selectionOnDrag={true}
@@ -657,16 +658,16 @@ function WorkspaceEditorInner({
             variant={BackgroundVariant.Dots}
             gap={20}
             size={1.2}
-            color="#333333"
+            color={CANVAS.backgroundDots}
           />
           <Controls position="bottom-left" showInteractive={false} />
           <MiniMap
             position="bottom-right"
-            nodeColor={(n) => pluginRegistry.getColor(n.type || '')}
-            maskColor="rgba(0, 0, 0, 0.7)"
+            nodeColor={(n) => getStatusColor(n.data?.status)}
+            maskColor={CANVAS.minimapMask}
             style={{
-              background: "#1a1a1a",
-              border: "1px solid #2a2a2a",
+              background: CANVAS.minimapBg,
+              border: `1px solid ${CANVAS.minimapBorder}`,
               borderRadius: "8px",
             }}
           />
@@ -735,7 +736,7 @@ function WorkspaceEditorInner({
         return (
           <div
             id="drag-ghost-card"
-            className="fixed pointer-events-none z-[99999] bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center gap-1.5 min-w-[90px] max-w-[150px] transition-transform duration-75 select-none"
+            className="fixed pointer-events-none z-99999 bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center gap-1.5 min-w-22.5 max-w-37.5 transition-transform duration-75 select-none"
             style={{
               left: activeDragNode.clientX,
               top: activeDragNode.clientY,

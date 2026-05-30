@@ -56,7 +56,6 @@ export class ScriptExecutor implements NodeExecutor {
 
       updateNodeData(node.id, {
         ...node.data,
-        lastResponse: result.output.value,
         outputEnvelope: result.output,
         logs: result.logs,
       });

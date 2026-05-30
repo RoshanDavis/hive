@@ -35,7 +35,6 @@ export default function NodesPage({ showToast }: NodesPageProps) {
           id: def.id,
           name: def.name,
           icon: def.icon,
-          color: def.color,
           category: def.category,
           scope: "global" as const,
         };
@@ -132,7 +131,6 @@ export default function NodesPage({ showToast }: NodesPageProps) {
             color={p.meta.color}
             title={isCustomType(p.type) ? "Edit custom node" : p.meta.description}
             onClick={() => handleCardClick(p.type)}
-            showStripe
           />
         ))}
 

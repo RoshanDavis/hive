@@ -34,38 +34,14 @@ export const storage = {
     if (!raw) return defaultSettings;
     try {
       const parsed = JSON.parse(raw);
-      
-      // Perform backward-compatibility migration if loading from legacy schema
-      const migratedSettings: ConcurrencySettings = { ...defaultSettings };
-
-      if (parsed.local !== undefined) {
-        migratedSettings.local = parsed.local;
-      } else if (parsed.ollama !== undefined) {
-        // Migrate legacy 'ollama' config to 'local'
-        migratedSettings.local = parsed.ollama;
-      }
-
-      if (parsed.cloud !== undefined) {
-        migratedSettings.cloud = parsed.cloud;
-      } else if (parsed.llm !== undefined) {
-        // Migrate legacy 'llm' config to 'cloud' (but set a higher parallel limit if disabled)
-        migratedSettings.cloud = {
-          enabled: parsed.llm.enabled ?? false,
-          limit: parsed.llm.limit > 1 ? parsed.llm.limit : 10
-        };
-      }
-
-      if (parsed.general !== undefined) {
-        migratedSettings.general = parsed.general;
-      } else if (parsed.notify !== undefined) {
-        migratedSettings.general = parsed.notify;
-      }
-
-      if (Array.isArray(parsed.localPatterns)) {
-        migratedSettings.localPatterns = parsed.localPatterns;
-      }
-
-      return migratedSettings;
+      return {
+        local: parsed.local ?? defaultSettings.local,
+        cloud: parsed.cloud ?? defaultSettings.cloud,
+        general: parsed.general ?? defaultSettings.general,
+        localPatterns: Array.isArray(parsed.localPatterns)
+          ? parsed.localPatterns
+          : defaultSettings.localPatterns,
+      };
     } catch {
       return defaultSettings;
     }

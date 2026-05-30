@@ -108,7 +108,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
           </button>
         ))}
 
-        <div className="flex-grow" />
+        <div className="grow" />
 
         {/* Settings button */}
         <button
@@ -182,7 +182,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
                       onClick={() => onOpenWorkspace(ws)}
                     >
                       <button
-                        className="absolute top-3 right-3 text-text-muted hover:text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)] w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-3 right-3 text-text-muted hover:text-danger hover:bg-danger/10 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={(e) => handleRemoveWorkspace(ws.path, e)}
                         title="Remove workspace"
                       >
@@ -191,7 +191,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
                       <span className="text-base sm:text-lg font-semibold mb-2 overflow-hidden text-ellipsis whitespace-nowrap">{ws.name}</span>
                       <span className="text-xs text-text-muted mb-4 overflow-hidden text-ellipsis whitespace-nowrap">{truncatePath(ws.path)}</span>
                       <span
-                        className={`self-start text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${ws.is_initialized ? "text-accent bg-accent-glow" : "text-node-notify bg-[rgba(96,165,250,0.1)]"}`}
+                        className={`self-start text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${ws.is_initialized ? "text-accent bg-accent-glow" : "text-node-notify bg-node-notify/10"}`}
                       >
                         {ws.is_initialized ? "Initialized" : "New"}
                       </span>

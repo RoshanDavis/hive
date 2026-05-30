@@ -68,9 +68,6 @@ export interface NodePlugin {
   /** If true, engine won't do post-execution storage sync */
   skipStorageSync?: boolean;
 
-  /** Backward-compatible type aliases */
-  aliases?: string[];
-
   /** Credential shapes this node type can consume. The picker filters by these. */
   credentialSchemas?: CredentialSchema[];
 

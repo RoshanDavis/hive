@@ -15,16 +15,8 @@ function matchesPattern(text: string, pattern: string): boolean {
 /** Well-known pool names that the governor manages */
 type ConcurrencyPool = "local" | "cloud" | "general";
 
-/**
- * Resolves a raw pool type string to a canonical pool name.
- * Legacy node type names (e.g. "ollama", "chat") are mapped to their
- * correct pool for backward compatibility.
- */
-function resolvePool(poolType: string): ConcurrencyPool {
-  const lower = poolType.toLowerCase();
-  if (lower === "local" || lower === "ollama") return "local";
-  if (lower === "cloud" || lower === "llm") return "cloud";
-  return "general";
+function asPool(poolType: string): ConcurrencyPool {
+  return poolType === "local" || poolType === "cloud" ? poolType : "general";
 }
 
 class ConcurrencyGovernor {
@@ -59,7 +51,7 @@ class ConcurrencyGovernor {
    * Enqueues and executes a task, guaranteeing it respects the dynamic concurrency limit for the specified execution pool.
    */
   async enqueue<T>(poolType: string, task: () => Promise<T>): Promise<T> {
-    const resolvedPool = resolvePool(poolType);
+    const resolvedPool = asPool(poolType);
     const settings = storage.getConcurrencySettings();
     const config = settings[resolvedPool] || { enabled: false, limit: 2 };
 
@@ -103,14 +95,14 @@ class ConcurrencyGovernor {
    * Helper to check the current queue length for a given pool type.
    */
   getQueueLength(poolType: string): number {
-    return this.semaphores.get(resolvePool(poolType))?.queue.length || 0;
+    return this.semaphores.get(asPool(poolType))?.queue.length || 0;
   }
 
   /**
    * Helper to check the active count for a given pool type.
    */
   getActiveCount(poolType: string): number {
-    return this.semaphores.get(resolvePool(poolType))?.active || 0;
+    return this.semaphores.get(asPool(poolType))?.active || 0;
   }
 }
 

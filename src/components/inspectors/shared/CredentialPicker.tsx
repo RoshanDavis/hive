@@ -7,6 +7,7 @@ import type {
   CredentialScope,
   CredentialSchema,
 } from "@/types/credentialTypes";
+import { formLabelClass, formInputClass } from "@/components/shared/FormField";
 
 interface CredentialPickerProps {
   /** Which credential schema types are acceptable. Empty array = no picker rendered. */
@@ -97,12 +98,12 @@ export default function CredentialPicker({
 
   return (
     <div className="flex flex-col gap-2 animate-[fadeIn_0.15s_ease-out]">
-      <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+      <label className={formLabelClass}>
         Credential
       </label>
 
       <select
-        className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none cursor-pointer"
+        className={`${formInputClass} cursor-pointer`}
         value={selectedCredentialId ?? ""}
         onChange={(e) => onSelect(e.target.value || null)}
       >

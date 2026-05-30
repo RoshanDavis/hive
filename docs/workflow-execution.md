@@ -1,6 +1,6 @@
 # Workflow Execution (the run loop)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-28** (commit `c748831`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline c748831..HEAD -- src/hooks/useWorkspaceRunner.ts`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phase 5). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/hooks/useWorkspaceRunner.ts src/engine/graphTraversal.ts`.
 
 This is the most intricate code in the app. [src/hooks/useWorkspaceRunner.ts](../src/hooks/useWorkspaceRunner.ts) owns *when* nodes run, how their visual status changes, how a run pauses for chat input, and how runs are cancelled and retried. *How a single node runs* is the engine's job — see [node-engine.md](node-engine.md).
 
@@ -44,7 +44,7 @@ runWorkflow(startNodeIds, chatInput?)
 
 ### Reachability (storage edges excluded)
 
-`getReachableNodeIds` BFS-walks *forward* from the start nodes; `getAncestorNodeIds` walks *backward*. Both **ignore storage edges** (`sourceHandle`/`targetHandle === "storage"`) and both treat a `bi-directional` edge as traversable in the reverse direction too. Ancestors matter for two things: re-seeding already-successful upstream nodes on a retry, and recognizing a pause node reached via a loop-back as a *return path* rather than a fresh halt.
+`getReachableNodeIds` and `getAncestorNodeIds` ([src/engine/graphTraversal.ts](../src/engine/graphTraversal.ts) — extracted in Phase 5 so any graph walker can reuse them) BFS-walk *forward* and *backward* from the start nodes. Both **ignore storage edges** (`sourceHandle`/`targetHandle === "storage"`) and both treat a `bi-directional` edge as traversable in the reverse direction too. Ancestors matter for two things: re-seeding already-successful upstream nodes on a retry, and recognizing a pause node reached via a loop-back as a *return path* rather than a fresh halt.
 
 ### Scope and initial status
 
@@ -122,6 +122,7 @@ A Trigger start clears the history for that `startKey` entirely — a clean slat
 ## Key files
 
 - [src/hooks/useWorkspaceRunner.ts](../src/hooks/useWorkspaceRunner.ts) — the entire run loop, cancel, retry, fade.
+- [src/engine/graphTraversal.ts](../src/engine/graphTraversal.ts) — reachability + ancestor BFS.
 - [src/engine/index.ts](../src/engine/index.ts) — `executeNode` (called per node).
 - [src/engine/ChatExecutor.ts](../src/engine/ChatExecutor.ts) — the canonical `canPauseWorkflow` node; input vs. receiver modes.
 - [src/engine/LLMExecutor.ts](../src/engine/LLMExecutor.ts) — reads chat history / upstream input; concurrency-pooled.

@@ -1,6 +1,8 @@
 import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData } from "./utils";
+import { getChatMessages, getStorageRecords } from "./nodeData";
+import type { ChatMessage } from "@/nodes/types";
 
 export class ChatExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
@@ -21,10 +23,10 @@ export class ChatExecutor implements NodeExecutor {
         const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
         const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
 
-        let updatedLocalMessages = (chatNode.data?.messages as any[]) || [];
+        let updatedLocalMessages: ChatMessage[] = getChatMessages(chatNode.data);
 
         if (storageNode && hasWritePermission) {
-          const dbRecords = (storageNode.data?.records as any[]) || [];
+          const dbRecords = getStorageRecords(storageNode.data);
           const newRecord = {
             id: Date.now().toString(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -39,7 +41,7 @@ export class ChatExecutor implements NodeExecutor {
 
           if (hasReadPermission) {
             // Sync ChatNode messages to full history
-            updatedLocalMessages = storageRecords.map((rec: any) => {
+            updatedLocalMessages = storageRecords.map((rec) => {
               const src = (rec.source || "").toLowerCase();
               let role: "user" | "assistant" | "system" = "assistant";
               if (src === "user" || src === "you") {
@@ -75,7 +77,6 @@ export class ChatExecutor implements NodeExecutor {
         updateNodeData(chatNode.id, {
           ...chatNode.data,
           messages: updatedLocalMessages,
-          lastResponse: chatInput,
           outputEnvelope
         });
       } else {
@@ -140,13 +141,13 @@ export class ChatExecutor implements NodeExecutor {
         const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
         const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
 
-        let updatedLocalMessages = (chatNode.data?.messages as any[]) || [];
+        let updatedLocalMessages: ChatMessage[] = getChatMessages(chatNode.data);
         const isSystemMsg = resolvedMessage === "Workflow reached Chat. Awaiting message...";
         const role = isSystemMsg ? ("system" as const) : ("assistant" as const);
         const dbSource = isSystemMsg ? "System" : senderLabel;
 
         if (storageNode && hasWritePermission) {
-          const dbRecords = (storageNode.data?.records as any[]) || [];
+          const dbRecords = getStorageRecords(storageNode.data);
           const assistantRecord = {
             id: Date.now().toString(),
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -161,7 +162,7 @@ export class ChatExecutor implements NodeExecutor {
 
           if (hasReadPermission) {
             // Sync ChatNode messages to full history
-            updatedLocalMessages = storageRecords.map((rec: any) => {
+            updatedLocalMessages = storageRecords.map((rec) => {
               const src = (rec.source || "").toLowerCase();
               let r: "user" | "assistant" | "system" = "assistant";
               if (src === "user" || src === "you") {
@@ -198,7 +199,6 @@ export class ChatExecutor implements NodeExecutor {
         updateNodeData(chatNode.id, {
           ...chatNode.data,
           messages: updatedLocalMessages,
-          lastResponse: isSystemMsg ? undefined : resolvedMessage, // Clear lastResponse for system triggers so downstream nodes don't receive stale/placeholder values
           outputEnvelope
         });
       }

@@ -68,9 +68,13 @@ pub struct CustomNodeDefinition {
     pub kind: String,
     pub name: String,
     pub icon: String,
-    pub color: String,
     pub category: String,
     pub version: u32,
+    /// Older on-disk node.json files may still carry a `color` string written
+    /// before the renderer started deriving color from category. We accept and
+    /// drop it on serialize so promote/transplant survives those files.
+    #[serde(default, skip_serializing)]
+    pub color: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

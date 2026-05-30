@@ -18,24 +18,15 @@ export interface LLMNodeData {
   label: string;
   provider?: "Ollama" | "OpenAI" | "Anthropic" | "Google" | "Other";
   baseURL?: string;
-  /** @deprecated Inline API keys are migrated to the credential vault. Kept only for backward-compat reads during migration. */
-  apiKey?: string;
   /** ID of a credential in the vault (global or local). Resolved Rust-side at execution time. */
   credentialId?: string;
   modelName?: string;
-
-  // Legacy Ollama-only fields for backward compatibility
-  model?: string;
-  ollamaUrl?: string;
-
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
   chatHistoryLimit: number;
   [key: string]: unknown;
 }
-
-export type OllamaNodeData = LLMNodeData;
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -51,7 +42,6 @@ export interface ChatNodeData {
 
 export interface OutputNodeData {
   label: string;
-  outputContent: string;
   [key: string]: unknown;
 }
 
@@ -71,10 +61,9 @@ export interface JSONStorageNodeData {
 
 export type TriggerNode = Node<TriggerNodeData, "trigger">;
 export type NotifyNode = Node<NotifyNodeData, "notify">;
-export type LLMNode = Node<LLMNodeData, "ollama" | "llm">;
-export type OllamaNode = LLMNode;
+export type LLMNode = Node<LLMNodeData, "llm">;
 export type ChatNode = Node<ChatNodeData, "chat">;
-export type OutputNode = Node<OutputNodeData, "output" | "outputNode">;
+export type OutputNode = Node<OutputNodeData, "output">;
 export type JSONStorageNode = Node<JSONStorageNodeData, "jsonStorage">;
 export type HiveNode = TriggerNode | NotifyNode | LLMNode | ChatNode | OutputNode | JSONStorageNode;
 

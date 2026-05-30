@@ -1,7 +1,9 @@
 import type { InspectorProps } from "./types";
+import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 import CredentialPicker from "./shared/CredentialPicker";
 import ModelPicker from "./shared/ModelPicker";
+import { formLabelClass, formInputClass, formRangeClass } from "@/components/shared/FormField";
 import {
   PROVIDER_BASE_URL,
   PROVIDER_SCHEMA_TYPES,
@@ -16,8 +18,8 @@ export default function LLMInspector({
   const provider = (node.data?.provider || "Ollama") as ProviderType;
 
   // Resolve current values with sensible defaults and backward-compatibility fallbacks
-  const baseURLValue = String(node.data?.baseURL !== undefined ? node.data?.baseURL : (node.data?.ollamaUrl !== undefined ? node.data?.ollamaUrl : (provider === "Ollama" ? "http://localhost:11434" : "")));
-  const modelNameValue = String(node.data?.modelName !== undefined ? node.data?.modelName : (node.data?.model !== undefined ? node.data?.model : ""));
+  const baseURLValue = String(node.data?.baseURL ?? (provider === "Ollama" ? "http://localhost:11434" : ""));
+  const modelNameValue = String(node.data?.modelName ?? "");
   const credentialId = (node.data?.credentialId as string | undefined) ?? null;
 
   const limitValue = Number(node.data?.chatHistoryLimit || 0);
@@ -28,9 +30,6 @@ export default function LLMInspector({
     updatedData.provider = newProvider;
     updatedData.baseURL = PROVIDER_BASE_URL[newProvider];
     updatedData.modelName = "";
-
-    // Strip any lingering inline apiKey from legacy state — credentials live in the vault now.
-    delete updatedData.apiKey;
 
     // A credential belongs to the provider it was created for. On any provider change,
     // drop the stale reference so execution can't send the wrong secret to the new
@@ -51,9 +50,9 @@ export default function LLMInspector({
 
       {/* Provider Selector */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">LLM Provider</label>
+        <label className={formLabelClass}>LLM Provider</label>
         <select
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none cursor-pointer"
+          className={`${formInputClass} cursor-pointer`}
           value={provider}
           onChange={(e) => handleProviderChange(e.target.value as ProviderType)}
         >
@@ -68,9 +67,9 @@ export default function LLMInspector({
       {/* Dynamic Base URL Field */}
       {showBaseURL && (
         <div className="flex flex-col gap-2 animate-[fadeIn_0.15s_ease-out]">
-          <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Base URL</label>
+          <label className={formLabelClass}>Base URL</label>
           <input
-            className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+            className={formInputClass}
             type="text"
             value={baseURLValue}
             placeholder={provider === "Ollama" ? "http://localhost:11434" : "e.g. https://api.yourprovider.com/v1"}
@@ -78,8 +77,6 @@ export default function LLMInspector({
               onUpdate(node.id, {
                 ...node.data,
                 baseURL: e.target.value,
-                // Keep ollamaUrl synced in case legacy modules read it
-                ollamaUrl: e.target.value,
               })
             }
           />
@@ -107,8 +104,6 @@ export default function LLMInspector({
           onUpdate(node.id, {
             ...node.data,
             modelName: name,
-            // Keep model synced for backwards compatibility
-            model: name,
           })
         }
         workspacePath={workspacePath}
@@ -117,9 +112,9 @@ export default function LLMInspector({
 
       {/* Universal Parameters */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">System Prompt</label>
+        <label className={formLabelClass}>System Prompt</label>
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none resize-y min-h-[80px] font-inherit"
+          className={`${formInputClass} resize-y min-h-20 font-inherit`}
           value={String(node.data?.systemPrompt || "")}
           onChange={(e) =>
             onUpdate(node.id, {
@@ -133,11 +128,11 @@ export default function LLMInspector({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <label className={formLabelClass}>
           Temperature: {Number(node.data?.temperature || 0.7).toFixed(2)}
         </label>
         <input
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+          className={formRangeClass}
           type="range"
           min="0"
           max="2"
@@ -153,9 +148,9 @@ export default function LLMInspector({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Max Tokens</label>
+        <label className={formLabelClass}>Max Tokens</label>
         <input
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+          className={formInputClass}
           type="number"
           value={Number(node.data?.maxTokens || 2048)}
           onChange={(e) =>
@@ -169,7 +164,7 @@ export default function LLMInspector({
 
       <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+          <span className={formLabelClass}>
             Limit Chat History
           </span>
           <button
@@ -180,7 +175,7 @@ export default function LLMInspector({
               });
             }}
             className={`w-10 h-5.5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
-              isLimited ? "bg-[#d4e600]" : "bg-[#2a2a2a]"
+              isLimited ? "bg-accent" : "bg-border-subtle"
             }`}
             style={{ border: isLimited ? "none" : "1px solid #3a3a3a" }}
           >
@@ -194,11 +189,11 @@ export default function LLMInspector({
 
         {isLimited && (
           <div className="flex flex-col gap-2 pl-1 animate-[fadeIn_0.15s_ease-out]">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+            <label className={formLabelClass}>
               History Turn Limit (messages)
             </label>
             <input
-              className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+              className={formInputClass}
               type="number"
               min="1"
               value={limitValue}
@@ -216,21 +211,25 @@ export default function LLMInspector({
       </div>
 
       {/* Last Response Visual Console */}
-      {!!node.data?.lastResponse && (
-        <div className="flex flex-col gap-2 mt-2 border-t border-border-subtle pt-4">
-          <div className="flex justify-between items-center">
-            <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Last Response</label>
-            <button
-              onClick={() => onUpdate(node.id, { ...node.data, lastResponse: "" })}
-              className="text-[10px] text-text-muted hover:text-[#ff6b6b] transition-colors cursor-pointer border-none bg-transparent"
-              title="Clear response"
-            >
-              Clear
-            </button>
+      {(() => {
+        const lastValue = (node.data?.outputEnvelope as NodeOutputEnvelope | undefined)?.value;
+        if (!lastValue) return null;
+        return (
+          <div className="flex flex-col gap-2 mt-2 border-t border-border-subtle pt-4">
+            <div className="flex justify-between items-center">
+              <label className={formLabelClass}>Last Response</label>
+              <button
+                onClick={() => onUpdate(node.id, { ...node.data, outputEnvelope: undefined })}
+                className="text-[10px] text-text-muted hover:text-danger transition-colors cursor-pointer border-none bg-transparent"
+                title="Clear response"
+              >
+                Clear
+              </button>
+            </div>
+            <DataConsole content={String(lastValue)} />
           </div>
-          <DataConsole content={String(node.data.lastResponse)} />
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

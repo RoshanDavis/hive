@@ -1,0 +1,208 @@
+/* React Flow chrome: handles, node overrides, canvas cursors, edge + status animations. */
+@layer components {
+  .hive-handle {
+    @apply w-2.5! h-2.5! bg-(--handle)! border-2! border-primary!;
+  }
+
+  .hive-handle:hover {
+    @apply bg-accent! border-accent! shadow-[0_0_8px_color-mix(in_srgb,var(--accent)_50%,transparent)]!;
+  }
+
+  .hive-handle.connected {
+    @apply bg-accent! border-primary!;
+  }
+
+  .react-flow__node-output {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    width: auto !important;
+  }
+
+  .react-flow__node-output .react-flow__handle,
+  .react-flow__node-output .react-flow__handle-right,
+  .react-flow__node-output .react-flow__handle-left,
+  .react-flow__node-output .react-flow__handle-top,
+  .react-flow__node-output .react-flow__handle-bottom {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: all !important;
+  }
+}
+
+/* ─── React Flow Canvas Cursors ─── */
+.react-flow__pane {
+  cursor: default !important;
+}
+
+.react-flow__pane.grabbing,
+.react-flow__pane.dragging,
+.react-flow__pane:active {
+  cursor: grabbing !important;
+}
+
+.react-flow__node {
+  cursor: default !important;
+}
+
+.react-flow__handle {
+  cursor: crosshair !important;
+}
+
+/* Drag Ghost Styling for Node Card Palette */
+.dragging-ghost-active {
+  background-color: var(--color-input) !important;
+  opacity: 1 !important;
+  border: 2px solid var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.9) !important;
+  transform: scale(1.02) !important;
+}
+
+/* Edge Animations */
+@keyframes edge-flow-forward {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes edge-flow-backward {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 24;
+  }
+}
+
+.animated-edge-forward {
+  stroke-dasharray: 6, 6;
+  animation: edge-flow-forward 1.2s linear infinite;
+  pointer-events: none;
+}
+
+.animated-edge-backward {
+  stroke-dasharray: 6, 6;
+  animation: edge-flow-backward 1.2s linear infinite;
+  pointer-events: none;
+}
+
+/* ─── Node Execution Status Animations ─── */
+@keyframes executing-pulse {
+  0% {
+    border-color: color-mix(in srgb, var(--success) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--success) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--success) 95%, transparent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--success) 50%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    border-color: color-mix(in srgb, var(--success) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--success) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@keyframes waiting-pulse {
+  0% {
+    border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--warning) 95%, transparent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--warning) 50%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@keyframes error-pulse {
+  0% {
+    border-color: color-mix(in srgb, var(--error) 50%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--error) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    border-color: var(--error);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--error) 55%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    border-color: color-mix(in srgb, var(--error) 50%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--error) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@keyframes status-dash-flow {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.status-border-executing {
+  stroke: var(--success) !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 0.8s linear infinite !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--success) 60%, transparent));
+}
+
+.status-border-waiting {
+  stroke: var(--warning) !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 1.4s linear infinite !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--warning) 60%, transparent));
+}
+
+.node-status-success {
+  border-color: var(--success) !important;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--success) 45%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+.node-status-error {
+  border-color: transparent !important;
+}
+
+.node-status-executing {
+  border-color: transparent !important;
+}
+
+.node-status-waiting {
+  border-color: transparent !important;
+}
+
+.status-border-pending {
+  stroke: var(--info) !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 1.8s linear infinite !important;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--info) 50%, transparent));
+}
+
+.node-status-pending {
+  border-color: transparent !important;
+}
+
+.status-border-error {
+  stroke: var(--error) !important;
+  stroke-width: 3 !important;
+  stroke-dasharray: 6, 4;
+  animation: status-dash-flow 1.2s linear infinite !important;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--error) 70%, transparent));
+}
+
+@keyframes flowDash {
+  0% {
+    left: -20%;
+  }
+  100% {
+    left: 120%;
+  }
+}

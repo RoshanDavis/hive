@@ -3,7 +3,7 @@ import { useReactFlow, MarkerType, type Node, type Edge } from "@xyflow/react";
 import { api } from "@/services/api";
 import { getConnectionBehavior } from "@/engine/connectivity";
 import { pluginRegistry } from "@/engine/pluginRegistry";
-import { migrateLegacyCredentials } from "@/services/migrateLegacyCredentials";
+import { EDGE } from "@/theme/colors";
 import {
   type SpaceEntry,
   type SpaceData,
@@ -49,21 +49,6 @@ export function useWorkspaceSpaces({
         const config = await api.loadWorkspaceConfig(workspacePath);
         setSpaces(config.spaces);
         const spaceToLoad = config.active_space || config.spaces[0]?.id || "space_1";
-
-        // One-time migration of legacy inline LLM apiKey values into the
-        // workspace credential vault. Idempotent — safe to run on every load.
-        try {
-          const spaceIds = config.spaces.map((s) => s.id);
-          const result = await migrateLegacyCredentials(workspacePath, spaceIds);
-          if (result.migratedNodes > 0) {
-            showToast(
-              `Migrated ${result.migratedNodes} API key(s) into the credential vault`,
-              "success"
-            );
-          }
-        } catch (err) {
-          console.error("[CREDENTIAL MIGRATION] Failed:", err);
-        }
 
         setActiveSpaceId(spaceToLoad);
         await loadSpaceData(spaceToLoad);
@@ -127,7 +112,7 @@ export function useWorkspaceSpaces({
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: "#d4e600",
+            color: EDGE.default,
             width: 16,
             height: 16,
           },
@@ -135,13 +120,13 @@ export function useWorkspaceSpaces({
             edgeType === "bi-directional"
               ? {
                   type: MarkerType.ArrowClosed,
-                  color: "#d4e600",
+                  color: EDGE.default,
                   width: 16,
                   height: 16,
                 }
               : undefined,
           style: {
-            stroke: "#d4e600",
+            stroke: EDGE.default,
             strokeWidth: 2,
           },
         };

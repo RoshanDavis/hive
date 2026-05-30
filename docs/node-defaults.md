@@ -1,6 +1,6 @@
 # Node Defaults (global + per-workspace)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-28** (commit `c748831`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline c748831..HEAD -- src/services/nodeDefaultsService.ts src/contexts/NodeDefaultsContext.tsx`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/services/nodeDefaultsService.ts src/contexts/NodeDefaultsContext.tsx`.
 
 A new node starts from its plugin's `defaultData`. Node defaults let users override that starting config at two scopes — global and per-workspace — so repeated setup (provider/model/credential, etc.) isn't retyped for every node.
 

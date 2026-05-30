@@ -1,6 +1,6 @@
 # Credential Vault
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-28** (commit `c748831`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline c748831..HEAD -- src-tauri/src/vault.rs`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phase 1). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src-tauri/src/vault.rs src/components/settings`.
 
 API keys and tokens **never live in node data and are never returned to the renderer for execution**. They're encrypted at rest and resolved server-side at the moment of the network call. This is the security backbone for LLM nodes and Tier-3 script nodes alike.
 
@@ -50,7 +50,7 @@ All registered in [lib.rs](../src-tauri/src/lib.rs), implemented in [commands.rs
 
 `resolve_credential_values(app, id, scope_hint, workspace_path)` is the server-side resolver. Default order is **local-first**, then global; a `scope_hint` of `"global"` flips it. It's used by:
 
-- **`llm_chat`** — if a `credentialId` is present, it resolves and overrides `apiKey`/`baseURL` from the stored values, then makes the call. The legacy raw `apiKey` parameter is only honored when no `credentialId` is supplied (migration fallback).
+- **`llm_chat`** — for cloud providers a `credentialId` is required; it resolves `apiKey`/`baseURL` from the stored values, then makes the call. Ollama is local/unauthenticated and skips this path. (Phase 1 of the May 2026 refactor removed the legacy inline `api_key` argument and `apiKey` node-data field — every cloud call now flows through a `credentialId`; the executor fails early with a clear error if one isn't set.)
 - **Script nodes** — `VaultResolver` (in `commands.rs`) implements the sandbox crate's `CredentialResolver` trait, so `ctx.fetch` can inject a granted credential's key into a header without the plaintext ever entering the JS heap.
 
 ```
@@ -70,11 +70,7 @@ A plugin advertises what it can consume via `credentialSchemas: CredentialSchema
 
 - [src/components/inspectors/shared/CredentialPicker.tsx](../src/components/inspectors/shared/CredentialPicker.tsx) — the standard picker. Groups by scope (🌐 Global / 📁 Workspace), shows a red "missing" banner when a referenced credential no longer resolves, and offers an inline "Add new" mini-form (defaults to local scope for privacy).
 - [src/components/shared/RevealableField.tsx](../src/components/shared/RevealableField.tsx) — password input with a 👁/🙈 toggle; pair it with any secret field.
-- [src/components/settings/CredentialManager.tsx](../src/components/settings/CredentialManager.tsx) — full CRUD inside `SettingsModal`. From the Dashboard only the global section shows; inside a workspace both show with transfer buttons.
-
-## Legacy migration
-
-[src/services/migrateLegacyCredentials.ts](../src/services/migrateLegacyCredentials.ts) runs on workspace load (via `useWorkspaceSpaces`). It moves any inline `node.data.apiKey` into the **local** vault and replaces it with a `credentialId`. Idempotent — safe to run every load.
+- [src/components/settings/CredentialManager.tsx](../src/components/settings/CredentialManager.tsx) — full CRUD inside `SettingsModal`. From the Dashboard only the global section shows; inside a workspace both show with transfer buttons. The manager is an orchestrator: it owns the credential list + refresh + delete/transfer handlers and the singleton edit/add state, and delegates rendering to [CredentialScopeGroup.tsx](../src/components/settings/CredentialScopeGroup.tsx) (per-scope list + add form) which in turn renders [CredentialRow.tsx](../src/components/settings/CredentialRow.tsx) per item.
 
 ## Adding a credential-using node
 
@@ -88,4 +84,4 @@ A plugin advertises what it can consume via `credentialSchemas: CredentialSchema
 - [src-tauri/src/commands.rs](../src-tauri/src/commands.rs) — credential IPC + `resolve_credential_values` + `VaultResolver`.
 - [src/types/credentialTypes.ts](../src/types/credentialTypes.ts) — `CredentialSchema` shape.
 - [src/services/credentialService.ts](../src/services/credentialService.ts) — renderer-side service wrapper.
-- [src/components/inspectors/shared/CredentialPicker.tsx](../src/components/inspectors/shared/CredentialPicker.tsx), [src/components/settings/CredentialManager.tsx](../src/components/settings/CredentialManager.tsx) — UX.
+- [src/components/inspectors/shared/CredentialPicker.tsx](../src/components/inspectors/shared/CredentialPicker.tsx), [src/components/settings/CredentialManager.tsx](../src/components/settings/CredentialManager.tsx), [CredentialScopeGroup.tsx](../src/components/settings/CredentialScopeGroup.tsx), [CredentialRow.tsx](../src/components/settings/CredentialRow.tsx) — UX.

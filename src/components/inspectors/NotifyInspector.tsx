@@ -1,4 +1,5 @@
 import type { InspectorProps } from "./types";
+import { formLabelClass, formInputClass } from "@/components/shared/FormField";
 
 export default function NotifyInspector({
   node,
@@ -13,9 +14,9 @@ export default function NotifyInspector({
       
       {/* Notification Message */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Notification Message</label>
+        <label className={formLabelClass}>Notification Message</label>
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none resize-y min-h-[60px] font-inherit"
+          className={`${formInputClass} resize-y min-h-15 font-inherit`}
           value={messageValue}
           onChange={(e) =>
             onUpdate(node.id, {
@@ -30,9 +31,9 @@ export default function NotifyInspector({
 
       {/* Output Template */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">Output Template</label>
+        <label className={formLabelClass}>Output Template</label>
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none resize-y min-h-[60px] font-inherit"
+          className={`${formInputClass} resize-y min-h-15 font-inherit`}
           value={outputValue}
           onChange={(e) =>
             onUpdate(node.id, {
@@ -46,7 +47,7 @@ export default function NotifyInspector({
       </div>
 
       <p className="text-[11px] text-text-muted leading-relaxed">
-        The <span className="font-semibold text-text-main">Notification Message</span> will appear as an OS notification. The <span className="font-semibold text-text-main">Output Template</span> determines what gets passed to downstream nodes (stored in <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">lastResponse</code>). Use <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.value}`}</code> to inject the primary output string, or path expressions like <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.data[0]}`}</code> or <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.metadata.timestamp}`}</code> to select specific fields from the incoming JSON envelope.
+        The <span className="font-semibold text-text-main">Notification Message</span> will appear as an OS notification. The <span className="font-semibold text-text-main">Output Template</span> determines what gets passed to downstream nodes (the envelope's <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">value</code>). Use <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.value}`}</code> to inject the primary output string, or path expressions like <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.data[0]}`}</code> or <code className="text-accent-dim bg-white/5 px-1 py-0.5 rounded font-mono font-bold">{`{input.metadata.timestamp}`}</code> to select specific fields from the incoming JSON envelope.
       </p>
     </div>
   );

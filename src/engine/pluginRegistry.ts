@@ -3,6 +3,7 @@ import type { NodePlugin } from "./plugin";
 import type { NodeExecutor } from "./types";
 import type { NodeDefinition } from "@/nodes/types";
 import type { CredentialSchema } from "@/types/credentialTypes";
+import { NODE_FALLBACK } from "@/theme/colors";
 
 export type CustomScope = "global" | "workspace";
 
@@ -31,14 +32,9 @@ class PluginRegistry {
   /** Monotonic version, bumped on every registry mutation. */
   getVersion = (): number => this.version;
 
-  /** Register a plugin under its type and any aliases */
+  /** Register a plugin under its type. */
   register(plugin: NodePlugin): void {
     this.plugins.set(plugin.type, plugin);
-    if (plugin.aliases) {
-      for (const alias of plugin.aliases) {
-        this.plugins.set(alias, plugin);
-      }
-    }
   }
 
   /** Register (or replace) a runtime custom-node plugin at the given scope. */
@@ -95,7 +91,7 @@ class PluginRegistry {
 
   /** Get the color for a node type */
   getColor(type: string): string {
-    return this.plugins.get(type)?.meta.color || "#888";
+    return this.plugins.get(type)?.meta.color || NODE_FALLBACK;
   }
 
   /** Get the icon for a node type */

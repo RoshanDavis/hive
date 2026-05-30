@@ -51,7 +51,7 @@ export default function JSONStorageInspector({
   };
 
   return (
-    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[calc(100vh-280px)] min-h-[380px]">
+    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[calc(100vh-280px)] min-h-95">
       <div className="flex justify-between items-center mb-1">
         <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">JSON Storage File</div>
         <div className="text-[11px] font-bold text-accent bg-accent-glow px-2 py-0.5 rounded-sm">
@@ -64,8 +64,8 @@ export default function JSONStorageInspector({
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-card border-b border-border-subtle text-text-secondary font-semibold uppercase tracking-wider">
-                <th className="p-3 w-[80px]">Time</th>
-                <th className="p-3 w-[90px]">Source</th>
+                <th className="p-3 w-20">Time</th>
+                <th className="p-3 w-22.5">Source</th>
                 <th className="p-3">Content</th>
               </tr>
             </thead>
@@ -91,7 +91,7 @@ export default function JSONStorageInspector({
           <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2 py-8 text-center px-4">
             <span className="text-3xl opacity-50">💾</span>
             <span className="text-xs font-medium">Storage is empty</span>
-            <span className="text-[10px] text-text-muted leading-relaxed max-w-[200px]">
+            <span className="text-[10px] text-text-muted leading-relaxed max-w-50">
               Connect the Chat node's bottom handle to this JSON Storage node to log conversation histories.
             </span>
           </div>
@@ -107,7 +107,7 @@ export default function JSONStorageInspector({
           📥 Export CSV
         </button>
         <button
-          className="flex-1 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-[#ff6b6b] hover:text-[#ff6b6b] hover:bg-[rgba(255,107,107,0.1)] rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-danger hover:text-danger hover:bg-danger/10 rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleClear}
           disabled={records.length === 0 || isRunning}
         >

@@ -40,10 +40,12 @@ There are no lint/test npm scripts; `tsc` (via `npm run build`) is the static ch
 
 ```
 src/             React + TypeScript frontend
-  engine/        plugin interface, registry, executor, connectivity
+  engine/        plugin interface, registry, executor, connectivity, graph traversal
   nodes/plugins/ built-in node types
   components/    canvas, inspectors, settings, custom-node authoring
   services/      typed Tauri API wrappers, vault/defaults/concurrency
+  theme/         JS-side colors (mirrors CSS tokens for React Flow / MiniMap)
+  styles/        CSS token layer + per-surface stylesheets (composed by App.css)
 src-tauri/       Rust backend (Tauri commands, vault, LLM inference)
   crates/sandbox  Tauri-free QuickJS sandbox (hive-sandbox)
 docs/            design docs

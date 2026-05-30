@@ -26,15 +26,15 @@ export default function DatabaseRecordFeed({ records }: DatabaseRecordFeedProps)
         const content = rec.content || "";
         const sourceLower = source.toLowerCase();
 
-        let sourceColor = "text-[#888888]"; // Default
+        let sourceColor = "text-text-secondary"; // Default
         if (sourceLower === "user" || sourceLower === "you") {
-          sourceColor = "text-[#34d399]"; // User green
+          sourceColor = "text-node-chat"; // User green
         } else if (sourceLower === "system") {
           sourceColor = "text-[#818cf8]"; // System purple-blue
         } else if (sourceLower.includes("ollama") || sourceLower.includes("llm") || sourceLower.includes("robot")) {
           sourceColor = "text-[#c084fc]"; // AI Ollama purple
         } else if (sourceLower.includes("notify")) {
-          sourceColor = "text-[#60a5fa]"; // Notify blue
+          sourceColor = "text-node-notify"; // Notify blue
         }
 
         return (

@@ -90,7 +90,6 @@ export function useWorkspaceClipboard({
       // Generic runtime data cleanup — strips execution artifacts
       // while preserving user-configured fields like labels, prompts, etc.
       const cleanData = { ...node.data };
-      delete cleanData.lastResponse;
       delete cleanData.outputEnvelope;
       delete cleanData.lastInputMessages;
       delete cleanData.lastInputText;
@@ -102,7 +101,6 @@ export function useWorkspaceClipboard({
       // Clear accumulator fields that store runtime content
       if (Array.isArray(cleanData.messages)) cleanData.messages = [];
       if (Array.isArray(cleanData.records)) cleanData.records = [];
-      if (typeof cleanData.outputContent === "string") cleanData.outputContent = "";
 
       return {
         ...node,

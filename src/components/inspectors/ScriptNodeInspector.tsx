@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { InspectorProps } from "./types";
+import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 import { api } from "@/services/api";
 import { credentialService } from "@/services/credentialService";
 import { useCustomNodes } from "@/contexts/CustomNodesContext";
+import { formInputClass, formLabelClass } from "@/components/shared/FormField";
 import {
   CUSTOM_TYPE_PREFIX,
   type CustomNodeScope,
@@ -21,14 +23,11 @@ function ConfigField({
   value: unknown;
   onChange: (next: unknown) => void;
 }) {
-  const inputClass =
-    "w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim";
-
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+      <label className={formLabelClass}>
         {field.label}
-        {field.required && <span className="text-[#ff6b6b]"> *</span>}
+        {field.required && <span className="text-danger"> *</span>}
       </label>
       {field.type === "boolean" ? (
         <input
@@ -41,7 +40,7 @@ function ConfigField({
         <select
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+          className={formInputClass}
         >
           {(field.options ?? []).map((opt) => (
             <option key={opt} value={opt}>
@@ -54,14 +53,14 @@ function ConfigField({
           type="number"
           value={value === undefined || value === null ? "" : Number(value)}
           onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-          className={inputClass}
+          className={formInputClass}
         />
       ) : (
         <input
           type={field.type === "password" ? "password" : "text"}
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+          className={formInputClass}
         />
       )}
     </div>
@@ -111,10 +110,10 @@ export default function ScriptNodeInspector({
   }, [id, globalDefs, workspaceDefs]);
 
   const logs = Array.isArray(node.data?.logs) ? (node.data.logs as string[]) : [];
-  const output =
-    node.data?.lastResponse !== undefined && node.data?.lastResponse !== null
-      ? String(node.data.lastResponse)
-      : undefined;
+  const envelopeValue = (node.data?.outputEnvelope as NodeOutputEnvelope | undefined)?.value;
+  const output = envelopeValue !== undefined && envelopeValue !== null
+    ? String(envelopeValue)
+    : undefined;
 
   const handleOpen = async () => {
     if (!resolved) return;
