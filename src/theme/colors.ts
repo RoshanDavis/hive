@@ -56,3 +56,30 @@ export const EDGE = {
   glowDefault: "drop-shadow(0 0 4px rgba(212, 230, 0, 0.6))",
   glowDatabase: "drop-shadow(0 0 4px rgba(56, 189, 248, 0.65))",
 } as const;
+
+/**
+ * Per-status colors — mirror of the `--success` / `--warning` / `--error` /
+ * `--info` tokens in `tokens.css`. Used by React Flow's MiniMap, which needs
+ * plain JS strings rather than CSS custom properties.
+ */
+const STATUS_IDLE = "#52525b";
+const STATUS_SUCCESS = "#22c55e";
+const STATUS_WARNING = "#eab308";
+const STATUS_ERROR = "#ef4444";
+const STATUS_INFO = "#38bdf8";
+
+export function getStatusColor(status: unknown): string {
+  switch (status) {
+    case "executing":
+    case "success":
+      return STATUS_SUCCESS;
+    case "waiting":
+      return STATUS_WARNING;
+    case "pending":
+      return STATUS_INFO;
+    case "error":
+      return STATUS_ERROR;
+    default:
+      return STATUS_IDLE;
+  }
+}

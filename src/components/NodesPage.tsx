@@ -131,7 +131,6 @@ export default function NodesPage({ showToast }: NodesPageProps) {
             color={p.meta.color}
             title={isCustomType(p.type) ? "Edit custom node" : p.meta.description}
             onClick={() => handleCardClick(p.type)}
-            showStripe
           />
         ))}
 

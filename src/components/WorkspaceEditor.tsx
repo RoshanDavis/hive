@@ -29,7 +29,7 @@ import "@/nodes/plugins"; // Side-effect import: registers all node plugins
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import GenericNodeShell from "@/nodes/GenericNodeShell";
 import CustomConnectionEdge from "@/components/CustomConnectionEdge";
-import { EDGE, CANVAS } from "@/theme/colors";
+import { EDGE, CANVAS, getStatusColor } from "@/theme/colors";
 import { type NodeDefinition } from "@/nodes/types";
 import { useWorkspaceClipboard } from "@/hooks/useWorkspaceClipboard";
 import { getConnectionBehavior } from "@/engine/connectivity";
@@ -663,7 +663,7 @@ function WorkspaceEditorInner({
           <Controls position="bottom-left" showInteractive={false} />
           <MiniMap
             position="bottom-right"
-            nodeColor={(n) => pluginRegistry.getColor(n.type || '')}
+            nodeColor={(n) => getStatusColor(n.data?.status)}
             maskColor={CANVAS.minimapMask}
             style={{
               background: CANVAS.minimapBg,
