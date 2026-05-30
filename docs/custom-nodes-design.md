@@ -39,7 +39,7 @@ infrastructure:
 - **`NodePlugin` interface** ([src/engine/plugin.ts](../src/engine/plugin.ts)):
   `type`, `meta` (label/icon/category/color), `defaultData`, `component`,
   `inspector`, `defaultsEditor`, `executor`, `handles`, `getOutput`,
-  `concurrencyPool`, `canPauseWorkflow`, `skipStorageSync`, `aliases`,
+  `concurrencyPool`, `canPauseWorkflow`, `skipStorageSync`,
   `credentialSchemas`, and `baseType` (set on synthesized preset plugins so connectivity
   rules resolve through to the base type).
 - **Engine**: [src/engine/index.ts](../src/engine/index.ts) `executeNode(type, ctx)`

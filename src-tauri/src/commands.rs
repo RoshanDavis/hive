@@ -6,8 +6,8 @@ use crate::models::{
     OllamaResponse, SpaceData, SpaceEntry, Workspace, WorkspaceConfig,
 };
 use crate::utils::{
-    cleanup_unused_directories, custom_nodes_app_dir, hive_dir, init_hive_structure,
-    node_defaults_app_file, now_iso, read_workspaces, write_workspaces, write_atomic,
+    custom_nodes_app_dir, hive_dir, init_hive_structure, node_defaults_app_file, now_iso,
+    read_workspaces, write_atomic, write_workspaces,
 };
 use crate::vault::{
     get_or_create_master_key, global_vault_path, local_vault_path, CredentialMeta,
@@ -140,44 +140,7 @@ pub fn add_workspace(app: tauri::AppHandle, path: String) -> Result<Workspace, S
 
 #[tauri::command]
 pub fn load_workspace_config(workspace_path: String) -> Result<WorkspaceConfig, String> {
-    // Migrate legacy 'databases' folder to 'storage' if present
     let hive_path = hive_dir(&workspace_path);
-    let legacy_db_dir = hive_path.join("databases");
-    let storage_dir = hive_path.join("storage");
-    if legacy_db_dir.exists() && legacy_db_dir.is_dir() {
-        if !storage_dir.exists() {
-            fs::rename(&legacy_db_dir, &storage_dir)
-                .map_err(|e| format!("Failed to migrate legacy 'databases' folder to 'storage': {}", e))?;
-        } else {
-            // Merging contents in case both directories exist
-            if let Ok(entries) = fs::read_dir(&legacy_db_dir) {
-                for entry in entries.filter_map(Result::ok) {
-                    let path = entry.path();
-                    if let Some(name) = path.file_name() {
-                        let target = storage_dir.join(name);
-                        if path.is_dir() {
-                            let _ = fs::create_dir_all(&target);
-                            if let Ok(sub_entries) = fs::read_dir(&path) {
-                                for sub_entry in sub_entries.filter_map(Result::ok) {
-                                    let sub_path = sub_entry.path();
-                                    if let Some(sub_name) = sub_path.file_name() {
-                                        let _ = fs::rename(&sub_path, target.join(sub_name));
-                                    }
-                                }
-                            }
-                        } else {
-                            let _ = fs::rename(&path, &target);
-                        }
-                    }
-                }
-            }
-            let _ = fs::remove_dir_all(&legacy_db_dir);
-        }
-    }
-
-    // Auto-clean any empty legacy directories
-    cleanup_unused_directories(&workspace_path);
-
     let config_path = hive_path.join("config.json");
     if !config_path.exists() {
         // Auto-init if opened for the first time
@@ -522,7 +485,6 @@ pub async fn llm_chat(
     app: tauri::AppHandle,
     provider: String,
     base_url: Option<String>,
-    api_key: Option<String>,
     credential_id: Option<String>,
     credential_scope: Option<String>,
     workspace_path: Option<String>,
@@ -532,8 +494,9 @@ pub async fn llm_chat(
     max_tokens: u32,
 ) -> Result<String, String> {
     // Rust-side credential resolution: if a credentialId is provided, look it up
-    // in the appropriate vault and override base_url/api_key from the stored values.
-    // The plaintext secret never crosses back into the renderer.
+    // in the appropriate vault and pull base_url/api_key from the stored values.
+    // The plaintext secret never crosses back into the renderer. Ollama (local)
+    // doesn't need a credential, so this is None for that path.
     let (api_key, base_url) = if let Some(id) = credential_id.as_deref() {
         let values = resolve_credential_values(
             &app,
@@ -544,8 +507,7 @@ pub async fn llm_chat(
         let resolved_key = values
             .get("apiKey")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .or(api_key);
+            .map(|s| s.to_string());
         let resolved_url = values
             .get("baseURL")
             .and_then(|v| v.as_str())
@@ -553,7 +515,7 @@ pub async fn llm_chat(
             .or(base_url);
         (resolved_key, resolved_url)
     } else {
-        (api_key, base_url)
+        (None, base_url)
     };
 
     let provider_lower = provider.to_lowercase();

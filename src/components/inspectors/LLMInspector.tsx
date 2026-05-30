@@ -17,8 +17,8 @@ export default function LLMInspector({
   const provider = (node.data?.provider || "Ollama") as ProviderType;
 
   // Resolve current values with sensible defaults and backward-compatibility fallbacks
-  const baseURLValue = String(node.data?.baseURL !== undefined ? node.data?.baseURL : (node.data?.ollamaUrl !== undefined ? node.data?.ollamaUrl : (provider === "Ollama" ? "http://localhost:11434" : "")));
-  const modelNameValue = String(node.data?.modelName !== undefined ? node.data?.modelName : (node.data?.model !== undefined ? node.data?.model : ""));
+  const baseURLValue = String(node.data?.baseURL ?? (provider === "Ollama" ? "http://localhost:11434" : ""));
+  const modelNameValue = String(node.data?.modelName ?? "");
   const credentialId = (node.data?.credentialId as string | undefined) ?? null;
 
   const limitValue = Number(node.data?.chatHistoryLimit || 0);
@@ -29,9 +29,6 @@ export default function LLMInspector({
     updatedData.provider = newProvider;
     updatedData.baseURL = PROVIDER_BASE_URL[newProvider];
     updatedData.modelName = "";
-
-    // Strip any lingering inline apiKey from legacy state — credentials live in the vault now.
-    delete updatedData.apiKey;
 
     // A credential belongs to the provider it was created for. On any provider change,
     // drop the stale reference so execution can't send the wrong secret to the new
@@ -79,8 +76,6 @@ export default function LLMInspector({
               onUpdate(node.id, {
                 ...node.data,
                 baseURL: e.target.value,
-                // Keep ollamaUrl synced in case legacy modules read it
-                ollamaUrl: e.target.value,
               })
             }
           />
@@ -108,8 +103,6 @@ export default function LLMInspector({
           onUpdate(node.id, {
             ...node.data,
             modelName: name,
-            // Keep model synced for backwards compatibility
-            model: name,
           })
         }
         workspacePath={workspacePath}

@@ -32,14 +32,9 @@ class PluginRegistry {
   /** Monotonic version, bumped on every registry mutation. */
   getVersion = (): number => this.version;
 
-  /** Register a plugin under its type and any aliases */
+  /** Register a plugin under its type. */
   register(plugin: NodePlugin): void {
     this.plugins.set(plugin.type, plugin);
-    if (plugin.aliases) {
-      for (const alias of plugin.aliases) {
-        this.plugins.set(alias, plugin);
-      }
-    }
   }
 
   /** Register (or replace) a runtime custom-node plugin at the given scope. */

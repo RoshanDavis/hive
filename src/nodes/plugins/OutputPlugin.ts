@@ -15,7 +15,6 @@ const OutputPlugin: NodePlugin = {
   defaultData: { label: "Output" },
   inspector: OutputInspector,
   executor: new OutputExecutor(),
-  aliases: ["output"],
   // Default handles (target-left, source-right)
 };
 

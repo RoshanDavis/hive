@@ -21,7 +21,7 @@ export default function LLMDefaultsEditor({
   scope,
 }: DefaultsEditorProps) {
   const provider = (values.provider as ProviderType | undefined) ?? "Ollama";
-  const modelName = String(values.modelName ?? values.model ?? "");
+  const modelName = String(values.modelName ?? "");
   const baseURL = String(values.baseURL ?? PROVIDER_BASE_URL[provider]);
   const systemPrompt = String(values.systemPrompt ?? "");
   const temperature = Number(values.temperature ?? 0.7);
@@ -31,12 +31,9 @@ export default function LLMDefaultsEditor({
   const showBaseURL = provider === "Ollama" || provider === "Other";
   const schemaTypes = PROVIDER_SCHEMA_TYPES[provider];
 
-  // Defaults must never store plaintext secrets — only a credentialId. Strip any legacy
-  // inline apiKey on every save so editing an old default converges to vault-only storage.
+  // Defaults must never store plaintext secrets — only a credentialId.
   const commit = (next: Record<string, unknown>) => {
-    const cleaned = { ...next };
-    delete cleaned.apiKey;
-    onUpdate(cleaned);
+    onUpdate(next);
   };
 
   const handleProviderChange = (next: ProviderType) => {
@@ -45,7 +42,6 @@ export default function LLMDefaultsEditor({
       provider: next,
       baseURL: PROVIDER_BASE_URL[next],
       modelName: "",
-      model: "",
     };
     // Drop a stale credential when the new provider needs none (Ollama).
     if (PROVIDER_SCHEMA_TYPES[next].length === 0) delete updated.credentialId;
@@ -81,7 +77,7 @@ export default function LLMDefaultsEditor({
             type="text"
             value={baseURL}
             onChange={(e) =>
-              commit({ ...values, baseURL: e.target.value, ollamaUrl: e.target.value })
+              commit({ ...values, baseURL: e.target.value })
             }
           />
         </div>
@@ -108,7 +104,7 @@ export default function LLMDefaultsEditor({
         provider={provider}
         selectedModel={modelName}
         onSelect={(name) =>
-          commit({ ...values, modelName: name, model: name })
+          commit({ ...values, modelName: name })
         }
         workspacePath={workspacePath}
       />

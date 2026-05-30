@@ -93,23 +93,6 @@ export const api = {
     return invoke<void>("send_notification", { title, body });
   },
 
-  // Ollama Inference
-  async ollamaChat(
-    ollamaUrl: string,
-    model: string,
-    messages: ChatMessage[],
-    temperature: number,
-    maxTokens: number
-  ): Promise<string> {
-    return invoke<string>("ollama_chat", {
-      ollamaUrl,
-      model,
-      messages,
-      temperature,
-      maxTokens,
-    });
-  },
-
   // Node defaults (global + workspace)
   async loadGlobalNodeDefaults(): Promise<NodeDefaultsConfig> {
     return invoke<NodeDefaultsConfig>("load_global_node_defaults");
@@ -202,12 +185,10 @@ export const api = {
   // Polymorphic Generic LLM Inference.
   // Pass `credentialId` (and optionally `credentialScope` + `workspacePath`) to have
   // Rust resolve the secret from the vault server-side. The plaintext key never
-  // crosses back into the renderer. The legacy `apiKey` parameter is honored only
-  // when no credentialId is provided.
+  // crosses back into the renderer.
   async llmChat(
     provider: string,
     baseURL: string,
-    apiKey: string,
     modelName: string,
     messages: ChatMessage[],
     temperature: number,
@@ -219,7 +200,6 @@ export const api = {
     return invoke<string>("llm_chat", {
       provider,
       baseURL,
-      apiKey,
       credentialId: credentialId ?? null,
       credentialScope: credentialScope ?? null,
       workspacePath: workspacePath ?? null,

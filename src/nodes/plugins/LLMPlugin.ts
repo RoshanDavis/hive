@@ -26,7 +26,6 @@ const LLMPlugin: NodePlugin = {
   inspector: LLMInspector,
   defaultsEditor: LLMDefaultsEditor,
   executor: new LLMExecutor(),
-  aliases: ["ollama"],
   credentialSchemas: [
     {
       type: "openai-api-key",

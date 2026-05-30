@@ -1,6 +1,6 @@
 # Workspace Persistence (`.hive/`)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-28** (commit `c748831`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline c748831..HEAD -- src-tauri/src/commands.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `e025a59`, refactor pass Phase 1). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline e025a59..HEAD -- src-tauri/src/commands.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
 
 A "workspace" is a user-chosen folder on disk. Hive keeps a tiny app-level registry of where workspaces are, and stores everything else *inside* each workspace under `.hive/`. All disk writes are crash-safe.
 
@@ -54,7 +54,7 @@ A space file is the canvas: nodes, edges, viewport. If it also held every chat m
 
 [src/hooks/useWorkspaceSpaces.ts](../src/hooks/useWorkspaceSpaces.ts) drives load/save from the renderer:
 
-- **On mount:** load `config.json`, run the idempotent [legacy-credential migration](credential-vault.md#legacy-migration), pick `active_space`, and load that space. Edges are rebuilt with their markers and their flow direction reconciled against `getConnectionBehavior` (a `bi-directional` edge whose pair only allows `one-way` is downgraded on load).
+- **On mount:** load `config.json`, pick `active_space`, and load that space. Edges are rebuilt with their markers and their flow direction reconciled against `getConnectionBehavior` (a `bi-directional` edge whose pair only allows `one-way` is downgraded on load).
 - **Auto-save:** an 800 ms debounce on `nodes`/`edges` changes calls `saveCurrentSpace`. An `isInitialLoadRef` guard suppresses saves during the initial load settle (≈500 ms) so loading a space doesn't immediately re-save it.
 - **Space CRUD:** `handleAddSpace` / `handleSwitchSpace` / `handleRenameSpace` / `handleDeleteSpace` save the current space first, then mutate `config.json`. Deleting a space also removes its `chats/` and `storage/` folders.
 
@@ -64,24 +64,18 @@ The space file IPC shape (`SpaceData`) and the `snake_case` edge fields (`source
 
 Every disk write goes through `write_atomic(path, data)` ([utils.rs](../src-tauri/src/utils.rs)): write to `<file>.tmp`, then atomically `rename` over the target. A crash mid-write leaves the previous file intact, never a half-written one.
 
-## Migrations & cleanup (on workspace load)
+## First-open initialization
 
-`load_workspace_config` performs automatic, idempotent housekeeping:
-
-- **`databases/` → `storage/`**: the legacy folder is renamed (or merged if both exist), then removed.
-- **Empty legacy dirs** (`assets/`, `agents/`, `data/`, `plugins/`, `logs/`, …) are removed if empty (`cleanup_unused_directories`).
-- A missing `config.json` triggers a fresh `init_hive_structure`.
-
-> **Convention:** prefer adding to these migration paths over breaking saved data. Pair on-disk changes with a migration here and (for `localStorage`) in [storage.ts](../src/services/storage.ts).
+`load_workspace_config` is a thin reader: missing `config.json` triggers a fresh `init_hive_structure` (creates `spaces/` + `storage/` and writes a default config + empty `space_1.json`); otherwise it parses and returns the config.
 
 ## Browser-local settings (not in `.hive/`)
 
-A few UI preferences live in `localStorage` via [src/services/storage.ts](../src/services/storage.ts), not on disk: concurrency settings (with legacy-schema migration), inspector/sidebar widths, and the cut/copy/paste clipboard. These are machine-local and not part of a workspace.
+A few UI preferences live in `localStorage` via [src/services/storage.ts](../src/services/storage.ts), not on disk: concurrency settings, inspector/sidebar widths, and the cut/copy/paste clipboard. These are machine-local and not part of a workspace.
 
 ## Key files
 
 - [src-tauri/src/commands.rs](../src-tauri/src/commands.rs) — `load/save_workspace_config`, `load/save/create/delete_space`, `delete_chat_history`, `delete_storage_history`.
-- [src-tauri/src/utils.rs](../src-tauri/src/utils.rs) — `write_atomic`, `init_hive_structure`, `cleanup_unused_directories`, registry I/O.
+- [src-tauri/src/utils.rs](../src-tauri/src/utils.rs) — `write_atomic`, `init_hive_structure`, registry I/O.
 - [src-tauri/src/models.rs](../src-tauri/src/models.rs) — `WorkspaceConfig`, `SpaceData`, `FlowNode`, `FlowEdge`.
 - [src/hooks/useWorkspaceSpaces.ts](../src/hooks/useWorkspaceSpaces.ts) — load, auto-save, space CRUD.
 - [src/types/workspace.ts](../src/types/workspace.ts) — renderer-side persistence types.

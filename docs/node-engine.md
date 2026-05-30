@@ -1,6 +1,6 @@
 # Node Engine
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-28** (commit `c748831`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline c748831..HEAD -- src/engine`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `e025a59`, refactor pass Phase 1). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline e025a59..HEAD -- src/engine`.
 
 The node engine is the plugin system every other system rides on. It answers four questions: *what is a node type*, *how are node types registered*, *how does a node run*, and *how does data move between nodes*. The orchestration of *when* nodes run is a separate system — see [workflow-execution.md](workflow-execution.md).
 
@@ -22,7 +22,6 @@ A node type is a `NodePlugin` ([src/engine/plugin.ts](../src/engine/plugin.ts)).
 | `concurrencyPool?` | pool name (or fn of node data) for the concurrency governor |
 | `canPauseWorkflow?` | node may halt a run to await input (Chat sets this) |
 | `skipStorageSync?` | engine skips post-execution storage sync (Chat sets this — it syncs itself) |
-| `aliases?` | backward-compatible alternate type ids |
 | `credentialSchemas?` | credential shapes the node can consume (drives the picker) |
 | `baseType?` | for synthesized custom presets: the built-in type whose behavior they reuse |
 
@@ -32,8 +31,6 @@ A node type is a `NodePlugin` ([src/engine/plugin.ts](../src/engine/plugin.ts)).
 
 - **Built-ins** register at startup via a side-effect import of [src/nodes/plugins/index.ts](../src/nodes/plugins/index.ts) (`App.tsx` imports `@/nodes/plugins`). These are permanent.
 - **Custom nodes** register at runtime through `registerCustom(plugin, scope)` / `unregisterCustom(type)` / `clearCustomsByScope(scope)`, where scope is `"global"` or `"workspace"`. The registry tracks each custom type's scope in a `customScopes` map. See [custom-nodes-design.md](custom-nodes-design.md).
-
-Registration by alias: `register()` also stores the plugin under each entry in `aliases`, so renamed/legacy types still resolve. `getAll()` de-dupes so a plugin with aliases appears once in the palette.
 
 **Reactivity.** The registry is a `useSyncExternalStore` source: it keeps a monotonic `version`, a `subscribe(cb)`, and `getVersion()`. Every custom register/unregister calls `bump()`, which increments the version and notifies listeners. UI that lists node types (palette, pickers) re-renders when customs change. Built-in `register()` does *not* bump (it only runs at startup, before anything subscribes). The hook wrapper is [src/hooks/useRegistryVersion.ts](../src/hooks/useRegistryVersion.ts).
 
@@ -90,7 +87,7 @@ updateNodeData(node.id, { ...node.data, lastResponse: response, outputEnvelope }
 
 - Flow directions: `one-way`, `bi-directional`, `read-only`, `write-only`, `read-write`.
 - Anything touching `jsonStorage` resolves to a **database edge** (read-only / write-only / read-write) depending on direction and whether the Chat "storage" bottom handle is used.
-- Pairs in `CONNECTION_RULES` get their declared behavior — currently Chat→LLM (and the legacy Chat→ollama) default to `bi-directional` with a toggle.
+- Pairs in `CONNECTION_RULES` get their declared behavior — currently Chat→LLM defaults to `bi-directional` with a toggle.
 - Everything else defaults to strict `one-way`.
 - **Custom presets resolve through `baseType`** via `effectiveType()`, so a preset over `llm` keeps `llm`'s edge behavior.
 
@@ -100,9 +97,9 @@ New node-pair behaviors go in `CONNECTION_RULES`.
 
 [src/services/concurrency.ts](../src/services/concurrency.ts) exposes the singleton `concurrencyGovernor`. Executors that do expensive/network work wrap it in `concurrencyGovernor.enqueue(pool, task)` to respect a per-pool parallelism limit:
 
-- Pools: `local`, `cloud`, `general`. Legacy names auto-resolve (`ollama`→`local`, `llm`→`cloud`).
+- Pools: `local`, `cloud`, `general`.
 - `isLocalModel(provider, baseURL)` matches the user's wildcard `localPatterns` (e.g. `*localhost*`) to decide local vs. cloud — so the LLM executor picks its pool dynamically.
-- Limits live in Settings, persisted to `localStorage` via [src/services/storage.ts](../src/services/storage.ts) (with legacy-schema migration). When a pool is disabled, tasks run with unbounded parallelism.
+- Limits live in Settings, persisted to `localStorage` via [src/services/storage.ts](../src/services/storage.ts). When a pool is disabled, tasks run with unbounded parallelism.
 
 The governor is a simple semaphore: a counter of active tasks plus a queue of resolver callbacks; releasing a slot dequeues the next waiter.
 

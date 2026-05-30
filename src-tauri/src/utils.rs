@@ -98,39 +98,10 @@ pub fn now_iso() -> String {
     format!("{}", d.as_secs())
 }
 
-pub fn cleanup_unused_directories(workspace_path: &str) {
-    let hive = hive_dir(workspace_path);
-    let unused = &[
-        "assets/images",
-        "assets/videos",
-        "assets/documents",
-        "assets",
-        "agents",
-        "data/databases",
-        "data/cache",
-        "data",
-        "plugins",
-        "logs",
-    ];
-    for sub in unused {
-        let dir_path = hive.join(sub);
-        if dir_path.exists() && dir_path.is_dir() {
-            if let Ok(entries) = fs::read_dir(&dir_path) {
-                if entries.count() == 0 {
-                    let _ = fs::remove_dir(&dir_path);
-                }
-            }
-        }
-    }
-}
-
 // ─── Initialize .hive structure ─────────────────────────────
 
 pub fn init_hive_structure(workspace_path: &str, name: &str) -> Result<WorkspaceConfig, String> {
     let hive = hive_dir(workspace_path);
-
-    // Auto-clean any empty legacy directories
-    cleanup_unused_directories(workspace_path);
 
     // Create all subdirectories
     for sub in HIVE_SUBDIRS {
