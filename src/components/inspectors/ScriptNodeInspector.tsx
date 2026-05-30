@@ -5,7 +5,7 @@ import DataConsole from "./shared/DataConsole";
 import { api } from "@/services/api";
 import { credentialService } from "@/services/credentialService";
 import { useCustomNodes } from "@/contexts/CustomNodesContext";
-import { formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass } from "@/components/shared/FormField";
 import {
   CUSTOM_TYPE_PREFIX,
   type CustomNodeScope,
@@ -23,9 +23,6 @@ function ConfigField({
   value: unknown;
   onChange: (next: unknown) => void;
 }) {
-  const inputClass =
-    "w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim";
-
   return (
     <div className="flex flex-col gap-1.5">
       <label className={formLabelClass}>
@@ -43,7 +40,7 @@ function ConfigField({
         <select
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+          className={formInputClass}
         >
           {(field.options ?? []).map((opt) => (
             <option key={opt} value={opt}>
@@ -56,14 +53,14 @@ function ConfigField({
           type="number"
           value={value === undefined || value === null ? "" : Number(value)}
           onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-          className={inputClass}
+          className={formInputClass}
         />
       ) : (
         <input
           type={field.type === "password" ? "password" : "text"}
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+          className={formInputClass}
         />
       )}
     </div>

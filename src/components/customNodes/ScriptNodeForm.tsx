@@ -1,5 +1,5 @@
 import CredentialGrantList from "@/components/customNodes/CredentialGrantList";
-import { formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass } from "@/components/shared/FormField";
 import type { HandleConfig } from "@/engine/plugin";
 import type {
   CustomNodeScope,
@@ -97,7 +97,7 @@ export default function ScriptNodeForm({
             onChange={(e) =>
               setLimits((l) => ({ ...l, timeoutMs: Number(e.target.value) || 0 }))
             }
-            className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+            className={formInputClass}
           />
         </div>
         <div className="flex flex-col gap-1.5 flex-1">
@@ -113,7 +113,7 @@ export default function ScriptNodeForm({
                 memoryBytes: (Number(e.target.value) || 0) * 1024 * 1024,
               }))
             }
-            className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+            className={formInputClass}
           />
         </div>
       </div>

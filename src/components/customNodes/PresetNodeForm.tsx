@@ -1,5 +1,5 @@
 import AutoDefaultsEditor from "@/components/defaults/AutoDefaultsEditor";
-import { formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass } from "@/components/shared/FormField";
 import type { NodePlugin } from "@/engine/plugin";
 import type { CustomNodeScope } from "@/types/customNodes";
 
@@ -39,7 +39,7 @@ export function PresetBaseTypeSection({
         <select
           value={baseType}
           onChange={(e) => onBaseChange(e.target.value)}
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+          className={`${formInputClass} cursor-pointer`}
         >
           {options.map((p) => (
             <option key={p.type} value={p.type}>

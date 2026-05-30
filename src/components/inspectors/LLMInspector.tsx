@@ -3,7 +3,7 @@ import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 import CredentialPicker from "./shared/CredentialPicker";
 import ModelPicker from "./shared/ModelPicker";
-import { formLabelClass, formInputClass } from "@/components/shared/FormField";
+import { formLabelClass, formInputClass, formRangeClass } from "@/components/shared/FormField";
 import {
   PROVIDER_BASE_URL,
   PROVIDER_SCHEMA_TYPES,
@@ -132,7 +132,7 @@ export default function LLMInspector({
           Temperature: {Number(node.data?.temperature || 0.7).toFixed(2)}
         </label>
         <input
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+          className={formRangeClass}
           type="range"
           min="0"
           max="2"
@@ -150,7 +150,7 @@ export default function LLMInspector({
       <div className="flex flex-col gap-2">
         <label className={formLabelClass}>Max Tokens</label>
         <input
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_rgba(212,230,0,0.15)] outline-none"
+          className={formInputClass}
           type="number"
           value={Number(node.data?.maxTokens || 2048)}
           onChange={(e) =>
@@ -189,7 +189,7 @@ export default function LLMInspector({
 
         {isLimited && (
           <div className="flex flex-col gap-2 pl-1 animate-[fadeIn_0.15s_ease-out]">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+            <label className={formLabelClass}>
               History Turn Limit (messages)
             </label>
             <input

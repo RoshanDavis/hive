@@ -7,6 +7,7 @@ import DataConsole from "./shared/DataConsole";
 import DatabaseRecordFeed from "./shared/DatabaseRecordFeed";
 import { ACCENT, DATABASE } from "@/theme/colors";
 import { getChatMessages, getStorageRecords } from "@/engine/nodeData";
+import { formLabelClass } from "@/components/shared/FormField";
 
 // ─── Props ───────────────────────────────────────────────────
 interface ConnectionInspectorProps {
@@ -217,7 +218,7 @@ export default function ConnectionInspector({
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 scrollbar-thin">
         {/* 1. Source & Target Routing Pathway Visualizer */}
         <div className="flex flex-col gap-2.5">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-[#71717a] select-none">Routing Pathway</label>
+          <label className={`${formLabelClass} select-none`}>Routing Pathway</label>
 
           <div className="relative bg-[#0b0b0d]/70 border border-[#222] rounded-xl p-3.5 flex flex-col gap-3 overflow-hidden shadow-inner">
             {/* Decorative grid backdrop */}
@@ -277,7 +278,7 @@ export default function ConnectionInspector({
 
         {/* 2. Data Flow Debugger */}
         <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-[#71717a] flex items-center gap-1.5 select-none">
+          <div className={`${formLabelClass} flex items-center gap-1.5 select-none`}>
             <span>🔍</span>
             <span>Live Connection Data</span>
           </div>
@@ -286,7 +287,7 @@ export default function ConnectionInspector({
 
         {/* 3. Edge Type Customization */}
         <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-[#71717a] select-none">
+          <label className={`${formLabelClass} select-none`}>
             {["database", "database-read", "database-write"].includes(connectionBehavior.allowedOption)
               ? "Database Permissions"
               : "Connection Type"}

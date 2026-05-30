@@ -1,7 +1,7 @@
 import ModelPicker from "@/components/inspectors/shared/ModelPicker";
 import CredentialPicker from "@/components/inspectors/shared/CredentialPicker";
 import type { DefaultsEditorProps } from "@/engine/plugin";
-import { formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass, formRangeClass } from "@/components/shared/FormField";
 import {
   PROVIDER_BASE_URL,
   PROVIDER_SCHEMA_TYPES,
@@ -55,7 +55,7 @@ export default function LLMDefaultsEditor({
           LLM Provider
         </label>
         <select
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim cursor-pointer"
+          className={`${formInputClass} cursor-pointer`}
           value={provider}
           onChange={(e) => handleProviderChange(e.target.value as ProviderType)}
         >
@@ -73,7 +73,7 @@ export default function LLMDefaultsEditor({
             Base URL
           </label>
           <input
-            className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+            className={formInputClass}
             type="text"
             value={baseURL}
             onChange={(e) =>
@@ -114,7 +114,7 @@ export default function LLMDefaultsEditor({
           System Prompt
         </label>
         <textarea
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim resize-y min-h-20"
+          className={`${formInputClass} resize-y min-h-20`}
           value={systemPrompt}
           rows={3}
           onChange={(e) => commit({ ...values, systemPrompt: e.target.value })}
@@ -133,7 +133,7 @@ export default function LLMDefaultsEditor({
           step="0.05"
           value={temperature}
           onChange={(e) => commit({ ...values, temperature: parseFloat(e.target.value) })}
-          className="w-full"
+          className={formRangeClass}
         />
       </div>
 
@@ -145,7 +145,7 @@ export default function LLMDefaultsEditor({
           type="number"
           value={maxTokens}
           onChange={(e) => commit({ ...values, maxTokens: parseInt(e.target.value, 10) || 0 })}
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+          className={formInputClass}
         />
       </div>
     </div>

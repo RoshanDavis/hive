@@ -1,6 +1,6 @@
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import type { DefaultsEditorProps } from "@/engine/plugin";
-import { formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass } from "@/components/shared/FormField";
 
 interface Props extends DefaultsEditorProps {
   /** Plugin type — used to look up the source defaultData for fallback typing. */
@@ -91,7 +91,7 @@ function renderInput(
           const n = Number(e.target.value);
           onChange(Number.isFinite(n) ? n : 0);
         }}
-        className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+        className={formInputClass}
       />
     );
   }
@@ -104,7 +104,7 @@ function renderInput(
           rows={3}
           value={String(currentValue ?? "")}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim resize-y min-h-16"
+          className={`${formInputClass} resize-y min-h-16`}
         />
       );
     }
@@ -113,7 +113,7 @@ function renderInput(
         type="text"
         value={String(currentValue ?? "")}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+        className={formInputClass}
       />
     );
   }

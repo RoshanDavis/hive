@@ -7,7 +7,7 @@ import {
   PresetConfigSection,
 } from "@/components/customNodes/PresetNodeForm";
 import ScriptNodeForm from "@/components/customNodes/ScriptNodeForm";
-import { formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass } from "@/components/shared/FormField";
 import { getCategoryColor } from "@/theme/colors";
 import {
   isCustomType,
@@ -405,7 +405,7 @@ export default function CustomNodeFormModal({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
+              className={formInputClass}
             />
           </div>
 
@@ -416,7 +416,7 @@ export default function CustomNodeFormModal({
               type="text"
               value={icon}
               onChange={(e) => setIcon(e.target.value)}
-              className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim text-center"
+              className={`${formInputClass} text-center`}
             />
           </div>
 
