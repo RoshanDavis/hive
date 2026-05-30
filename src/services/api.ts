@@ -18,6 +18,10 @@ export interface Workspace {
   name: string;
   path: string;
   is_initialized: boolean;
+  // When true, workflows in this workspace keep running after the user
+  // navigates back to the Dashboard. Defaults to true for new and
+  // pre-existing workspaces (serde default on the Rust side).
+  background_execution: boolean;
 }
 
 export interface ChatMessage {
@@ -50,6 +54,10 @@ export const api = {
 
   async removeWorkspace(path: string): Promise<void> {
     return invoke<void>("remove_workspace", { path });
+  },
+
+  async setWorkspaceBackgroundExecution(path: string, enabled: boolean): Promise<void> {
+    return invoke<void>("set_workspace_background_execution", { path, enabled });
   },
 
   // Space Configurations

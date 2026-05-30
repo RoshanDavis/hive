@@ -99,6 +99,18 @@ LLM inference is handled in Rust (`llm_chat` command) to avoid CORS and keep API
 
 The Rust side is a Cargo workspace: the `hive` bin/lib plus `crates/sandbox` (`hive-sandbox`), the Tauri-free QuickJS sandbox used by `run_script` (see Custom nodes above). Keep the sandbox GUI/Tauri-free so it stays natively unit-testable — run its tests with `cargo test -p hive-sandbox`. (`cargo test` over the whole workspace drags in the GUI crate, whose bare test harness fails to load on Windows with `STATUS_ENTRYPOINT_NOT_FOUND` due to a missing Common-Controls v6 manifest; the design doc documents the manifest workaround if you ever add GUI-crate tests.)
 
+### Background workspace execution
+
+Workflows survive the user leaving a workspace. The runner and the canonical canvas state live in a per-workspace `RunnerSession` (`src/contexts/runnerSession.ts`) held by `BackgroundRunnersContext` (`src/contexts/BackgroundRunnersContext.tsx`), not inside `WorkspaceEditor`. The editor is a **view** that attaches on mount (via `useSyncExternalStore` over the session snapshot) and detaches on unmount — but the session continues to exist as long as it's retained.
+
+- **Toggle is per-workspace, stored on the registry entry.** `Workspace.background_execution: bool` in `workspaces.json` (default true via `#[serde(default = "default_true")]`), edited from the Dashboard card via `set_workspace_background_execution`. The Dashboard card also shows an animated dot (using `getStatusColor("executing")`) while `hasActiveRuns()` is true for that workspace.
+- **Retention rule** (in `session.detach()`): on last detach, retain iff `backgroundExecution && hasActiveRuns()`. Otherwise flush + dispose. A retained session keeps its 800ms debounced auto-save firing, so node-status writes from a backgrounded run continue to land on disk.
+- **Toggle-off mid-run policy.** Disabling background execution does not cancel in-flight runs. The run completes; the session's post-run cleanup hook (in `updateRunningStartNodeIds`) then disposes the session if `mountCount === 0 && !backgroundExecution`.
+- **App close.** `BackgroundRunnersProvider` registers a `beforeunload` listener that calls `flushAllSessions()` for a best-effort final save. Any node still marked `executing` on next open is normalized to `error: "Interrupted by app exit"` by the `load_space` sanity sweep in `commands.rs`.
+- **Toasts.** A backgrounded session queues toasts (capped at 20) into `pendingToasts` and drains them on re-attach. Terminal errors additionally call `api.sendNotification` so the OS surfaces them even if the user never re-opens the workspace.
+- **Custom nodes in background runs.** `CustomNodesProvider` listens to `BackgroundRunnersContext.subscribeLive` and re-syncs the union of every live workspace's custom plugins via `customNodesService.syncWorkspaces(paths)`. Without this, a script/preset custom node would silently break the moment the user navigates back to the Dashboard. The settings panel still shows only the foreground workspace's defs.
+- **Adding a feature here**: prefer routing through the session (`session.setNodes`, `session.updateNodeData`, etc.) instead of React-Flow's `useNodesState`. The session is the single source of truth; React-Flow's internal state is downstream of it.
+
 ### Workspace persistence (`.hive/` layout)
 
 The app manages "workspaces" — user-chosen folders on disk. The app-data registry (`workspaces.json` in Tauri's `app_data_dir`) only stores `{ name, path }` pointers; everything else lives inside the workspace folder under `.hive/`:

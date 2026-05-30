@@ -131,11 +131,27 @@ pub fn add_workspace(app: tauri::AppHandle, path: String) -> Result<Workspace, S
         name,
         path: path.clone(),
         is_initialized,
+        background_execution: true,
     };
 
     workspaces.push(workspace.clone());
     write_workspaces(&app, &workspaces)?;
     Ok(workspace)
+}
+
+#[tauri::command]
+pub fn set_workspace_background_execution(
+    app: tauri::AppHandle,
+    path: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut workspaces = read_workspaces(&app)?;
+    let target = workspaces
+        .iter_mut()
+        .find(|ws| ws.path == path)
+        .ok_or_else(|| format!("Workspace not found: {}", path))?;
+    target.background_execution = enabled;
+    write_workspaces(&app, &workspaces)
 }
 
 #[tauri::command]
@@ -197,6 +213,26 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
     let space_storage_dir = storage_dir.join(&space_id);
 
     for node in space.nodes.iter_mut() {
+        // Sanity sweep: any node still marked `executing` on load was interrupted
+        // by an app exit or crash (a clean run always transitions to success/error
+        // before saving). Promote to `error` so the user sees a clear signal
+        // instead of a node spinning forever.
+        if let Some(obj) = node.data.as_object_mut() {
+            let is_executing = obj
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s == "executing")
+                .unwrap_or(false);
+            if is_executing {
+                obj.insert("status".to_string(), serde_json::json!("error"));
+                obj.insert(
+                    "error".to_string(),
+                    serde_json::json!("Interrupted by app exit"),
+                );
+                obj.remove("statusRunId");
+            }
+        }
+
         if node.node_type == "jsonStorage" {
             let db_file = space_storage_dir.join(format!("{}.json", node.id));
             let mut loaded_records = None;

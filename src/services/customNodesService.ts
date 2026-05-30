@@ -6,6 +6,9 @@ import { customTypeFor, type CustomNodeDefinition, type CustomNodeScope } from "
 // In-memory caches. Global is a single list; workspace is keyed by path.
 let globalCache: CustomNodeDefinition[] | null = null;
 const workspaceCache = new Map<string, CustomNodeDefinition[]>();
+// Monotonic generation for syncWorkspaces — a stale (older) load cannot
+// overwrite the registry once a newer call has started.
+let workspaceSyncToken = 0;
 
 async function loadGlobal(force = false): Promise<CustomNodeDefinition[]> {
   if (!force && globalCache) return globalCache;
@@ -58,6 +61,11 @@ export const customNodesService = {
   /**
    * Swap workspace custom plugins: clear the previous workspace's, then register
    * the new one's. Passing `null` (e.g. on the dashboard) just clears.
+   *
+   * Kept for compatibility with single-workspace UI flows (the settings panel
+   * still loads one workspace's defs at a time). Background execution uses
+   * `syncWorkspaces([...paths])` instead so multiple live workspaces can
+   * keep their script/preset nodes registered concurrently.
    */
   async syncWorkspace(path: string | null, force = false): Promise<CustomNodeDefinition[]> {
     pluginRegistry.clearCustomsByScope("workspace");
@@ -65,6 +73,25 @@ export const customNodesService = {
     const defs = await loadWorkspace(path, force);
     registerDefs(defs, "workspace");
     return defs;
+  },
+
+  /**
+   * Multi-workspace sync: register the union of all given workspaces' custom
+   * plugins. Used by BackgroundRunnersContext so a backgrounded workspace's
+   * script nodes continue to resolve while another workspace is in the
+   * foreground. Race-safe via a generation token: a stale concurrent load
+   * cannot overwrite a newer one.
+   */
+  async syncWorkspaces(paths: string[]): Promise<void> {
+    const myToken = ++workspaceSyncToken;
+    const defsByPath = await Promise.all(
+      paths.map(async (p) => ({ path: p, defs: await loadWorkspace(p, false) }))
+    );
+    if (myToken !== workspaceSyncToken) return;
+    pluginRegistry.clearCustomsByScope("workspace");
+    for (const { defs } of defsByPath) {
+      registerDefs(defs, "workspace");
+    }
   },
 
   async save(
