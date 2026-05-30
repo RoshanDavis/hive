@@ -24,7 +24,7 @@ export default function CredentialManager({
 }: CredentialManagerProps) {
   const [credentials, setCredentials] = useState<CredentialMeta[]>([]);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addMode, setAddMode] = useState<CredentialScope | null>(null);
 

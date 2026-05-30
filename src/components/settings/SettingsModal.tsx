@@ -30,7 +30,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
   const [newPattern, setNewPattern] = useState("");
 
   // UI Collapsible Dropdown State
-  const [showConcurrencyPools, setShowConcurrencyPools] = useState(true);
+  const [showConcurrencyPools, setShowConcurrencyPools] = useState(false);
   const [showPatterns, setShowPatterns] = useState(false);
 
   // Load settings on open
