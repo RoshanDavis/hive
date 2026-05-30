@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { InspectorProps } from "./types";
+import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 import { api } from "@/services/api";
 import { credentialService } from "@/services/credentialService";
@@ -112,10 +113,10 @@ export default function ScriptNodeInspector({
   }, [id, globalDefs, workspaceDefs]);
 
   const logs = Array.isArray(node.data?.logs) ? (node.data.logs as string[]) : [];
-  const output =
-    node.data?.lastResponse !== undefined && node.data?.lastResponse !== null
-      ? String(node.data.lastResponse)
-      : undefined;
+  const envelopeValue = (node.data?.outputEnvelope as NodeOutputEnvelope | undefined)?.value;
+  const output = envelopeValue !== undefined && envelopeValue !== null
+    ? String(envelopeValue)
+    : undefined;
 
   const handleOpen = async () => {
     if (!resolved) return;

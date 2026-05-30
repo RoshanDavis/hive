@@ -104,7 +104,6 @@ export class NotifyExecutor implements NodeExecutor {
 
         updateNodeData(node.id, {
           ...node.data,
-          lastResponse: finalOutputBody,
           outputEnvelope
         });
 

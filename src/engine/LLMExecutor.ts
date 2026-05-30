@@ -131,7 +131,6 @@ export class LLMExecutor implements NodeExecutor {
         // 5. Update the LLM node with the response and rich envelope
         updateNodeData(node.id, {
           ...node.data,
-          lastResponse: response,
           outputEnvelope
         });
       } catch (err) {

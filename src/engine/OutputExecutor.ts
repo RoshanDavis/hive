@@ -36,9 +36,6 @@ export class OutputExecutor implements NodeExecutor {
 
     updateNodeData(node.id, {
       ...node.data,
-      outputContent: resolvedMessage,
-      lastResponse: resolvedMessage,
-      upstreamEnvelope: resolvedEnvelope,
       outputEnvelope
     });
   }

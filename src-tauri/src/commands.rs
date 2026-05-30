@@ -228,13 +228,6 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
                     obj.insert("messages".to_string(), serde_json::json!([]));
                 }
             }
-        } else if node.node_type == "output" {
-            // Guarantee outputContent string exists in loaded frontend state
-            if let Some(obj) = node.data.as_object_mut() {
-                if !obj.contains_key("outputContent") {
-                    obj.insert("outputContent".to_string(), serde_json::json!(""));
-                }
-            }
         }
     }
 
@@ -265,11 +258,6 @@ pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), St
             if let Some(obj) = node.data.as_object_mut() {
                 // Strip large messages history from workspace json files
                 obj.remove("messages");
-            }
-        } else if node.node_type == "output" {
-            if let Some(obj) = node.data.as_object_mut() {
-                // Strip outputContent history from workspace json files
-                obj.remove("outputContent");
             }
         }
 

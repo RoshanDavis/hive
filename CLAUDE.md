@@ -31,7 +31,7 @@ The visual workflow editor is built around a plugin registry, not hardcoded node
 
 ### Node output envelope contract
 
-All inter-node data passes through `NodeOutputEnvelope` (`src/engine/types.ts`): `{ value: string, metadata?, data? }`. Read upstream data via `getUpstreamNodeData` / `getUpstreamNodeEnvelope` in `src/engine/utils.ts` — they try, in order: plugin's `getOutput`, `data.outputEnvelope`, then legacy fallbacks (`lastResponse`, `outputContent`, `output`, `value`). When writing a new executor, set both `lastResponse` (string) and `outputEnvelope` (full envelope) on node data so downstream nodes work regardless of which path they read.
+All inter-node data passes through `NodeOutputEnvelope` (`src/engine/types.ts`): `{ value: string, metadata?, data? }`. Read upstream data via `getUpstreamNodeData` / `getUpstreamNodeEnvelope` in `src/engine/utils.ts` — they call the plugin's `getOutput` if defined, otherwise read `data.outputEnvelope`. When writing a new executor, set `outputEnvelope` (full envelope) on node data; downstream reads come through the envelope.
 
 ### Credential vault
 
@@ -113,7 +113,7 @@ All disk writes go through `write_atomic` in `utils.rs` (write-to-tempfile + ren
 ## Conventions
 
 - New node type: add a plugin under `src/nodes/plugins/`, register it in `src/nodes/plugins/index.ts`, add an inspector in `src/components/inspectors/` and re-export from `inspectors/index.ts`. Use `GenericNodeShell` unless you need custom rendering.
-- New executor: implement `NodeExecutor.execute(ctx)`. To read upstream input use `getUpstreamNodeEnvelope`. To write output, update node data with both `lastResponse` and `outputEnvelope`. For LLM-style work, wrap the network call in `concurrencyGovernor.enqueue(pool, ...)`. If the node needs auth, pass `node.data.credentialId` + `ctx.workspacePath` to a Tauri command that resolves the secret server-side — never decrypt credentials in the renderer for execution.
+- New executor: implement `NodeExecutor.execute(ctx)`. To read upstream input use `getUpstreamNodeEnvelope`. To write output, update node data with `outputEnvelope` (the single source of truth for downstream consumers). For LLM-style work, wrap the network call in `concurrencyGovernor.enqueue(pool, ...)`. If the node needs auth, pass `node.data.credentialId` + `ctx.workspacePath` to a Tauri command that resolves the secret server-side — never decrypt credentials in the renderer for execution.
 - New Tauri command: add it in `commands.rs`, register in `lib.rs` `invoke_handler![]`, and add a typed wrapper in `src/services/api.ts`. Use `write_atomic` for disk writes.
 - Node defaults: reading merged defaults at create time goes through `useNodeDefaults().getMergedOverrides` (never read the service directly in render). After editing defaults, call the context `refresh()` so changes apply without a workspace reload. A node type gets a custom defaults form via `defaultsEditor`; otherwise `AutoDefaultsEditor` handles it.
 - Custom nodes: build on the dynamic registry (`registerCustom`/`synthesizePlugin`) — see `docs/custom-nodes-design.md`. For script nodes, keep code + capability grants authoritative on disk and enforce all sandbox/network/credential policy server-side in `run_script`/`hive-sandbox`; never trust the renderer for grants. Edit script source via the on-disk `script.js` + reveal-in-file-manager, not an embedded editor.

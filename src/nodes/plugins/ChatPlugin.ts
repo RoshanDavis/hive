@@ -25,20 +25,18 @@ const ChatPlugin: NodePlugin = {
   canPauseWorkflow: true,
   skipStorageSync: true,
   getOutput: (nodeData): NodeOutputEnvelope => {
-    // Prefer structured envelope if available
+    // Prefer the structured envelope written by ChatExecutor.
     if (nodeData.outputEnvelope) {
       return nodeData.outputEnvelope as NodeOutputEnvelope;
     }
-    // Fallback: extract last user message from chat history
+    // Cold-start (Chat re-opened, never executed this session): derive from
+    // the persisted message history so downstream nodes still see something.
     const messages = getChatMessages(nodeData);
     if (messages.length > 0) {
       const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
       if (lastUserMsg?.content !== undefined && lastUserMsg?.content !== null) {
         return { value: String(lastUserMsg.content) };
       }
-    }
-    if (nodeData.lastResponse !== undefined && nodeData.lastResponse !== null) {
-      return { value: String(nodeData.lastResponse) };
     }
     return { value: "" };
   },

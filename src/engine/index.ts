@@ -46,7 +46,6 @@ export const executeNode = async (
     // Set the resolved upstream envelope (or empty string for trigger nodes) as our response payload
     context.updateNodeData(context.node.id, {
       ...context.node.data,
-      lastResponse: resolvedEnvelope.value,
       outputEnvelope: resolvedEnvelope
     });
   }

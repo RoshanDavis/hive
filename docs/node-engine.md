@@ -69,16 +69,16 @@ All inter-node data is a `NodeOutputEnvelope`:
 
 Reads go through [src/engine/utils.ts](../src/engine/utils.ts):
 
-- `getUpstreamNodeData(node)` → the string `value`, trying in order: plugin `getOutput`, `data.outputEnvelope`, then legacy fallbacks `lastResponse` → `outputContent` → `output` → `value`.
-- `getUpstreamNodeEnvelope(node)` → the full envelope, with the same precedence; if only a raw string exists it's wrapped into a fallback envelope.
+- `getUpstreamNodeData(node)` → the string `value`. Calls the plugin's `getOutput` if defined; otherwise reads `data.outputEnvelope.value`. Returns `null` if neither yields a value.
+- `getUpstreamNodeEnvelope(node)` → the full envelope. Same precedence; returns `{ value: "" }` if nothing's been produced yet.
 
-> **Invariant for new executors:** write **both** `lastResponse` (string) and `outputEnvelope` (full envelope) onto node data. Downstream nodes may read either path, and the legacy fallbacks exist only for saved data that predates the envelope.
+> **Invariant for new executors:** write the `outputEnvelope` (full envelope) onto node data — it is the single source of truth for downstream consumers. Don't sprinkle parallel string fields like `lastResponse`/`outputContent`; the inspector that displays the response reads from `outputEnvelope.value`.
 
 Example, from [LLMExecutor](../src/engine/LLMExecutor.ts):
 
 ```ts
 const outputEnvelope = { value: response, metadata: { model, provider, … }, data: { reply: response } };
-updateNodeData(node.id, { ...node.data, lastResponse: response, outputEnvelope });
+updateNodeData(node.id, { ...node.data, outputEnvelope });
 ```
 
 ## Connectivity rules

@@ -77,7 +77,6 @@ export class ChatExecutor implements NodeExecutor {
         updateNodeData(chatNode.id, {
           ...chatNode.data,
           messages: updatedLocalMessages,
-          lastResponse: chatInput,
           outputEnvelope
         });
       } else {
@@ -200,7 +199,6 @@ export class ChatExecutor implements NodeExecutor {
         updateNodeData(chatNode.id, {
           ...chatNode.data,
           messages: updatedLocalMessages,
-          lastResponse: isSystemMsg ? undefined : resolvedMessage, // Clear lastResponse for system triggers so downstream nodes don't receive stale/placeholder values
           outputEnvelope
         });
       }

@@ -1,4 +1,5 @@
 import type { InspectorProps } from "./types";
+import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 import CredentialPicker from "./shared/CredentialPicker";
 import ModelPicker from "./shared/ModelPicker";
@@ -210,21 +211,25 @@ export default function LLMInspector({
       </div>
 
       {/* Last Response Visual Console */}
-      {!!node.data?.lastResponse && (
-        <div className="flex flex-col gap-2 mt-2 border-t border-border-subtle pt-4">
-          <div className="flex justify-between items-center">
-            <label className={formLabelClass}>Last Response</label>
-            <button
-              onClick={() => onUpdate(node.id, { ...node.data, lastResponse: "" })}
-              className="text-[10px] text-text-muted hover:text-danger transition-colors cursor-pointer border-none bg-transparent"
-              title="Clear response"
-            >
-              Clear
-            </button>
+      {(() => {
+        const lastValue = (node.data?.outputEnvelope as NodeOutputEnvelope | undefined)?.value;
+        if (!lastValue) return null;
+        return (
+          <div className="flex flex-col gap-2 mt-2 border-t border-border-subtle pt-4">
+            <div className="flex justify-between items-center">
+              <label className={formLabelClass}>Last Response</label>
+              <button
+                onClick={() => onUpdate(node.id, { ...node.data, outputEnvelope: undefined })}
+                className="text-[10px] text-text-muted hover:text-danger transition-colors cursor-pointer border-none bg-transparent"
+                title="Clear response"
+              >
+                Clear
+              </button>
+            </div>
+            <DataConsole content={String(lastValue)} />
           </div>
-          <DataConsole content={String(node.data.lastResponse)} />
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -1,16 +1,18 @@
 import type { InspectorProps } from "./types";
+import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 
 export default function OutputInspector({
   node,
   onUpdate
 }: InspectorProps) {
-  const content = node.data?.outputContent !== undefined && node.data?.outputContent !== null
-    ? String(node.data.outputContent)
+  const envelope = node.data?.outputEnvelope as NodeOutputEnvelope | undefined;
+  const content = envelope?.value !== undefined && envelope?.value !== null
+    ? String(envelope.value)
     : undefined;
 
-  const upstreamEnvelopeString = node.data?.upstreamEnvelope
-    ? JSON.stringify(node.data.upstreamEnvelope, null, 2)
+  const upstreamEnvelopeString = envelope
+    ? JSON.stringify(envelope, null, 2)
     : undefined;
 
   return (
@@ -30,8 +32,7 @@ export default function OutputInspector({
         onClick={() =>
           onUpdate(node.id, {
             ...node.data,
-            outputContent: undefined,
-            upstreamEnvelope: undefined,
+            outputEnvelope: undefined,
           })
         }
       >

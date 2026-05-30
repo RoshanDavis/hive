@@ -35,17 +35,16 @@ A space file is the canvas: nodes, edges, viewport. If it also held every chat m
 
 - `jsonStorage` nodes → `records` written to `storage/<space_id>/<nodeId>.json`, then stripped from the node.
 - `chat` nodes → `messages` stripped.
-- `output` nodes → `outputContent` stripped.
 - **every node** → `logs` stripped (transient per-run script output; regenerated each run, shown only in the inspector — never belongs in the space file).
 
-`load_space` does the inverse: reads `records` back onto `jsonStorage` nodes (defaulting to `[]`), and guarantees `messages`/`outputContent` exist so the frontend has stable shapes.
+`load_space` does the inverse: reads `records` back onto `jsonStorage` nodes (defaulting to `[]`), and guarantees `messages` exists on `chat` nodes so the frontend has a stable shape.
 
 ```
         save_space                                   load_space
    ┌───────────────────┐                        ┌───────────────────┐
    │ node.data has      │  strip + write apart   │ read space file    │
    │ records/messages/  │ ─────────────────────▶ │ reattach records   │
-   │ outputContent/logs │  storage/<sid>/<id>    │ from storage/      │
+   │ logs               │  storage/<sid>/<id>    │ from storage/      │
    └───────────────────┘                        └───────────────────┘
         space_<id>.json stays small                node.data rehydrated
 ```

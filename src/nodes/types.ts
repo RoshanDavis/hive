@@ -42,7 +42,6 @@ export interface ChatNodeData {
 
 export interface OutputNodeData {
   label: string;
-  outputContent: string;
   [key: string]: unknown;
 }
 

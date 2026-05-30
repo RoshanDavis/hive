@@ -38,11 +38,9 @@ const CATEGORIES: NodePlugin["meta"]["category"][] = [
 const RUNTIME_FIELDS = [
   "status",
   "error",
-  "lastResponse",
   "outputEnvelope",
   "records",
   "messages",
-  "outputContent",
 ];
 
 export function stripRuntimeFields(
