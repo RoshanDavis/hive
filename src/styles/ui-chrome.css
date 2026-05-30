@@ -1,0 +1,223 @@
+/* Generic UI chrome: context menu, collapsible, palette cards, settings modal. */
+
+/* ─── Context Menu ─── */
+.context-menu {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-menu) !important;
+  border: 1px solid var(--color-border-card) !important;
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  min-width: 160px;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background-color: transparent !important;
+  border: none;
+  outline: none;
+  color: var(--color-text-main) !important;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.context-menu-item:hover {
+  background-color: var(--color-card-hover) !important;
+  color: var(--color-accent) !important;
+}
+
+.context-menu-item:active {
+  background-color: var(--color-input) !important;
+}
+
+.context-menu-item.danger {
+  color: var(--danger) !important;
+}
+
+.context-menu-item.danger:hover {
+  background-color: color-mix(in srgb, var(--danger) 15%, transparent) !important;
+  color: var(--danger) !important;
+}
+
+.context-menu-icon {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+/* ─── Collapsible Section ─── */
+.collapsible-content {
+  display: grid;
+  transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Node Palette Grid ─── */
+.node-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+}
+
+.node-palette-card {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 6px;
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border-card);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.node-palette-card:active {
+  cursor: grabbing;
+}
+
+.node-palette-card:hover {
+  background-color: var(--color-card-hover);
+  border-color: var(--color-accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* ─── Settings Modal ─── */
+.settings-modal-container {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border-card);
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  z-index: 10;
+  user-select: none;
+  overflow: hidden;
+}
+
+.concurrency-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.concurrency-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  background-color: color-mix(in srgb, var(--bg-primary) 40%, transparent);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  padding: 12px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.concurrency-card:hover {
+  background-color: color-mix(in srgb, var(--bg-sidebar) 60%, transparent);
+  border-color: var(--color-accent-dim);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.concurrency-card-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.concurrency-card:hover .concurrency-card-remove {
+  opacity: 1;
+}
+
+.concurrency-card-remove:hover {
+  background-color: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+
+.concurrency-card-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text-main);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  width: 24px;
+  padding: 0;
+  font-family: inherit;
+}
+
+.concurrency-card-input::-webkit-outer-spin-button,
+.concurrency-card-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.concurrency-card-input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.concurrency-add-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  background-color: transparent;
+  border: 1.5px dashed var(--color-border-subtle);
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.concurrency-add-card:hover {
+  border-color: var(--color-accent-dim);
+  background-color: color-mix(in srgb, var(--accent) 2%, transparent);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes scaleUp {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
