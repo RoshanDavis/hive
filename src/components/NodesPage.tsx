@@ -35,7 +35,6 @@ export default function NodesPage({ showToast }: NodesPageProps) {
           id: def.id,
           name: def.name,
           icon: def.icon,
-          color: def.color,
           category: def.category,
           scope: "global" as const,
         };

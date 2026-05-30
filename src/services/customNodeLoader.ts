@@ -2,6 +2,7 @@ import { pluginRegistry } from "@/engine/pluginRegistry";
 import { ScriptExecutor } from "@/engine/ScriptExecutor";
 import type { NodePlugin } from "@/engine/plugin";
 import ScriptNodeInspector from "@/components/inspectors/ScriptNodeInspector";
+import { getCategoryColor } from "@/theme/colors";
 import {
   customTypeFor,
   type CustomNodeDefinition,
@@ -25,7 +26,7 @@ function synthesizeScript(def: ScriptCustomNode, scope: CustomNodeScope): NodePl
     meta: {
       label: def.name,
       icon: def.icon,
-      color: def.color,
+      color: getCategoryColor(def.category),
       category: def.category,
       description: "Custom script node",
     },
@@ -73,7 +74,7 @@ export function synthesizePlugin(
     meta: {
       label: def.name,
       icon: def.icon,
-      color: def.color,
+      color: getCategoryColor(def.category),
       category: def.category,
       description: `Custom ${base.meta.label} preset`,
     },

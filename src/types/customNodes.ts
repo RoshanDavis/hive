@@ -8,7 +8,10 @@ export interface CustomNodeBase {
   id: string;
   name: string;
   icon: string;
-  color: string;
+  /**
+   * Editorial grouping. The synthesized plugin's color is derived from this
+   * (via `getCategoryColor`) so users don't pick a color directly.
+   */
   category: NodePlugin["meta"]["category"];
   /** Schema version of this definition file. Start at 1. */
   version: number;

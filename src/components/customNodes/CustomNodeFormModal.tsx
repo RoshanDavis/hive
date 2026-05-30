@@ -8,7 +8,7 @@ import {
 } from "@/components/customNodes/PresetNodeForm";
 import ScriptNodeForm from "@/components/customNodes/ScriptNodeForm";
 import { formLabelClass } from "@/components/shared/FormField";
-import { NODE_FALLBACK } from "@/theme/colors";
+import { getCategoryColor } from "@/theme/colors";
 import {
   isCustomType,
   type CustomNodeDefinition,
@@ -25,14 +25,6 @@ const DEFAULT_SCRIPT_LIMITS: ScriptLimits = {
   timeoutMs: 5000,
   memoryBytes: 16 * 1024 * 1024,
 };
-
-const CATEGORIES: NodePlugin["meta"]["category"][] = [
-  "input",
-  "processing",
-  "output",
-  "storage",
-  "custom",
-];
 
 /** node.data keys that are execution state, not configuration — never snapshot these. */
 const RUNTIME_FIELDS = [
@@ -96,7 +88,6 @@ export interface CustomNodeFormInitial {
   handles?: HandleConfig[];
   name?: string;
   icon?: string;
-  color?: string;
   category?: NodePlugin["meta"]["category"];
   scope?: CustomNodeScope;
   /** Lock the base-type selector (save-from-node / edit). */
@@ -135,10 +126,12 @@ export default function CustomNodeFormModal({
 
   const [name, setName] = useState(initial?.name ?? base?.meta.label ?? "Custom node");
   const [icon, setIcon] = useState(initial?.icon ?? base?.meta.icon ?? "🧩");
-  const [color, setColor] = useState(initial?.color ?? base?.meta.color ?? NODE_FALLBACK);
-  const [category, setCategory] = useState<NodePlugin["meta"]["category"]>(
-    initial?.category ?? base?.meta.category ?? "custom"
-  );
+  // Category drives the synthesized plugin's color. New presets inherit the
+  // base plugin's category so they group sensibly; new scripts default to
+  // "custom". Existing definitions on disk are loaded verbatim.
+  const category: NodePlugin["meta"]["category"] =
+    initial?.category ?? (kind === "script" ? "custom" : base?.meta.category ?? "custom");
+  const color = getCategoryColor(category);
   const [scope, setScope] = useState<CustomNodeScope>(
     initial?.scope ?? (allowWorkspaceScope ? "workspace" : "global")
   );
@@ -166,14 +159,14 @@ export default function CustomNodeFormModal({
   if (!isOpen) return null;
 
   // When the base type changes in create mode, refresh meta defaults to match.
+  // Category is read off the base plugin (used to derive the icon glow color);
+  // changing the base type implicitly reshapes the category via `base?.meta.category`.
   const onBaseChange = (next: string) => {
     setBaseType(next);
     const p = pluginRegistry.get(next);
     if (p) {
       setName(p.meta.label);
       setIcon(p.meta.icon);
-      setColor(p.meta.color);
-      setCategory(p.meta.category);
     }
     setPresetData({});
   };
@@ -183,7 +176,6 @@ export default function CustomNodeFormModal({
     if (next === "script") {
       setName("Script node");
       setIcon("📜");
-      setCategory("custom");
     } else {
       onBaseChange(baseType || fallbackBase);
     }
@@ -242,7 +234,6 @@ export default function CustomNodeFormModal({
           kind: "script",
           name: name.trim(),
           icon: icon.trim() || "📜",
-          color,
           category,
           version: 1,
           runtime: scriptRuntime,
@@ -279,7 +270,6 @@ export default function CustomNodeFormModal({
         kind: "preset",
         name: name.trim(),
         icon: icon.trim() || "🧩",
-        color,
         category,
         version: 1,
         baseType,
@@ -419,42 +409,15 @@ export default function CustomNodeFormModal({
             />
           </div>
 
-          {/* Icon + Color + Category */}
-          <div className="flex gap-3">
-            <div className="flex flex-col gap-1.5 w-20">
-              <label className={formLabelClass}>Icon</label>
-              <input
-                type="text"
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-                className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim text-center"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 w-20">
-              <label className={formLabelClass}>Color</label>
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="w-full h-9.5 bg-input border border-border-subtle rounded-md cursor-pointer"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 flex-1">
-              <label className={formLabelClass}>Category</label>
-              <select
-                value={category}
-                onChange={(e) =>
-                  setCategory(e.target.value as NodePlugin["meta"]["category"])
-                }
-                className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Icon */}
+          <div className="flex flex-col gap-1.5 w-20">
+            <label className={formLabelClass}>Icon</label>
+            <input
+              type="text"
+              value={icon}
+              onChange={(e) => setIcon(e.target.value)}
+              className="w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main outline-none focus:border-accent-dim text-center"
+            />
           </div>
 
           {/* Scope (locked when editing) */}

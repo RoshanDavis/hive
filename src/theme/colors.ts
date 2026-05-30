@@ -24,6 +24,23 @@ export const NODE_COLORS = {
 /** Fallback for a node type with no declared color. */
 export const NODE_FALLBACK = "#888888";
 
+/**
+ * Category palette — used to derive a color for custom nodes from their
+ * `meta.category` so users don't have to pick one. Built-in plugins still
+ * declare `meta.color` directly to preserve their distinct identities.
+ */
+export const CATEGORY_COLORS: Record<string, string> = {
+  input: "#34d399",      // emerald
+  processing: "#a78bfa", // violet
+  output: "#fb923c",     // amber
+  storage: "#38bdf8",    // sky
+  custom: "#888888",     // neutral
+};
+
+export function getCategoryColor(category: string | undefined): string {
+  return CATEGORY_COLORS[category ?? "custom"] ?? NODE_FALLBACK;
+}
+
 /** React Flow MiniMap + background chrome. */
 export const CANVAS = {
   backgroundDots: "#333333",
