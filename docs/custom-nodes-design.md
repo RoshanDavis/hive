@@ -1,6 +1,6 @@
 # Custom Nodes — Design & Implementation
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `e025a59`, refactor pass Phase 3). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the key paths since that commit, e.g. `git log --oneline e025a59..HEAD -- src/types/customNodes.ts src/services/customNode* src/engine/ScriptExecutor.ts src-tauri/crates/sandbox`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phases 3–4). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the key paths since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/types/customNodes.ts src/services/customNode* src/engine/ScriptExecutor.ts src/components/customNodes src-tauri/crates/sandbox`.
 
 Status: **All three tiers implemented.** Tier 1 (presets) and the dynamic registry are
 done; Tier 2 was folded into normal node development (it needs no custom-node
@@ -79,7 +79,7 @@ Defined in [src/types/customNodes.ts](../src/types/customNodes.ts):
 interface CustomNodeBase {
   id: string;              // registry type becomes `custom:<id>`
   name: string; icon: string;
-  category: NodePlugin["meta"]["category"];  // drives synthesized meta.color
+  category: NodePlugin["meta"]["category"];  // drives synthesized meta.color via getCategoryColor()
   version: number;
 }
 
@@ -100,6 +100,13 @@ type CustomNodeDefinition =
 The synthesized `script` plugin carries **no `source` field** — code lives only in
 `script.js` on disk (single source of truth). `scope` is not stored in the definition; the
 registry tracks it (`customScopes` map) and the loader threads it into the executor.
+
+**No color field.** Phase 3 (May 2026) dropped the per-definition `color` knob. The
+synthesized plugin's color is derived purely from `category` via `getCategoryColor`
+([src/theme/colors.ts](../src/theme/colors.ts)), so authors only pick a category and
+custom nodes group sensibly with built-ins of the same kind. The Rust
+`CustomNodeDefinition` ([models.rs](../src-tauri/src/models.rs)) accepts an optional
+legacy `color` on read and drops it on write, so older `node.json` files still load.
 
 A **loader** ([src/services/customNodeLoader.ts](../src/services/customNodeLoader.ts))
 reads definitions, synthesizes a `NodePlugin` per definition via `synthesizePlugin(def,
@@ -180,9 +187,16 @@ Behavior = user code, so the whole game is **isolation**. As built:
   "Open script in editor" action, and a **dangling-credential banner** (grants that don't
   resolve on this machine).
 - **Authoring** is in [CustomNodeFormModal.tsx](../src/components/customNodes/CustomNodeFormModal.tsx)
-  (Preset | Script toggle): metadata, limits, network mode + allowlist editor, credential
-  grant checkboxes (+ "granted but unavailable here" chips), a `configSchema` field builder,
-  and a custom `handles` editor.
+  (Preset | Script toggle): metadata, scope, name/icon, then a Preset or Script branch.
+  Phase 4 split the per-branch bodies into [PresetNodeForm.tsx](../src/components/customNodes/PresetNodeForm.tsx)
+  (`PresetBaseTypeSection` + `PresetConfigSection`) and
+  [ScriptNodeForm.tsx](../src/components/customNodes/ScriptNodeForm.tsx) (limits, network
+  mode + allowlist editor, credential grant checkboxes via
+  [CredentialGrantList.tsx](../src/components/customNodes/CredentialGrantList.tsx), the
+  `configSchema` field builder, and a custom `handles` editor). The modal itself stays
+  thin — it owns state and validation (`validateScriptDef`) and delegates rendering. Form
+  styling goes through the shared `formLabelClass` / `formInputClass` constants in
+  [FormField.tsx](../src/components/shared/FormField.tsx).
 
 ### Editor: bring-your-own, not embedded
 

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-28** (commit `c748831`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline c748831..HEAD -- src/ src-tauri/`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phases 1–5). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/ src-tauri/`.
 
 This is the entry point for understanding Hive's internals. It maps the systems and links to the per-system design docs. For working conventions ("how do I add a node type?") see [CLAUDE.md](../CLAUDE.md); these docs explain *how the systems work and why*.
 

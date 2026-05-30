@@ -1,6 +1,6 @@
 # Workspace Persistence (`.hive/`)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `e025a59`, refactor pass Phase 1). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline e025a59..HEAD -- src-tauri/src/commands.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phases 1–2). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src-tauri/src/commands.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
 
 A "workspace" is a user-chosen folder on disk. Hive keeps a tiny app-level registry of where workspaces are, and stores everything else *inside* each workspace under `.hive/`. All disk writes are crash-safe.
 
@@ -39,6 +39,8 @@ A space file is the canvas: nodes, edges, viewport. If it also held every chat m
 
 `load_space` does the inverse: reads `records` back onto `jsonStorage` nodes (defaulting to `[]`), and guarantees `messages` exists on `chat` nodes so the frontend has a stable shape.
 
+> Phase 2 (May 2026) collapsed Output node state into the single `outputEnvelope` field, so `save_space`/`load_space` no longer special-case `outputContent` — the inspector reads the response from `outputEnvelope.value`.
+
 ```
         save_space                                   load_space
    ┌───────────────────┐                        ┌───────────────────┐
@@ -66,6 +68,8 @@ Every disk write goes through `write_atomic(path, data)` ([utils.rs](../src-taur
 ## First-open initialization
 
 `load_workspace_config` is a thin reader: missing `config.json` triggers a fresh `init_hive_structure` (creates `spaces/` + `storage/` and writes a default config + empty `space_1.json`); otherwise it parses and returns the config.
+
+> Phase 1 (May 2026) removed the one-shot `databases/ → storage/` rename and `cleanup_unused_directories` scaffolding that earlier alpha builds carried for legacy folder layouts; current `.hive/` folders ship from `init_hive_structure` directly.
 
 ## Browser-local settings (not in `.hive/`)
 

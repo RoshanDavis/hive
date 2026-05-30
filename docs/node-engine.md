@@ -1,6 +1,6 @@
 # Node Engine
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `e025a59`, refactor pass Phase 1). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline e025a59..HEAD -- src/engine`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phases 1–5). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/engine`.
 
 The node engine is the plugin system every other system rides on. It answers four questions: *what is a node type*, *how are node types registered*, *how does a node run*, and *how does data move between nodes*. The orchestration of *when* nodes run is a separate system — see [workflow-execution.md](workflow-execution.md).
 
@@ -72,7 +72,7 @@ Reads go through [src/engine/utils.ts](../src/engine/utils.ts):
 - `getUpstreamNodeData(node)` → the string `value`. Calls the plugin's `getOutput` if defined; otherwise reads `data.outputEnvelope.value`. Returns `null` if neither yields a value.
 - `getUpstreamNodeEnvelope(node)` → the full envelope. Same precedence; returns `{ value: "" }` if nothing's been produced yet.
 
-> **Invariant for new executors:** write the `outputEnvelope` (full envelope) onto node data — it is the single source of truth for downstream consumers. Don't sprinkle parallel string fields like `lastResponse`/`outputContent`; the inspector that displays the response reads from `outputEnvelope.value`.
+> **Invariant for new executors:** write the `outputEnvelope` (full envelope) onto node data — it is the **single** source of truth for downstream consumers. Don't sprinkle parallel string fields like `lastResponse`/`outputContent`/`upstreamEnvelope`; the inspector that displays the response reads from `outputEnvelope.value`. (Phase 2 of the May 2026 refactor pass removed those legacy fields from every built-in executor; any new code that adds one back is a regression.)
 
 Example, from [LLMExecutor](../src/engine/LLMExecutor.ts):
 
@@ -92,6 +92,19 @@ updateNodeData(node.id, { ...node.data, outputEnvelope });
 - **Custom presets resolve through `baseType`** via `effectiveType()`, so a preset over `llm` keeps `llm`'s edge behavior.
 
 New node-pair behaviors go in `CONNECTION_RULES`.
+
+## Graph traversal helpers
+
+Reachability and ancestor walks (BFS over non-storage edges, with bi-directional edges treated as reverse-traversable) live in [src/engine/graphTraversal.ts](../src/engine/graphTraversal.ts) — `getReachableNodeIds(startNodeIds, edges)` and `getAncestorNodeIds(startNodeIds, edges)`. The run loop uses them to scope status updates and to distinguish a loop-back return path from a fresh forward halt; see [workflow-execution.md](workflow-execution.md). They are pure functions over the edge list, so any new graph-traversal use case should import them rather than re-implement the BFS.
+
+## Typed node-data accessors
+
+`node.data` is `Record<string, unknown>` in React Flow. To avoid scattered `as any[]` casts when reading the two array shapes the engine actually cares about, use the helpers in [src/engine/nodeData.ts](../src/engine/nodeData.ts):
+
+- `getChatMessages(data)` → `ChatMessage[]` (or `[]` if absent/malformed).
+- `getStorageRecords(data)` → `JSONStorageRecord[]` (same fallback).
+
+The engine's storage-sync step, `ChatExecutor`, and `LLMExecutor` all read through these.
 
 ## Concurrency governor
 
@@ -117,6 +130,8 @@ The governor is a simple semaphore: a counter of active tasks plus a queue of re
 - [src/engine/index.ts](../src/engine/index.ts) — `executeNode` + storage sync.
 - [src/engine/types.ts](../src/engine/types.ts) — `ExecutionContext`, `NodeOutputEnvelope`, `NodeExecutor`.
 - [src/engine/utils.ts](../src/engine/utils.ts) — upstream readers.
+- [src/engine/nodeData.ts](../src/engine/nodeData.ts) — typed `node.data` accessors.
+- [src/engine/graphTraversal.ts](../src/engine/graphTraversal.ts) — `getReachableNodeIds` / `getAncestorNodeIds`.
 - [src/engine/connectivity.ts](../src/engine/connectivity.ts) — edge rules.
 - [src/services/concurrency.ts](../src/services/concurrency.ts) — the governor.
 - [src/nodes/plugins/](../src/nodes/plugins/) — the built-in node types.
