@@ -96,46 +96,46 @@
 /* ─── Node Execution Status Animations ─── */
 @keyframes executing-pulse {
   0% {
-    border-color: color-mix(in srgb, var(--success) 45%, transparent) !important;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--success) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--success) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--success) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
   50% {
-    border-color: color-mix(in srgb, var(--success) 95%, transparent) !important;
-    box-shadow: 0 0 18px color-mix(in srgb, var(--success) 50%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--success) 95%, transparent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--success) 50%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
   100% {
-    border-color: color-mix(in srgb, var(--success) 45%, transparent) !important;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--success) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--success) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--success) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
 }
 
 @keyframes waiting-pulse {
   0% {
-    border-color: color-mix(in srgb, var(--warning) 45%, transparent) !important;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
   50% {
-    border-color: color-mix(in srgb, var(--warning) 95%, transparent) !important;
-    box-shadow: 0 0 18px color-mix(in srgb, var(--warning) 50%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--warning) 95%, transparent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--warning) 50%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
   100% {
-    border-color: color-mix(in srgb, var(--warning) 45%, transparent) !important;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
 }
 
 @keyframes error-pulse {
   0% {
-    border-color: color-mix(in srgb, var(--error) 50%, transparent) !important;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--error) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--error) 50%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--error) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
   50% {
-    border-color: var(--error) !important;
-    box-shadow: 0 0 18px color-mix(in srgb, var(--error) 55%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: var(--error);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--error) 55%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
   100% {
-    border-color: color-mix(in srgb, var(--error) 50%, transparent) !important;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--error) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-color: color-mix(in srgb, var(--error) 50%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--error) 15%, transparent), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
 }
 

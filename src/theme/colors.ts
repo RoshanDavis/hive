@@ -11,18 +11,18 @@
 export const ACCENT = "#d4e600";
 export const DATABASE = "#38bdf8"; // storage / database edges + handles
 
+/** Fallback for a node type with no declared color. */
+export const NODE_FALLBACK = "#888888";
+
 /** Node identity colors — mirror of the --node-* tokens in App.css. */
 export const NODE_COLORS = {
-  trigger: "#d4e600",
+  trigger: ACCENT,
   notify: "#60a5fa",
   ollama: "#a78bfa",
   llm: "#a78bfa",
   chat: "#34d399",
   output: "#fb923c",
 } as const;
-
-/** Fallback for a node type with no declared color. */
-export const NODE_FALLBACK = "#888888";
 
 /**
  * Category palette — used to derive a color for custom nodes from their
@@ -33,8 +33,8 @@ export const CATEGORY_COLORS: Record<string, string> = {
   input: "#34d399",      // emerald
   processing: "#a78bfa", // violet
   output: "#fb923c",     // amber
-  storage: "#38bdf8",    // sky
-  custom: "#888888",     // neutral
+  storage: DATABASE,     // sky
+  custom: NODE_FALLBACK, // neutral
 };
 
 export function getCategoryColor(category: string | undefined): string {

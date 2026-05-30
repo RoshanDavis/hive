@@ -26,11 +26,15 @@ export function getUpstreamNodeData(upstreamNode: Node): string | null {
 
 /**
  * Returns the full standard JSON envelope from an upstream node. If the node
- * has not yet produced one, returns an empty envelope rather than synthesizing.
+ * has not yet produced one, returns an empty envelope flagged with
+ * `metadata.generatedFallback: true` so downstream UI (e.g. ConnectionInspector)
+ * can distinguish a real empty envelope from a "no output yet" placeholder.
  */
 export function getUpstreamNodeEnvelope(upstreamNode: Node): NodeOutputEnvelope {
+  const fallback: NodeOutputEnvelope = { value: "", metadata: { generatedFallback: true } };
+
   if (!upstreamNode || !upstreamNode.data) {
-    return { value: "" };
+    return fallback;
   }
 
   const plugin = pluginRegistry.get(upstreamNode.type || "");
@@ -41,5 +45,5 @@ export function getUpstreamNodeEnvelope(upstreamNode: Node): NodeOutputEnvelope 
   const envelope = upstreamNode.data.outputEnvelope as NodeOutputEnvelope | undefined;
   if (envelope) return envelope;
 
-  return { value: "" };
+  return fallback;
 }

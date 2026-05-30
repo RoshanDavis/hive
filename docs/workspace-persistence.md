@@ -41,7 +41,7 @@ A space file is the canvas: nodes, edges, viewport. If it also held every chat m
 
 > Phase 2 (May 2026) collapsed Output node state into the single `outputEnvelope` field, so `save_space`/`load_space` no longer special-case `outputContent` — the inspector reads the response from `outputEnvelope.value`.
 
-```
+```text
         save_space                                   load_space
    ┌───────────────────┐                        ┌───────────────────┐
    │ node.data has      │  strip + write apart   │ read space file    │

@@ -26,13 +26,19 @@ const DEFAULT_SCRIPT_LIMITS: ScriptLimits = {
   memoryBytes: 16 * 1024 * 1024,
 };
 
-/** node.data keys that are execution state, not configuration — never snapshot these. */
+/** node.data keys that are execution state, not configuration — never snapshot these.
+ *  `lastResponse` and `outputContent` are legacy run-state fields removed in the
+ *  May 2026 Phase 2 refactor; they stay here defensively so old persisted node data
+ *  doesn't bleed into preset snapshots. */
 const RUNTIME_FIELDS = [
   "status",
   "error",
   "outputEnvelope",
   "records",
   "messages",
+  "lastResponse",
+  "outputContent",
+  "logs",
 ];
 
 export function stripRuntimeFields(

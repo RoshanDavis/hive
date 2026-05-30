@@ -31,9 +31,12 @@ export default function LLMDefaultsEditor({
   const showBaseURL = provider === "Ollama" || provider === "Other";
   const schemaTypes = PROVIDER_SCHEMA_TYPES[provider];
 
-  // Defaults must never store plaintext secrets — only a credentialId.
+  // Defaults must never store plaintext secrets — only a credentialId. Strip
+  // any legacy plaintext fields that might survive from older persisted data
+  // so a round-trip through this editor cleans them up.
   const commit = (next: Record<string, unknown>) => {
-    onUpdate(next);
+    const { apiKey: _apiKey, secret: _secret, password: _password, ...sanitized } = next;
+    onUpdate(sanitized);
   };
 
   const handleProviderChange = (next: ProviderType) => {

@@ -74,8 +74,9 @@ export default function CredentialRow({
           <button
             type="button"
             onClick={onToggleEdit}
-            className="text-[10px] text-text-muted hover:text-text-main bg-transparent border border-border-subtle rounded-md px-2 py-1 cursor-pointer transition-colors"
-            title="Edit"
+            disabled={!schema}
+            className="text-[10px] text-text-muted hover:text-text-main bg-transparent border border-border-subtle rounded-md px-2 py-1 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-text-muted"
+            title={schema ? "Edit" : "Schema unavailable"}
           >
             {isEditing ? "× Close" : "✏️ Edit"}
           </button>
@@ -131,6 +132,7 @@ function EditCredentialForm({
   const [values, setValues] = useState<CredentialValues>({});
   const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Fetch current values immediately when the form opens. Fields render
@@ -147,8 +149,10 @@ function EditCredentialForm({
         if (cancelled) return;
         setValues(current);
         setInitialSnapshot(JSON.stringify(current));
+        setLoadError(false);
       } catch (err) {
         if (cancelled) return;
+        setLoadError(true);
         showToast(`Failed to load credential: ${err}`, "error");
       } finally {
         if (!cancelled) setLoading(false);
@@ -160,11 +164,16 @@ function EditCredentialForm({
   }, [cred.id, cred.scope, workspacePath, showToast]);
 
   const handleSave = async () => {
+    // Block saves when the initial load failed: we have no baseline to diff
+    // against, so any "no-op" detection would silently drop user edits.
+    if (loadError || initialSnapshot === null) {
+      showToast("Cannot save — credential failed to load.", "error");
+      return;
+    }
     setSaving(true);
     try {
       const nameChanged = name !== cred.name;
-      const valuesChanged =
-        initialSnapshot !== null && JSON.stringify(values) !== initialSnapshot;
+      const valuesChanged = JSON.stringify(values) !== initialSnapshot;
       // Skip the no-op case: nothing to save.
       if (!nameChanged && !valuesChanged) {
         onDone();

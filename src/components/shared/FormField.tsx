@@ -20,7 +20,7 @@ export const formLabelClass =
   "text-xs font-semibold uppercase tracking-wider text-text-muted";
 
 export const formInputClass =
-  "w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_var(--accent-glow)] outline-none";
+  "w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_var(--accent-glow)] outline-hidden";
 
 /**
  * Range slider. Picks up the same focus-glow ring as inputs so keyboard
@@ -29,4 +29,4 @@ export const formInputClass =
  * for ::-webkit-slider-thumb without arbitrary selectors.
  */
 export const formRangeClass =
-  "w-full accent-[var(--accent)] cursor-pointer outline-none focus:shadow-[0_0_0_2px_var(--accent-glow)] rounded";
+  "w-full accent-[var(--accent)] cursor-pointer outline-hidden focus:shadow-[0_0_0_2px_var(--accent-glow)] rounded";
