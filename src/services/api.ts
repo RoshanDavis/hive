@@ -24,6 +24,14 @@ export interface Workspace {
   background_execution: boolean;
 }
 
+/** Per-workspace status rollup aggregated across every space in
+ * `.hive/config.json`. Returned by `getWorkspaceStatusRollups`. */
+export interface WorkspaceStatusRollup {
+  path: string;
+  has_error: boolean;
+  has_waiting: boolean;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
@@ -58,6 +66,12 @@ export const api = {
 
   async setWorkspaceBackgroundExecution(path: string, enabled: boolean): Promise<void> {
     return invoke<void>("set_workspace_background_execution", { path, enabled });
+  },
+
+  // Batched per-workspace status rollup for the Dashboard's colored dot.
+  // Reads `.hive/config.json` per path; never loads space contents.
+  async getWorkspaceStatusRollups(paths: string[]): Promise<WorkspaceStatusRollup[]> {
+    return invoke<WorkspaceStatusRollup[]>("get_workspace_status_rollups", { paths });
   },
 
   // Space Configurations

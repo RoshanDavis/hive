@@ -15,6 +15,7 @@ pub fn run() {
             commands::add_workspace,
             commands::remove_workspace,
             commands::set_workspace_background_execution,
+            commands::get_workspace_status_rollups,
             commands::send_notification,
             commands::load_workspace_config,
             commands::save_workspace_config,

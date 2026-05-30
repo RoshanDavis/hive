@@ -109,6 +109,8 @@ export interface RunnerSession {
   hasActiveRuns(): boolean;
   /** True if any currently-loaded node has `status: "error"`. */
   hasErrorNodes(): boolean;
+  /** True if any currently-loaded node has `status: "waiting"` (chat pause). */
+  hasWaitingNodes(): boolean;
 
   // ─── Runner ────────────────────────────────────────────────
   executeWorkflow(triggerNodeId?: string): Promise<void>;
@@ -125,6 +127,10 @@ interface CreateSessionOptions {
   backgroundExecution: boolean;
   /** Called whenever `hasActiveRuns()` may have changed. */
   onActiveRunsChange?: () => void;
+  /** Called after each successful `save_space` so the provider can re-pull
+   * the workspace's on-disk per-space rollup. Fires on every auto-save, not
+   * only when status changed — it's a cheap RPC and the provider dedupes. */
+  onAfterSave?: () => void;
   /** Called when the session has disposed itself (post-run cleanup with no
    * editor attached and backgroundExecution off). The context uses this to
    * remove the entry from its sessions map. */
@@ -132,7 +138,7 @@ interface CreateSessionOptions {
 }
 
 export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
-  const { workspacePath, onActiveRunsChange, onSelfDispose } = opts;
+  const { workspacePath, onActiveRunsChange, onAfterSave, onSelfDispose } = opts;
 
   // ─── Canonical state (held in plain closures, not React state) ─────
   let nodes: Node[] = [];
@@ -217,18 +223,25 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     return nodes.some((n) => n.data?.status === "error");
   }
 
+  function hasWaitingNodes(): boolean {
+    return nodes.some((n) => n.data?.status === "waiting");
+  }
+
   function notifyActiveRunsChange() {
     onActiveRunsChange?.();
   }
 
-  // Track error-count transitions so the dashboard's red-dot listener fires
-  // when an error first appears or is cleared. Reuses the same callback as
-  // active-run transitions — the listener re-reads both via context getters.
+  // Track error- and waiting-count transitions so the dashboard's red/yellow
+  // dot listeners fire when state first appears or is cleared. Reuses the
+  // active-runs callback — listeners re-read all three via context getters.
   let hadErrors = false;
-  function checkErrorTransition(): void {
-    const has = hasErrorNodes();
-    if (has !== hadErrors) {
-      hadErrors = has;
+  let hadWaiting = false;
+  function checkStatusTransition(): void {
+    const errs = hasErrorNodes();
+    const waits = hasWaitingNodes();
+    if (errs !== hadErrors || waits !== hadWaiting) {
+      hadErrors = errs;
+      hadWaiting = waits;
       notifyActiveRunsChange();
     }
   }
@@ -270,6 +283,10 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     };
     try {
       await api.saveSpace(workspacePath, spaceData);
+      // Save just updated the per-space rollup on disk. Let the provider
+      // re-pull it so cross-space Dashboard dots stay current. Failing
+      // silently is fine — the next save will retry.
+      onAfterSave?.();
     } catch (err) {
       console.error("Auto-save failed:", err);
     }
@@ -288,7 +305,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     nodes = typeof updater === "function" ? (updater as (p: Node[]) => Node[])(nodes) : updater;
     notify();
     scheduleSave();
-    checkErrorTransition();
+    checkStatusTransition();
   }
 
   function setEdges(updater: Edge[] | ((prev: Edge[]) => Edge[])): void {
@@ -301,7 +318,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     nodes = applyNodeChanges(changes, nodes);
     notify();
     scheduleSave();
-    checkErrorTransition();
+    checkStatusTransition();
   }
 
   function applyEdgeChangesInternal(changes: EdgeChange[]): void {
@@ -907,8 +924,9 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
         viewport = data.viewport;
       }
       notify();
-      // Surface any persisted error state to the dashboard's red-dot listener.
-      checkErrorTransition();
+      // Surface any persisted error/waiting state to the dashboard's
+      // red/yellow dot listeners.
+      checkStatusTransition();
     } catch (err) {
       showToast(`Failed to load space: ${err}`, "error");
     }
@@ -1007,6 +1025,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     dispose,
     hasActiveRuns,
     hasErrorNodes,
+    hasWaitingNodes,
 
     executeWorkflow,
     handleChatSend,

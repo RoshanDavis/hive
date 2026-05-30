@@ -29,14 +29,32 @@ import { type ShowToastFunc } from "@/types/workspace";
 interface BackgroundRunnersContextValue {
   /** Whether the given workspace currently has at least one active run. */
   hasActiveRuns: (workspacePath: string) => boolean;
-  /** Whether the given workspace's loaded space has at least one errored node. */
+  /**
+   * Whether the given workspace has any errored node — across **every** space,
+   * not just the one currently loaded. Unions the in-memory session state
+   * (fresh, but only sees the loaded space) with the per-space rollup on disk
+   * (covers every space, but lags an in-flight transition by one auto-save).
+   */
   hasErrorNodes: (workspacePath: string) => boolean;
   /**
-   * Subscribe to changes in run state OR error state for the given workspace.
-   * Listeners fire on active-run transitions and on error-count transitions,
-   * so a single subscription is enough for both the green and red dots.
+   * Whether the given workspace has any node paused on user input. Same
+   * in-memory ∪ on-disk union as `hasErrorNodes`. Used by the Dashboard's
+   * yellow dot.
+   */
+  hasWaitingNodes: (workspacePath: string) => boolean;
+  /**
+   * Subscribe to changes in run state, error rollup, or waiting rollup for
+   * the given workspace. A single subscription powers green/red/yellow on
+   * the Dashboard card.
    */
   subscribe: (workspacePath: string, listener: () => void) => () => void;
+  /**
+   * Refresh the on-disk per-space rollups for the given workspace paths
+   * (single batched Tauri call). The Dashboard calls this on mount and after
+   * the workspace list changes; the provider also auto-refreshes after a
+   * session's save fires so cross-space state stays current.
+   */
+  refreshDiskRollups: (workspacePaths: string[]) => Promise<void>;
   /**
    * Return the existing session for a workspace, or create+init one. The
    * `showToast` arg becomes the active toast sink for as long as the editor
@@ -74,6 +92,10 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
   // Live-set listeners: notified when a workspace session is created or
   // disposed. Consumed by CustomNodesProvider for multi-workspace registration.
   const liveListenersRef = useRef<Set<() => void>>(new Set());
+  // On-disk per-space rollup cache, keyed by workspace path. Lets the
+  // Dashboard's dot reflect errors/pauses in spaces the workspace's session
+  // hasn't loaded — or that have no live session at all.
+  const diskRollupsRef = useRef<Map<string, { hasError: boolean; hasWaiting: boolean }>>(new Map());
 
   const notifyLive = useCallback(() => {
     for (const listener of liveListenersRef.current) listener();
@@ -116,8 +138,37 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
   }, []);
 
   const hasErrorNodes = useCallback((workspacePath: string) => {
-    return sessionsRef.current.get(workspacePath)?.hasErrorNodes() ?? false;
+    const inMemory = sessionsRef.current.get(workspacePath)?.hasErrorNodes() ?? false;
+    const onDisk = diskRollupsRef.current.get(workspacePath)?.hasError ?? false;
+    return inMemory || onDisk;
   }, []);
+
+  const hasWaitingNodes = useCallback((workspacePath: string) => {
+    const inMemory = sessionsRef.current.get(workspacePath)?.hasWaitingNodes() ?? false;
+    const onDisk = diskRollupsRef.current.get(workspacePath)?.hasWaiting ?? false;
+    return inMemory || onDisk;
+  }, []);
+
+  const refreshDiskRollups = useCallback(async (workspacePaths: string[]) => {
+    if (workspacePaths.length === 0) return;
+    let rollups: Awaited<ReturnType<typeof api.getWorkspaceStatusRollups>>;
+    try {
+      rollups = await api.getWorkspaceStatusRollups(workspacePaths);
+    } catch {
+      // Best-effort: leave the cache as-is on RPC failure so the Dashboard
+      // keeps showing whatever it last knew.
+      return;
+    }
+    const changed: string[] = [];
+    for (const r of rollups) {
+      const prev = diskRollupsRef.current.get(r.path);
+      if (!prev || prev.hasError !== r.has_error || prev.hasWaiting !== r.has_waiting) {
+        diskRollupsRef.current.set(r.path, { hasError: r.has_error, hasWaiting: r.has_waiting });
+        changed.push(r.path);
+      }
+    }
+    for (const path of changed) notifyActiveRuns(path);
+  }, [notifyActiveRuns]);
 
   const getOrCreateSession = useCallback(
     (workspacePath: string, showToast: ShowToastFunc): RunnerSession => {
@@ -144,6 +195,12 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
           workspacePath,
           backgroundExecution: initialBackground,
           onActiveRunsChange: () => notifyActiveRuns(workspacePath),
+          onAfterSave: () => {
+            // Auto-save just hit disk → the per-space rollup may have flipped.
+            // Re-pull it so cross-space dots (other spaces in this workspace)
+            // and the Dashboard's idle-but-errored case stay accurate.
+            void refreshDiskRollups([workspacePath]);
+          },
           onSelfDispose: () => {
             sessionsRef.current.delete(workspacePath);
             notifyActiveRuns(workspacePath);
@@ -207,7 +264,9 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
     () => ({
       hasActiveRuns,
       hasErrorNodes,
+      hasWaitingNodes,
       subscribe,
+      refreshDiskRollups,
       getOrCreateSession,
       setBackgroundExecution,
       detachSession,
@@ -215,7 +274,7 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
       getLiveWorkspacePaths,
       subscribeLive,
     }),
-    [hasActiveRuns, hasErrorNodes, subscribe, getOrCreateSession, setBackgroundExecution, detachSession, flushAllSessions, getLiveWorkspacePaths, subscribeLive]
+    [hasActiveRuns, hasErrorNodes, hasWaitingNodes, subscribe, refreshDiskRollups, getOrCreateSession, setBackgroundExecution, detachSession, flushAllSessions, getLiveWorkspacePaths, subscribeLive]
   );
 
   return (
@@ -254,8 +313,9 @@ export function useHasActiveRuns(workspacePath: string): boolean {
 }
 
 /**
- * Convenience hook: re-renders when any node in the workspace's loaded space
- * transitions in or out of `status: "error"`. Sibling of `useHasActiveRuns`.
+ * Convenience hook: re-renders when the workspace's union of in-memory
+ * loaded-space errors and on-disk per-space rollup transitions. Sibling of
+ * `useHasActiveRuns`.
  */
 export function useHasErrorNodes(workspacePath: string): boolean {
   const ctx = useContext(BackgroundRunnersContext);
@@ -268,6 +328,25 @@ export function useHasErrorNodes(workspacePath: string): boolean {
   );
   const getSnapshot = useCallback(() => {
     return ctx?.hasErrorNodes(workspacePath) ?? false;
+  }, [ctx, workspacePath]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+}
+
+/**
+ * Convenience hook: re-renders when the workspace has a node paused on user
+ * input — across every space, not just the one loaded. Drives the yellow dot.
+ */
+export function useHasWaitingNodes(workspacePath: string): boolean {
+  const ctx = useContext(BackgroundRunnersContext);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      if (!ctx) return () => {};
+      return ctx.subscribe(workspacePath, listener);
+    },
+    [ctx, workspacePath]
+  );
+  const getSnapshot = useCallback(() => {
+    return ctx?.hasWaitingNodes(workspacePath) ?? false;
   }, [ctx, workspacePath]);
   return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }

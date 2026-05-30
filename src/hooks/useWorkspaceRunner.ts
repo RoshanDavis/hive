@@ -13,10 +13,14 @@ export function useWorkspaceRunner(session: RunnerSession) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const runningStartNodeIds = snapshot.runningStartNodeIds;
-  const isRunning = runningStartNodeIds.size > 0;
 
+  // Note: we deliberately do NOT expose a workspace-wide `isRunning` flag.
+  // Per-node UI (Trigger Run button, Retry/Stop, Script "Run from here")
+  // must derive its own running state by checking whether the node's id
+  // appears in any active `startKey` in `runningStartNodeIds`. Concurrent
+  // workflows are independent; one running should never disable another's
+  // controls. See `InspectorPanel.isRunning` for the per-selected derivation.
   return {
-    isRunning,
     runningStartNodeIds,
     executeWorkflow: session.executeWorkflow,
     handleChatSend: session.handleChatSend,

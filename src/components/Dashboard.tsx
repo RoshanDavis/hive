@@ -5,7 +5,12 @@ import { api, type Workspace } from "@/services/api";
 import { useToast } from "@/hooks/useToast";
 import { SettingsModal } from "@/components/settings";
 import NodesPage from "@/components/NodesPage";
-import { useHasActiveRuns, useHasErrorNodes } from "@/contexts/BackgroundRunnersContext";
+import {
+  useBackgroundRunners,
+  useHasActiveRuns,
+  useHasErrorNodes,
+  useHasWaitingNodes,
+} from "@/contexts/BackgroundRunnersContext";
 import { getStatusColor } from "@/theme/colors";
 
 interface DashboardProps {
@@ -29,14 +34,17 @@ function WorkspaceCard({
 }: WorkspaceCardProps) {
   const isActive = useHasActiveRuns(ws.path);
   const hasError = useHasErrorNodes(ws.path);
-  // Active runs take precedence — if a run is happening, the upcoming result
-  // will refresh whatever error state is on disk. Once the run ends, the
-  // sticky `status: "error"` (set by the runner, deliberately not faded)
-  // re-surfaces as the red dot until the user clears or re-runs successfully.
-  const statusDot: "active" | "error" | null = isActive
-    ? "active"
-    : hasError
+  const hasWaiting = useHasWaitingNodes(ws.path);
+  // Priority (highest → lowest): error → waiting → executing → idle.
+  // Error and waiting are sticky across app restarts (they come from the
+  // per-space rollup on disk). Executing is in-memory only — it never
+  // persists, because `load_space` collapses any stale `executing` to error.
+  const statusDot: "error" | "waiting" | "active" | null = hasError
     ? "error"
+    : hasWaiting
+    ? "waiting"
+    : isActive
+    ? "active"
     : null;
   return (
     <div
@@ -45,18 +53,25 @@ function WorkspaceCard({
       title={ws.path}
       onClick={onOpen}
     >
+      {statusDot === "error" && (
+        <span
+          className="absolute top-3 left-3 w-2 h-2 rounded-full"
+          style={{ backgroundColor: getStatusColor("error"), boxShadow: `0 0 6px ${getStatusColor("error")}` }}
+          title="A space in this workspace has an errored node — open to investigate"
+        />
+      )}
+      {statusDot === "waiting" && (
+        <span
+          className="absolute top-3 left-3 w-2 h-2 rounded-full"
+          style={{ backgroundColor: getStatusColor("waiting"), boxShadow: `0 0 6px ${getStatusColor("waiting")}` }}
+          title="A workflow is paused waiting for input — open to respond"
+        />
+      )}
       {statusDot === "active" && (
         <span
           className="absolute top-3 left-3 w-2 h-2 rounded-full animate-pulse"
           style={{ backgroundColor: getStatusColor("executing"), boxShadow: `0 0 6px ${getStatusColor("executing")}` }}
           title="Workflow running in background"
-        />
-      )}
-      {statusDot === "error" && (
-        <span
-          className="absolute top-3 left-3 w-2 h-2 rounded-full"
-          style={{ backgroundColor: getStatusColor("error"), boxShadow: `0 0 6px ${getStatusColor("error")}` }}
-          title="Last workflow run failed — open to investigate"
         />
       )}
       <button
@@ -110,10 +125,21 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const { toasts, showToast } = useToast(3000);
+  const { refreshDiskRollups } = useBackgroundRunners();
 
   useEffect(() => {
     loadWorkspaces();
   }, []);
+
+  // Pull the on-disk per-space rollups whenever the workspace list changes
+  // (initial mount + add/remove). One batched Tauri call reads each
+  // workspace's `.hive/config.json` — no space files touched. Live in-flight
+  // state still comes from the in-memory session overlay; this populates
+  // the steady-state cross-space view used for idle workspaces.
+  useEffect(() => {
+    if (workspaces.length === 0) return;
+    void refreshDiskRollups(workspaces.map((w) => w.path));
+  }, [workspaces, refreshDiskRollups]);
 
   const loadWorkspaces = async () => {
     try {

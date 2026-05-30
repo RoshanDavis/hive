@@ -230,7 +230,6 @@ function WorkspaceEditorInner({
 
   // ─── Runner view (bound to session) ─────────────────────────
   const {
-    isRunning,
     runningStartNodeIds,
     executeWorkflow,
     handleChatSend,
@@ -758,7 +757,6 @@ function WorkspaceEditorInner({
         onChatSend={handleChatSend}
         onRetryWorkflow={retryWorkflow}
         onCancelWorkflow={cancelWorkflow}
-        isRunning={isRunning}
         runningStartNodeIds={runningStartNodeIds}
         nodes={nodes}
         edges={edges}

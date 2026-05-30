@@ -1,9 +1,16 @@
 import { type ContextMenuItem } from "@/components/ContextMenu";
 
+/** Per-space coarse status rollup persisted in `.hive/config.json`. Backs
+ * the Dashboard dot so we can derive workspace health without loading
+ * every space's nodes. `error` always wins over `waiting`; `executing` is
+ * intentionally never persisted. */
+export type SpaceRollup = "error" | "waiting";
+
 export interface SpaceEntry {
   id: string;
   label: string;
   order: number;
+  status?: SpaceRollup;
 }
 
 export interface FlowNode {

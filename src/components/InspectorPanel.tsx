@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { type NodeDefinition } from "@/nodes/types";
 import { pluginRegistry } from "@/engine/pluginRegistry";
@@ -20,7 +20,6 @@ interface InspectorPanelProps {
   onChatSend?: (nodeId: string, text: string) => void;
   onRetryWorkflow?: (nodeId: string) => void;
   onCancelWorkflow?: (nodeId?: string) => void;
-  isRunning: boolean;
   runningStartNodeIds?: Map<string, number>;
   nodes?: Node[];
   edges?: Edge[];
@@ -42,7 +41,6 @@ export default function InspectorPanel({
   onChatSend,
   onRetryWorkflow,
   onCancelWorkflow,
-  isRunning,
   runningStartNodeIds,
   nodes,
   edges,
@@ -57,6 +55,21 @@ export default function InspectorPanel({
   const [isResizing, setIsResizing] = useState(false);
   const [showSaveCustom, setShowSaveCustom] = useState(false);
   const [showCreateCustom, setShowCreateCustom] = useState(false);
+
+  // Per-selected-node running state. A run's `startKey` is the comma-joined
+  // ids of its start nodes (see `runWorkflow` in runnerSession.ts), so this
+  // node is "running" iff its id appears as a member of any active key.
+  // Without this scoping, every node's Run/Retry UI would spin whenever any
+  // other workflow ran — runs are independent and must not interlock visually.
+  const isRunning = useMemo(() => {
+    if (!selectedNode || !runningStartNodeIds || runningStartNodeIds.size === 0) {
+      return false;
+    }
+    for (const key of runningStartNodeIds.keys()) {
+      if (key.split(",").includes(selectedNode.id)) return true;
+    }
+    return false;
+  }, [selectedNode, runningStartNodeIds]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
