@@ -10,6 +10,12 @@ import "./App.css";
 interface ActiveWorkspace {
   name: string;
   path: string;
+  // Snapshot of the registry's background_execution flag at the moment the
+  // workspace was opened. Threaded through to `getOrCreateSession` so the
+  // session starts with the persisted value rather than the default-true
+  // assumption + async correction (which left a small window where retention
+  // decisions could use the wrong flag).
+  backgroundExecution: boolean;
 }
 
 // ─── App (Router) ────────────────────────────────────────────
@@ -23,11 +29,18 @@ function App() {
           <WorkspaceEditor
             workspaceName={activeWorkspace.name}
             workspacePath={activeWorkspace.path}
+            backgroundExecution={activeWorkspace.backgroundExecution}
             onBack={() => setActiveWorkspace(null)}
           />
         ) : (
           <Dashboard
-            onOpenWorkspace={(ws) => setActiveWorkspace({ name: ws.name, path: ws.path })}
+            onOpenWorkspace={(ws) =>
+              setActiveWorkspace({
+                name: ws.name,
+                path: ws.path,
+                backgroundExecution: ws.background_execution,
+              })
+            }
           />
         )}
       </CustomNodesProvider>

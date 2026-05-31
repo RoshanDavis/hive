@@ -22,7 +22,7 @@ import {
 import { api } from "@/services/api";
 import { executeNode } from "@/engine";
 import { pluginRegistry } from "@/engine/pluginRegistry";
-import { getAncestorNodeIds, getReachableNodeIds } from "@/engine/graphTraversal";
+import { getAncestorNodeIds, getConnectedComponent, getReachableNodeIds } from "@/engine/graphTraversal";
 import { getConnectionBehavior } from "@/engine/connectivity";
 import { EDGE } from "@/theme/colors";
 import {
@@ -101,7 +101,12 @@ export interface RunnerSession {
   // ─── Lifecycle ─────────────────────────────────────────────
   init(): Promise<void>;
   attach(showToast: ShowToastFunc): void;
-  /** Returns true if the session was disposed by this detach. */
+  /** Decrement the mount ref-count and either retain (if backgrounded with
+   * active runs) or schedule async flushSave+dispose. Always returns false:
+   * when dispose IS scheduled, the session keeps itself registered until the
+   * chain completes and calls `onSelfDispose`, so the context never needs to
+   * branch on the return value. The boolean is preserved only to avoid a
+   * silent API change for any out-of-tree caller. */
   detach(): boolean;
   /** Flush any pending auto-save immediately (used by detach + close). */
   flushSave(): Promise<void>;
@@ -117,6 +122,12 @@ export interface RunnerSession {
   handleChatSend(nodeId: string, text: string): Promise<void>;
   retryWorkflow(nodeId: string): Promise<void>;
   cancelWorkflow(nodeId?: string): void;
+  /** End every active workflow AND wipe `status`/`statusRunId`/`error` on
+   * every node in the active space. Single atomic reset — runs are cancelled
+   * first so their executors stop re-applying status, then the node sweep
+   * removes both their borders and any stuck borders from earlier runs.
+   * Surfaced as the "Clear all" button in the Workflows section. */
+  clearAllStatuses(): void;
 
   // ─── Space data loader (called by useWorkspaceSpaces) ──────
   loadSpaceData(spaceId: string): Promise<void>;
@@ -335,8 +346,16 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   }
 
   function updateNodeData(nodeId: string, data: Record<string, unknown>): void {
+    // Shallow-merge the incoming fields onto the LATEST live node.data so
+    // partial updates (e.g. just `{ status, statusRunId }` from the run
+    // loop) don't clobber concurrent user edits to unrelated fields. Callers
+    // that still want to pass a full snapshot (executors, inspector edits)
+    // continue to behave as before, since every field in the snapshot just
+    // overlays onto whatever's current.
     setNodes((nds) =>
-      nds.map((n) => (n.id === nodeId ? { ...n, data: { ...data } } : n))
+      nds.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
+      )
     );
   }
 
@@ -425,6 +444,99 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
         return n;
       })
     );
+  }
+
+  /** Conservative sweep: nodes whose `statusRunId` references a run no
+   * longer in `activeRuns` get their runId cleared (the linkage is dead).
+   * `status` and `error` are preserved so the user still sees what failed
+   * — useful after a force-kill where Rust promoted `executing → error`
+   * but the persisted runId no longer points anywhere live. Cheap; safe
+   * to call repeatedly. */
+  function clearOrphanRunIds(): void {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const rid = n.data.statusRunId as string | undefined;
+        if (rid && !activeRuns.has(rid)) {
+          return { ...n, data: { ...n.data, statusRunId: undefined } };
+        }
+        return n;
+      })
+    );
+  }
+
+  /** Aggressive sweep used by Retry: clear `status`/`statusRunId`/`error`
+   * on every node NOT currently part of an active run. Nodes still tied to
+   * an in-flight workflow (e.g. a concurrent run) are left alone. Used
+   * because Retry semantically means "fresh slate from this node" — sibling
+   * errors from the previous run shouldn't linger across the retry. */
+  function clearOrphanStatusesAggressive(): void {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const rid = n.data.statusRunId as string | undefined;
+        if (rid && activeRuns.has(rid)) return n;
+        if (!n.data.status && !n.data.statusRunId && !n.data.error) return n;
+        return {
+          ...n,
+          data: { ...n.data, status: undefined, statusRunId: undefined, error: undefined },
+        };
+      })
+    );
+  }
+
+  /** Public "Clear all" — cancel every active run AND wipe every node's
+   * status/statusRunId/error in the active space. Two phases:
+   *   1. Mark each active run cancelled, drop its fade timer, decrement its
+   *      runningStartNodeIds count, and delete it from activeRuns. This is
+   *      what stops in-flight executors from re-applying status mid-clear.
+   *   2. A single setNodes pass wipes status/statusRunId/error on every node
+   *      — both the just-cancelled run's nodes AND any stuck waiting/error
+   *      borders carried over from earlier runs.
+   * Used as the workspace-level reset surfaced via the Workflows section. */
+  function clearAllStatuses(): void {
+    // Phase 1: end all active runs. Same shape as `cancelWorkflow` (no nodeId)
+    // but without the bail-on-empty guard, since we always want to fall
+    // through to the node wipe.
+    const allRunIds = Array.from(activeRuns.keys());
+    for (const rid of allRunIds) {
+      const r = activeRuns.get(rid);
+      if (!r) continue;
+      r.cancelled = true;
+      releaseRunCount(rid);
+      const t = fadeTimeouts.get(rid);
+      if (t) {
+        clearTimeout(t);
+        fadeTimeouts.delete(rid);
+      }
+      if (!r.inLoop) activeRuns.delete(rid);
+    }
+
+    // Phase 2: wipe every node in one setNodes pass. Covers nodes tied to a
+    // just-cancelled run AND any stuck statuses from earlier runs.
+    let touched = 0;
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (!n.data.status && !n.data.statusRunId && !n.data.error) return n;
+        touched += 1;
+        return {
+          ...n,
+          data: { ...n.data, status: undefined, statusRunId: undefined, error: undefined },
+        };
+      })
+    );
+
+    if (allRunIds.length > 0 && touched > 0) {
+      showToast(
+        `Cancelled ${allRunIds.length} workflow${allRunIds.length === 1 ? "" : "s"} and cleared ${touched} node${touched === 1 ? "" : "s"}`,
+        "info"
+      );
+    } else if (allRunIds.length > 0) {
+      showToast(
+        `Cancelled ${allRunIds.length} workflow${allRunIds.length === 1 ? "" : "s"}`,
+        "info"
+      );
+    } else if (touched > 0) {
+      showToast(`Cleared status on ${touched} node${touched === 1 ? "" : "s"}`, "info");
+    }
   }
 
   // ─── Run loop (moved from useWorkspaceRunner; reads session state) ─
@@ -549,16 +661,65 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
       updateNodeData(nodeId, data);
     };
 
+    // Push a status transition to BOTH the run-local working copy (full
+    // snapshot — the BFS loop reads it on the next iteration) AND the live
+    // session state (delta only — preserves any concurrent inspector edits
+    // to unrelated fields). `extraLive` carries additional fields that must
+    // reach live state, e.g. the error message on the failure path.
     const applyStatus = (
       nodeId: string,
       baseData: Record<string, unknown>,
-      status: string | undefined
+      status: string | undefined,
+      extraLive: Record<string, unknown> = {}
     ): void => {
-      localUpdateNodeData(nodeId, {
-        ...baseData,
-        status,
-        statusRunId: status === undefined ? undefined : runId,
-      });
+      const statusRunId = status === undefined ? undefined : runId;
+      const fullForCurrent = { ...baseData, status, statusRunId };
+      const liveDelta: Record<string, unknown> = { status, statusRunId, ...extraLive };
+
+      // Run-local working copy: full snapshot is required because the run loop
+      // reads currentNodes[i].data on subsequent iterations.
+      const index = currentNodes.findIndex((n) => n.id === nodeId);
+      if (index !== -1) {
+        const oldNode = currentNodes[index];
+        currentNodes[index] = { ...currentNodes[index], data: fullForCurrent };
+
+        // Pause-capable storage propagation: mirror the status onto the
+        // pause-node's storage neighbor, with the existing waiting → undefined
+        // override. Both halves (currentNodes + live) updated symmetrically.
+        const nodePlugin = pluginRegistry.get(oldNode.type || "");
+        if (nodePlugin?.canPauseWorkflow && status !== oldNode.data.status) {
+          const storageEdge = edges.find(
+            (e) => e.source === nodeId && e.sourceHandle === "storage"
+          );
+          const storageNode = storageEdge
+            ? currentNodes.find(
+                (n) => n.id === storageEdge.target && n.type === "jsonStorage"
+              )
+            : null;
+          if (storageNode) {
+            const newStorageStatus = status === "waiting" ? undefined : status;
+            const newStorageRunId =
+              newStorageStatus === undefined ? undefined : statusRunId;
+            const storageIndex = currentNodes.findIndex((n) => n.id === storageNode.id);
+            if (storageIndex !== -1) {
+              currentNodes[storageIndex] = {
+                ...currentNodes[storageIndex],
+                data: {
+                  ...currentNodes[storageIndex].data,
+                  status: newStorageStatus,
+                  statusRunId: newStorageRunId,
+                },
+              };
+              updateNodeData(storageNode.id, {
+                status: newStorageStatus,
+                statusRunId: newStorageRunId,
+              });
+            }
+          }
+        }
+      }
+
+      updateNodeData(nodeId, liveDelta);
     };
 
     let haltedAtChat = false;
@@ -696,7 +857,16 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
           console.error(`[RUNWORKFLOW] Error executing node ${currentId}:`, err);
           const postExecNode = currentNodes.find((n) => n.id === currentId) || updatedNode;
           const errorMessage = err instanceof Error ? err.message : String(err);
-          applyStatus(currentId, { ...postExecNode.data, error: errorMessage }, "error");
+          // The error message goes to BOTH the run-local snapshot (so the
+          // node's `data.error` is visible in subsequent BFS reads) and live
+          // state. Passing it via `extraLive` ensures it lands on live state
+          // even though the live update path is now delta-only.
+          applyStatus(
+            currentId,
+            { ...postExecNode.data, error: errorMessage },
+            "error",
+            { error: errorMessage }
+          );
           throw err;
         }
 
@@ -767,37 +937,97 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   }
 
   function cancelWorkflow(nodeId?: string): void {
-    if (activeRuns.size === 0) return;
-
-    let targetRunIds: string[];
-    if (nodeId) {
-      const node = nodes.find((n) => n.id === nodeId);
-      const rid = node?.data?.statusRunId as string | undefined;
-      if (!rid || !activeRuns.has(rid)) return;
-      targetRunIds = [rid];
-    } else {
-      targetRunIds = Array.from(activeRuns.keys());
+    // No-node call: legacy "cancel everything" path. Used by no callers in-
+    // tree today (Clear-all goes through clearAllStatuses), but kept for
+    // API stability.
+    if (!nodeId) {
+      if (activeRuns.size === 0) return;
+      const allRunIds = Array.from(activeRuns.keys());
+      for (const rid of allRunIds) {
+        const r = activeRuns.get(rid);
+        if (!r) continue;
+        r.cancelled = true;
+        releaseRunCount(rid);
+        const t = fadeTimeouts.get(rid);
+        if (t) {
+          clearTimeout(t);
+          fadeTimeouts.delete(rid);
+        }
+        if (!r.inLoop) activeRuns.delete(rid);
+      }
+      clearBordersForRuns(new Set(allRunIds));
+      showToast("Workflow cancelled", "info");
+      return;
     }
 
-    const cancelledSet = new Set(targetRunIds);
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return;
 
-    targetRunIds.forEach((rid) => {
-      const r = activeRuns.get(rid);
-      if (!r) return;
-      r.cancelled = true;
+    // Scope to the node's connected component. Anything in a different
+    // component (a separate workflow) is left alone, so a Stop click on
+    // workflow B never reaches into a running workflow A. Storage edges
+    // are excluded from the component walk so shared storage nodes don't
+    // fuse two flows together.
+    const component = getConnectedComponent(nodeId, edges);
+
+    // Cancel every active run whose start nodes intersect this component.
+    // A run can only ever touch nodes in one component (its BFS stays
+    // within reachable edges), so intersection-on-start is sufficient.
+    const cancelledRunIds: string[] = [];
+    for (const [rid, control] of activeRuns) {
+      const startIds = control.startKey.split(",");
+      if (!startIds.some((id) => component.has(id))) continue;
+      control.cancelled = true;
       releaseRunCount(rid);
       const t = fadeTimeouts.get(rid);
       if (t) {
         clearTimeout(t);
         fadeTimeouts.delete(rid);
       }
-      if (!r.inLoop) {
-        activeRuns.delete(rid);
-      }
-    });
+      if (!control.inLoop) activeRuns.delete(rid);
+      cancelledRunIds.push(rid);
+    }
 
-    clearBordersForRuns(cancelledSet);
-    showToast("Workflow cancelled", "info");
+    // One setNodes pass: clear borders for nodes IN this component matching
+    // any of three conditions. Together they ensure every "live-looking"
+    // indicator in the component is gone after Stop:
+    //   1. inCancelledRun: rid points at a run we just cancelled above.
+    //   2. stuck: status is waiting/executing/pending — typical for a chat
+    //      past its 1.5s fade window with no live run left to reference.
+    //   3. orphanRid: rid set but not in any live run and not in cancelledRunIds
+    //      (e.g. a success node whose run silently disappeared). Defensive
+    //      backstop so that "Stop on any workflow node clears that workflow"
+    //      holds even in odd timing windows.
+    const cancelledRunIdSet = new Set(cancelledRunIds);
+    let touched = 0;
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (!component.has(n.id)) return n;
+        const rid = n.data?.statusRunId as string | undefined;
+        const s = n.data?.status;
+        const inCancelledRun = !!rid && cancelledRunIdSet.has(rid);
+        const stuck = s === "waiting" || s === "executing" || s === "pending";
+        const orphanRid =
+          !!rid && !cancelledRunIdSet.has(rid) && !activeRuns.has(rid);
+        if (inCancelledRun || stuck || orphanRid) {
+          touched += 1;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              status: undefined,
+              statusRunId: undefined,
+              error: undefined,
+            },
+          };
+        }
+        return n;
+      })
+    );
+
+    if (cancelledRunIds.length > 0 || touched > 0) {
+      showToast("Workflow cancelled", "info");
+    }
   }
 
   async function executeWorkflow(triggerNodeId?: string): Promise<void> {
@@ -825,6 +1055,11 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   async function retryWorkflow(nodeId: string): Promise<void> {
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
+    // Retry implies "fresh slate from this node" — clear leftover borders
+    // from runs that are no longer active so sibling/upstream errors from a
+    // previous failed run don't linger across the retry. Nodes still tied
+    // to a genuinely active concurrent run are preserved.
+    clearOrphanStatusesAggressive();
     showToast(`Retrying workflow from ${node.data?.label || node.type}...`, "info");
     await runWorkflow([nodeId]);
   }
@@ -924,6 +1159,13 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
         viewport = data.viewport;
       }
       notify();
+      // Any `statusRunId` we just loaded points at a run from a previous
+      // session — none of those are in our (empty) `activeRuns` map, so
+      // they're all orphans. Drop the linkage but keep status/error so the
+      // user still sees what happened (e.g. "Interrupted by app exit" from
+      // the Rust-side force-kill sweep). This prevents the global Cancel
+      // path from referencing dead runIds in any future user action.
+      clearOrphanRunIds();
       // Surface any persisted error/waiting state to the dashboard's
       // red/yellow dot listeners.
       checkStatusTransition();
@@ -963,10 +1205,17 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
       return false;
     }
 
+    // Defer context removal until the async flushSave+dispose chain actually
+    // completes. If we returned `true` here the context would drop us from
+    // its sessions map immediately, and a quick re-mount would create a
+    // duplicate session running in parallel with our in-flight save. The
+    // post-run cleanup path uses the same onSelfDispose-based removal, so
+    // there's one removal mechanism instead of two.
     void flushSave().then(() => {
       dispose();
+      onSelfDispose?.();
     });
-    return true;
+    return false;
   }
 
   function dispose(): void {
@@ -1031,6 +1280,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     handleChatSend,
     retryWorkflow,
     cancelWorkflow,
+    clearAllStatuses,
 
     loadSpaceData,
   };

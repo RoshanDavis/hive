@@ -58,9 +58,17 @@ interface BackgroundRunnersContextValue {
   /**
    * Return the existing session for a workspace, or create+init one. The
    * `showToast` arg becomes the active toast sink for as long as the editor
-   * is mounted. Callers must pair this with `detachSession(path)` on unmount.
+   * is mounted. `initialBackgroundExecution` is the workspace registry's
+   * persisted flag at the moment the editor opened — used only when a new
+   * session is created here (existing sessions ignore it; toggle changes go
+   * through `setBackgroundExecution`). Callers must pair this with
+   * `detachSession(path)` on unmount.
    */
-  getOrCreateSession: (workspacePath: string, showToast: ShowToastFunc) => RunnerSession;
+  getOrCreateSession: (
+    workspacePath: string,
+    showToast: ShowToastFunc,
+    initialBackgroundExecution: boolean
+  ) => RunnerSession;
   /** Mirror the on-disk toggle so the session knows its own retention policy. */
   setBackgroundExecution: (workspacePath: string, enabled: boolean) => void;
   /** Decrement the session's mount ref-count; may dispose if last detacher. */
@@ -171,29 +179,20 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
   }, [notifyActiveRuns]);
 
   const getOrCreateSession = useCallback(
-    (workspacePath: string, showToast: ShowToastFunc): RunnerSession => {
+    (
+      workspacePath: string,
+      showToast: ShowToastFunc,
+      initialBackgroundExecution: boolean
+    ): RunnerSession => {
       let session = sessionsRef.current.get(workspacePath);
       if (!session) {
-        // Resolve the workspace's backgroundExecution flag from the registry.
-        // This is fire-and-forget; the session starts true and we correct it
-        // when the registry read returns. The `setBackgroundExecution` setter
-        // notifies subscribers.
-        let initialBackground = true;
-        void api
-          .getWorkspaces()
-          .then((list) => {
-            const found = list.find((w) => w.path === workspacePath);
-            if (found && found.background_execution !== initialBackground) {
-              session?.setBackgroundExecution(found.background_execution);
-            }
-          })
-          .catch(() => {
-            // Non-critical — toggle just falls back to default-true.
-          });
-
+        // Use the caller-supplied registry value as the initial flag. The
+        // caller (WorkspaceEditor) reads it from the Workspace registry entry
+        // it was opened with, so there's no async window where the session
+        // disagrees with disk on retention policy.
         session = createRunnerSession({
           workspacePath,
-          backgroundExecution: initialBackground,
+          backgroundExecution: initialBackgroundExecution,
           onActiveRunsChange: () => notifyActiveRuns(workspacePath),
           onAfterSave: () => {
             // Auto-save just hit disk → the per-space rollup may have flipped.
@@ -222,13 +221,13 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
   const detachSession = useCallback((workspacePath: string) => {
     const session = sessionsRef.current.get(workspacePath);
     if (!session) return;
-    const disposed = session.detach();
-    if (disposed) {
-      sessionsRef.current.delete(workspacePath);
-      notifyActiveRuns(workspacePath);
-      notifyLive();
-    }
-  }, [notifyActiveRuns, notifyLive]);
+    // detach() now always returns false: when disposal is scheduled, the
+    // session keeps itself registered until its async flushSave+dispose
+    // chain completes, at which point `onSelfDispose` (set on creation)
+    // does the removal + notification. This prevents a duplicate session
+    // from being created on a fast re-mount during in-flight save.
+    session.detach();
+  }, []);
 
   const setBackgroundExecution = useCallback(
     (workspacePath: string, enabled: boolean) => {

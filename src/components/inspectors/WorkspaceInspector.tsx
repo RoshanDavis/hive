@@ -1,20 +1,32 @@
+import type { Node } from "@xyflow/react";
 import { type NodeDefinition } from "@/nodes/types";
 import NodePaletteSection from "./NodePaletteSection";
+import WorkflowsSection from "./WorkflowsSection";
 
 interface WorkspaceInspectorProps {
   workspaceName: string;
+  nodes: Node[];
+  runningStartNodeIds: Map<string, number>;
   onAddNode: (definition: NodeDefinition) => void;
   onDragStartNode?: (type: string) => void;
   onDragEndNode?: () => void;
   onCreateCustom?: () => void;
+  onRetryWorkflow: (nodeId: string) => void;
+  onCancelWorkflow: (nodeId?: string) => void;
+  onClearAllStatuses: () => void;
 }
 
 export default function WorkspaceInspector({
   workspaceName,
+  nodes,
+  runningStartNodeIds,
   onAddNode,
   onDragStartNode,
   onDragEndNode,
   onCreateCustom,
+  onRetryWorkflow,
+  onCancelWorkflow,
+  onClearAllStatuses,
 }: WorkspaceInspectorProps) {
   return (
     <>
@@ -29,6 +41,13 @@ export default function WorkspaceInspector({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        <WorkflowsSection
+          nodes={nodes}
+          runningStartNodeIds={runningStartNodeIds}
+          onRetryWorkflow={onRetryWorkflow}
+          onCancelWorkflow={onCancelWorkflow}
+          onClearAllStatuses={onClearAllStatuses}
+        />
         <NodePaletteSection
           onAddNode={onAddNode}
           onDragStartNode={onDragStartNode}

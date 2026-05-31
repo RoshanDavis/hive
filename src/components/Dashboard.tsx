@@ -125,7 +125,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const { toasts, showToast } = useToast(3000);
-  const { refreshDiskRollups } = useBackgroundRunners();
+  const { refreshDiskRollups, setBackgroundExecution: setSessionBackground } = useBackgroundRunners();
 
   useEffect(() => {
     loadWorkspaces();
@@ -195,6 +195,11 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
     setWorkspaces((prev) =>
       prev.map((w) => (w.path === ws.path ? { ...w, background_execution: next } : w))
     );
+    // Also push to any in-memory RunnerSession (retained background session
+    // for a workspace not currently open in the editor) so its post-run
+    // retention decision honors the new toggle without waiting for restart.
+    // No-op for workspaces with no live session.
+    setSessionBackground(ws.path, next);
     try {
       await api.setWorkspaceBackgroundExecution(ws.path, next);
       showToast(
@@ -207,6 +212,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
           w.path === ws.path ? { ...w, background_execution: !next } : w
         )
       );
+      setSessionBackground(ws.path, !next);
       showToast(`Failed to update background execution: ${err}`, "error");
     }
   };

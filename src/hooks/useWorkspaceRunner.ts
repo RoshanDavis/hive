@@ -26,5 +26,6 @@ export function useWorkspaceRunner(session: RunnerSession) {
     handleChatSend: session.handleChatSend,
     retryWorkflow: session.retryWorkflow,
     cancelWorkflow: session.cancelWorkflow,
+    clearAllStatuses: session.clearAllStatuses,
   };
 }

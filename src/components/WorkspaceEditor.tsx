@@ -52,6 +52,10 @@ import { useBackgroundRunners } from "@/contexts/BackgroundRunnersContext";
 interface WorkspaceEditorProps {
   workspaceName: string;
   workspacePath: string;
+  /** Persisted `Workspace.background_execution` flag at open time. Forwarded
+   * to `getOrCreateSession` so the new session starts with the correct
+   * retention policy instead of defaulting to true and self-correcting. */
+  backgroundExecution: boolean;
   onBack: () => void;
 }
 
@@ -63,6 +67,7 @@ const edgeTypes = {
 function WorkspaceEditorInner({
   workspaceName: _workspaceName,
   workspacePath,
+  backgroundExecution,
   onBack,
 }: WorkspaceEditorProps) {
   const { toasts, showToast } = useToast(3500);
@@ -74,10 +79,11 @@ function WorkspaceEditorInner({
   // is in flight.
   const runners = useBackgroundRunners();
   const session = useMemo(
-    () => runners.getOrCreateSession(workspacePath, showToast),
-    // We intentionally omit `showToast` from deps: it would re-create the
-    // session every render (showToast comes from useToast and isn't stable).
-    // The attach call returns the same session on subsequent invocations.
+    () => runners.getOrCreateSession(workspacePath, showToast, backgroundExecution),
+    // We intentionally omit `showToast` and `backgroundExecution` from deps:
+    // they would re-create the session needlessly. `showToast` isn't stable
+    // (useToast), and `backgroundExecution` only matters at session creation —
+    // subsequent toggle changes flow through the provider's setter, not here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [runners, workspacePath]
   );
@@ -235,6 +241,7 @@ function WorkspaceEditorInner({
     handleChatSend,
     retryWorkflow,
     cancelWorkflow,
+    clearAllStatuses,
   } = useWorkspaceRunner(session);
 
   // ─── ReactFlow viewport sync ──────────────────────────────
@@ -722,6 +729,9 @@ function WorkspaceEditorInner({
             color={CANVAS.backgroundDots}
           />
           <Controls position="bottom-left" showInteractive={false} />
+          {/* The "Clear statuses" affordance moved into the Workflows section
+              of the workspace inspector (right panel) so all workflow-level
+              controls live in one place. */}
           <MiniMap
             position="bottom-right"
             nodeColor={(n) => getStatusColor(n.data?.status)}
@@ -757,6 +767,7 @@ function WorkspaceEditorInner({
         onChatSend={handleChatSend}
         onRetryWorkflow={retryWorkflow}
         onCancelWorkflow={cancelWorkflow}
+        onClearAllStatuses={clearAllStatuses}
         runningStartNodeIds={runningStartNodeIds}
         nodes={nodes}
         edges={edges}
