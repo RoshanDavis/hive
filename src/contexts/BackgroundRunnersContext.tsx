@@ -215,7 +215,7 @@ export function BackgroundRunnersProvider({ children }: ProviderProps) {
       session.attach(showToast);
       return session;
     },
-    [notifyActiveRuns, notifyLive]
+    [notifyActiveRuns, notifyLive, refreshDiskRollups]
   );
 
   const detachSession = useCallback((workspacePath: string) => {
