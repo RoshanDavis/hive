@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+fn default_true() -> bool {
+    true
+}
+
 // ─── App-level workspace registry ────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7,15 +11,43 @@ pub struct Workspace {
     pub name: String,
     pub path: String,
     pub is_initialized: bool,
+    /// When true, workflows in this workspace keep running after the user
+    /// navigates back to the Dashboard. When false, they only run while the
+    /// workspace is open. Defaults to true so existing registries upgrade
+    /// silently to the new behavior.
+    #[serde(default = "default_true")]
+    pub background_execution: bool,
 }
 
 // ─── Workspace config (lives at .hive/config.json) ──────────
+
+/// Coarse per-space status rollup. Persisted on `SpaceEntry.status` so the
+/// Dashboard can show a workspace-level dot without loading every space.
+/// `Error` always wins over `Waiting`; `executing` is never persisted (it's
+/// in-memory only — `load_space` sweeps stale `executing` → `error`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SpaceRollup {
+    Error,
+    Waiting,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpaceEntry {
     pub id: String,
     pub label: String,
     pub order: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<SpaceRollup>,
+}
+
+/// Per-workspace status rollup returned by `get_workspace_status_rollups`.
+/// Aggregates across every space in the workspace's `.hive/config.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceStatusRollup {
+    pub path: String,
+    pub has_error: bool,
+    pub has_waiting: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

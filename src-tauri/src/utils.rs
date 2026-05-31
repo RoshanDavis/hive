@@ -2,7 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
-use crate::models::{SpaceData, SpaceEntry, Viewport, Workspace, WorkspaceConfig};
+use crate::models::{
+    FlowNode, SpaceData, SpaceEntry, SpaceRollup, Viewport, Workspace, WorkspaceConfig,
+};
 
 pub const HIVE_SUBDIRS: &[&str] = &[
     "spaces",
@@ -124,6 +126,7 @@ pub fn init_hive_structure(workspace_path: &str, name: &str) -> Result<Workspace
         id: "space_1".to_string(),
         label: "1".to_string(),
         order: 0,
+        status: None,
     };
 
     let config = WorkspaceConfig {
@@ -157,4 +160,65 @@ pub fn init_hive_structure(workspace_path: &str, name: &str) -> Result<Workspace
     write_atomic(&hive.join("spaces/space_1.json"), space_json.as_bytes())?;
 
     Ok(config)
+}
+
+// ─── Space status rollup ────────────────────────────────────
+//
+// Compute the coarse rollup for a single space from its nodes' `status`
+// fields, and patch the matching `SpaceEntry` in `.hive/config.json` if it
+// changed. `Error` always wins over `Waiting`. Only persist `error`/`waiting`
+// — `executing` is interrupt-on-exit (load_space sweeps it to error) and
+// never belongs on disk, and `success`/`pending` are not user-actionable.
+
+pub fn compute_space_rollup(nodes: &[FlowNode]) -> Option<SpaceRollup> {
+    let mut has_waiting = false;
+    for node in nodes {
+        let status = node
+            .data
+            .as_object()
+            .and_then(|o| o.get("status"))
+            .and_then(|v| v.as_str());
+        match status {
+            Some("error") => return Some(SpaceRollup::Error),
+            Some("waiting") => has_waiting = true,
+            _ => {}
+        }
+    }
+    if has_waiting {
+        Some(SpaceRollup::Waiting)
+    } else {
+        None
+    }
+}
+
+/// Patch `.hive/config.json` to record `new_rollup` on the matching space.
+/// Skip the disk write when the value is unchanged so a steady-state run
+/// (no transitions) adds zero extra I/O. Best-effort: a failure here must
+/// not break the caller's save (`save_space` calls this then continues).
+pub fn update_space_rollup_in_config(
+    workspace_path: &str,
+    space_id: &str,
+    new_rollup: Option<SpaceRollup>,
+) -> Result<(), String> {
+    let config_path = hive_dir(workspace_path).join("config.json");
+    if !config_path.exists() {
+        return Ok(());
+    }
+    let data = fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config: {}", e))?;
+    let mut config: WorkspaceConfig = serde_json::from_str(&data)
+        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    let entry = match config.spaces.iter_mut().find(|s| s.id == space_id) {
+        Some(e) => e,
+        None => return Ok(()),
+    };
+    if entry.status == new_rollup {
+        return Ok(());
+    }
+    entry.status = new_rollup;
+    config.updated_at = now_iso();
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    write_atomic(&config_path, json.as_bytes())?;
+    Ok(())
 }

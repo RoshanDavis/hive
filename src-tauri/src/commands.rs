@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 
 use crate::models::{
     CustomNodeDefinition, NodeDefaultsConfig, OllamaMessage, OllamaOptions, OllamaRequest,
-    OllamaResponse, SpaceData, SpaceEntry, Workspace, WorkspaceConfig,
+    OllamaResponse, SpaceData, SpaceEntry, Workspace, WorkspaceConfig, WorkspaceStatusRollup,
 };
 use crate::utils::{
-    custom_nodes_app_dir, hive_dir, init_hive_structure, node_defaults_app_file, now_iso,
-    read_workspaces, write_atomic, write_workspaces,
+    compute_space_rollup, custom_nodes_app_dir, hive_dir, init_hive_structure,
+    node_defaults_app_file, now_iso, read_workspaces, update_space_rollup_in_config, write_atomic,
+    write_workspaces,
 };
 use crate::vault::{
     get_or_create_master_key, global_vault_path, local_vault_path, CredentialMeta,
@@ -131,11 +132,65 @@ pub fn add_workspace(app: tauri::AppHandle, path: String) -> Result<Workspace, S
         name,
         path: path.clone(),
         is_initialized,
+        background_execution: true,
     };
 
     workspaces.push(workspace.clone());
     write_workspaces(&app, &workspaces)?;
     Ok(workspace)
+}
+
+/// Batched per-workspace status rollup for the Dashboard's colored dot.
+///
+/// For each `path`, reads `.hive/config.json` and OR-reduces the per-space
+/// `status` field across every `SpaceEntry`. Returns one entry per requested
+/// path. A workspace whose config is missing, unparsable, or empty resolves
+/// to `{has_error: false, has_waiting: false}` — never an error, because
+/// failing the call would blank the entire Dashboard for one bad workspace.
+///
+/// Scale: N small file reads at Dashboard mount. Acceptable into the
+/// thousands of workspaces. Avoids loading any space file or node payload.
+#[tauri::command]
+pub fn get_workspace_status_rollups(paths: Vec<String>) -> Vec<WorkspaceStatusRollup> {
+    paths
+        .into_iter()
+        .map(|path| {
+            let config_path = hive_dir(&path).join("config.json");
+            let mut has_error = false;
+            let mut has_waiting = false;
+            if let Ok(data) = fs::read_to_string(&config_path) {
+                if let Ok(config) = serde_json::from_str::<WorkspaceConfig>(&data) {
+                    for entry in &config.spaces {
+                        match entry.status {
+                            Some(crate::models::SpaceRollup::Error) => has_error = true,
+                            Some(crate::models::SpaceRollup::Waiting) => has_waiting = true,
+                            None => {}
+                        }
+                    }
+                }
+            }
+            WorkspaceStatusRollup {
+                path,
+                has_error,
+                has_waiting,
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn set_workspace_background_execution(
+    app: tauri::AppHandle,
+    path: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut workspaces = read_workspaces(&app)?;
+    let target = workspaces
+        .iter_mut()
+        .find(|ws| ws.path == path)
+        .ok_or_else(|| format!("Workspace not found: {}", path))?;
+    target.background_execution = enabled;
+    write_workspaces(&app, &workspaces)
 }
 
 #[tauri::command]
@@ -196,6 +251,44 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
     let storage_dir = hive_dir(&workspace_path).join("storage");
     let space_storage_dir = storage_dir.join(&space_id);
 
+    // Sanity sweep first, **before** attaching storage/chat enrichments so
+    // the optional write-back below mirrors what `save_space` would produce
+    // (no records/messages in space file). Any node still marked `executing`
+    // on load was interrupted by an app exit or crash — promote to `error`.
+    let mut swept_any = false;
+    for node in space.nodes.iter_mut() {
+        if let Some(obj) = node.data.as_object_mut() {
+            let is_executing = obj
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s == "executing")
+                .unwrap_or(false);
+            if is_executing {
+                obj.insert("status".to_string(), serde_json::json!("error"));
+                obj.insert(
+                    "error".to_string(),
+                    serde_json::json!("Interrupted by app exit"),
+                );
+                obj.remove("statusRunId");
+                swept_any = true;
+            }
+        }
+    }
+
+    // Persist the sweep so we don't re-promote the same nodes on every load.
+    // Best-effort: failure here just means the next load will re-sweep — no
+    // user-visible breakage. Done before enrichment so the on-disk file stays
+    // in the same shape `save_space` writes (records/messages separated out).
+    if swept_any {
+        if let Ok(json) = serde_json::to_string_pretty(&space) {
+            let space_path = hive_dir(&workspace_path)
+                .join("spaces")
+                .join(format!("{}.json", space.id));
+            let _ = write_atomic(&space_path, json.as_bytes());
+        }
+    }
+
+    // Second pass: attach storage records / ensure chat messages array.
     for node in space.nodes.iter_mut() {
         if node.node_type == "jsonStorage" {
             let db_file = space_storage_dir.join(format!("{}.json", node.id));
@@ -230,6 +323,13 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
             }
         }
     }
+
+    // Refresh the per-space rollup on `.hive/config.json`. The executing→error
+    // sweep above can flip a space from clean to errored at load time, and we
+    // want the Dashboard to see that without waiting for the next save. Skipped
+    // when unchanged. Best-effort: a write failure here doesn't fail load.
+    let rollup = compute_space_rollup(&space.nodes);
+    let _ = update_space_rollup_in_config(&workspace_path, &space.id, rollup);
 
     Ok(space)
 }
@@ -276,6 +376,13 @@ pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), St
     let json = serde_json::to_string_pretty(&space)
         .map_err(|e| format!("Failed to serialize space: {}", e))?;
     write_atomic(&path, json.as_bytes())?;
+
+    // Refresh the per-space rollup on `.hive/config.json` so the Dashboard
+    // dot stays accurate even when no session is attached. Skipped when
+    // unchanged; best-effort (a config-write failure shouldn't fail the save).
+    let rollup = compute_space_rollup(&space.nodes);
+    let _ = update_space_rollup_in_config(&workspace_path, &space.id, rollup);
+
     Ok(())
 }
 
@@ -312,6 +419,7 @@ pub fn create_space(
             id: space_id.clone(),
             label: space.label.clone(),
             order: next_order,
+            status: None,
         });
         config.active_space = space_id;
         config.updated_at = now_iso();

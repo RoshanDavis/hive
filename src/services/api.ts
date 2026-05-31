@@ -18,6 +18,18 @@ export interface Workspace {
   name: string;
   path: string;
   is_initialized: boolean;
+  // When true, workflows in this workspace keep running after the user
+  // navigates back to the Dashboard. Defaults to true for new and
+  // pre-existing workspaces (serde default on the Rust side).
+  background_execution: boolean;
+}
+
+/** Per-workspace status rollup aggregated across every space in
+ * `.hive/config.json`. Returned by `getWorkspaceStatusRollups`. */
+export interface WorkspaceStatusRollup {
+  path: string;
+  has_error: boolean;
+  has_waiting: boolean;
 }
 
 export interface ChatMessage {
@@ -50,6 +62,16 @@ export const api = {
 
   async removeWorkspace(path: string): Promise<void> {
     return invoke<void>("remove_workspace", { path });
+  },
+
+  async setWorkspaceBackgroundExecution(path: string, enabled: boolean): Promise<void> {
+    return invoke<void>("set_workspace_background_execution", { path, enabled });
+  },
+
+  // Batched per-workspace status rollup for the Dashboard's colored dot.
+  // Reads `.hive/config.json` per path; never loads space contents.
+  async getWorkspaceStatusRollups(paths: string[]): Promise<WorkspaceStatusRollup[]> {
+    return invoke<WorkspaceStatusRollup[]>("get_workspace_status_rollups", { paths });
   },
 
   // Space Configurations

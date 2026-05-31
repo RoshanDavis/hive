@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import { type NodeDefinition } from "@/nodes/types";
 import { pluginRegistry } from "@/engine/pluginRegistry";
+import { getConnectedComponent } from "@/engine/graphTraversal";
 import { ConnectionInspector, WorkspaceInspector } from "@/components/inspectors";
 import { storage } from "@/services/storage";
 import CustomNodeFormModal, {
@@ -20,7 +21,7 @@ interface InspectorPanelProps {
   onChatSend?: (nodeId: string, text: string) => void;
   onRetryWorkflow?: (nodeId: string) => void;
   onCancelWorkflow?: (nodeId?: string) => void;
-  isRunning: boolean;
+  onClearAllStatuses: () => void;
   runningStartNodeIds?: Map<string, number>;
   nodes?: Node[];
   edges?: Edge[];
@@ -42,7 +43,7 @@ export default function InspectorPanel({
   onChatSend,
   onRetryWorkflow,
   onCancelWorkflow,
-  isRunning,
+  onClearAllStatuses,
   runningStartNodeIds,
   nodes,
   edges,
@@ -57,6 +58,43 @@ export default function InspectorPanel({
   const [isResizing, setIsResizing] = useState(false);
   const [showSaveCustom, setShowSaveCustom] = useState(false);
   const [showCreateCustom, setShowCreateCustom] = useState(false);
+
+  // Per-selected-node running state. A run's `startKey` is the comma-joined
+  // ids of its start nodes (see `runWorkflow` in runnerSession.ts), so this
+  // node is "running" iff its id appears as a member of any active key.
+  // Without this scoping, every node's Run/Retry UI would spin whenever any
+  // other workflow ran — runs are independent and must not interlock visually.
+  const isRunning = useMemo(() => {
+    if (!selectedNode || !runningStartNodeIds || runningStartNodeIds.size === 0) {
+      return false;
+    }
+    for (const key of runningStartNodeIds.keys()) {
+      if (key.split(",").includes(selectedNode.id)) return true;
+    }
+    return false;
+  }, [selectedNode, runningStartNodeIds]);
+
+  // Stop visibility scoped to the selected node's connected component (a.k.a.
+  // its workflow). Show Stop iff this workflow has something stoppable —
+  // either a node currently in flight, or a node carrying a stuck status
+  // (typical: a paused chat past its 1.5s fade window with no live run left
+  // to reference). Different components are different workflows, so a Stop
+  // on workflow B's node must never reach into a running workflow A.
+  const canStopFromSelected = useMemo(() => {
+    if (!selectedNode) return false;
+    const component = getConnectedComponent(selectedNode.id, edges || []);
+    for (const id of component) {
+      const n = (nodes || []).find((nd) => nd.id === id);
+      if (!n) continue;
+      const s = n.data?.status;
+      if (s === "waiting" || s === "executing" || s === "pending") return true;
+      // A node finished with success/error but whose run hasn't faded yet
+      // still carries `statusRunId`; that means the run is still tracked in
+      // `activeRuns` and stop should be available on its component-mates.
+      if (n.data?.statusRunId && (s === "success" || s === "error")) return true;
+    }
+    return false;
+  }, [selectedNode, nodes, edges]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -145,8 +183,13 @@ export default function InspectorPanel({
 
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
 
-            {/* Stop control — shown whenever a workflow is running/waiting */}
-            {isRunning && onCancelWorkflow && (
+            {/* Per-node Stop. Visible whenever there's anything to stop — any
+                active run anywhere, or this node carries a stuck status
+                (paused chat, lingering executing/pending). The Workflows
+                section in the workspace inspector also has per-run Stops;
+                this one is the quick-access path when you're already
+                inspecting a node. */}
+            {canStopFromSelected && onCancelWorkflow && (
               <button
                 onClick={() => onCancelWorkflow(selectedNode.id)}
                 className="w-full bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-2 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm"
@@ -249,10 +292,15 @@ export default function InspectorPanel({
       ) : (
         <WorkspaceInspector
           workspaceName={workspaceName}
+          nodes={nodes || []}
+          runningStartNodeIds={runningStartNodeIds || new Map()}
           onAddNode={onAddNode}
           onDragStartNode={onDragStartNode}
           onDragEndNode={onDragEndNode}
           onCreateCustom={() => setShowCreateCustom(true)}
+          onRetryWorkflow={(id) => onRetryWorkflow?.(id)}
+          onCancelWorkflow={(id) => onCancelWorkflow?.(id)}
+          onClearAllStatuses={onClearAllStatuses}
         />
       )}
 

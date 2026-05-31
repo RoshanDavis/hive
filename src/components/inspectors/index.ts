@@ -9,6 +9,7 @@ export { default as ScriptNodeInspector } from "./ScriptNodeInspector";
 export { default as ConnectionInspector } from "./ConnectionInspector";
 export { default as CollapsibleSection } from "./CollapsibleSection";
 export { default as NodePaletteSection } from "./NodePaletteSection";
+export { default as WorkflowsSection } from "./WorkflowsSection";
 export { default as WorkspaceInspector } from "./WorkspaceInspector";
 export * from "./types";
 

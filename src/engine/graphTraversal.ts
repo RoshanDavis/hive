@@ -41,6 +41,36 @@ export function getReachableNodeIds(startNodeIds: string[], edges: Edge[]): Set<
 }
 
 /**
+ * Bidirectional BFS that returns the full connected component of `nodeId`
+ * — every node reachable from it by walking non-storage edges in either
+ * direction, regardless of edge type. This is the natural definition of a
+ * "workflow" for UI purposes: two flows that share no edge are separate
+ * components, and a Stop click on one must not reach the other.
+ *
+ * Storage edges are excluded so that storage nodes shared between flows
+ * don't fuse them into one component. The returned set always contains
+ * `nodeId` itself (so an orphan node is its own component).
+ */
+export function getConnectedComponent(nodeId: string, edges: Edge[]): Set<string> {
+  const component = new Set<string>([nodeId]);
+  const queue: string[] = [nodeId];
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    for (const e of edges) {
+      if (e.sourceHandle === "storage" || e.targetHandle === "storage") continue;
+      let otherId: string | null = null;
+      if (e.source === currentId) otherId = e.target;
+      else if (e.target === currentId) otherId = e.source;
+      if (otherId && !component.has(otherId)) {
+        component.add(otherId);
+        queue.push(otherId);
+      }
+    }
+  }
+  return component;
+}
+
+/**
  * BFS in the opposite direction: ancestors of `startNodeIds`. Used by the
  * run loop to (a) re-seed already-run upstream nodes on a retry and (b)
  * recognize a pause node reached via a loop-back as a return path rather

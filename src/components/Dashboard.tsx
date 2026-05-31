@@ -5,9 +5,116 @@ import { api, type Workspace } from "@/services/api";
 import { useToast } from "@/hooks/useToast";
 import { SettingsModal } from "@/components/settings";
 import NodesPage from "@/components/NodesPage";
+import {
+  useBackgroundRunners,
+  useHasActiveRuns,
+  useHasErrorNodes,
+  useHasWaitingNodes,
+} from "@/contexts/BackgroundRunnersContext";
+import { getStatusColor } from "@/theme/colors";
 
 interface DashboardProps {
   onOpenWorkspace: (ws: Workspace) => void;
+}
+
+interface WorkspaceCardProps {
+  ws: Workspace;
+  truncatedPath: string;
+  onOpen: () => void;
+  onRemove: (e: React.MouseEvent) => void;
+  onToggleBackground: (e: React.MouseEvent) => void;
+}
+
+function WorkspaceCard({
+  ws,
+  truncatedPath,
+  onOpen,
+  onRemove,
+  onToggleBackground,
+}: WorkspaceCardProps) {
+  const isActive = useHasActiveRuns(ws.path);
+  const hasError = useHasErrorNodes(ws.path);
+  const hasWaiting = useHasWaitingNodes(ws.path);
+  // Priority (highest → lowest): error → waiting → executing → idle.
+  // Error and waiting are sticky across app restarts (they come from the
+  // per-space rollup on disk). Executing is in-memory only — it never
+  // persists, because `load_space` collapses any stale `executing` to error.
+  const statusDot: "error" | "waiting" | "active" | null = hasError
+    ? "error"
+    : hasWaiting
+    ? "waiting"
+    : isActive
+    ? "active"
+    : null;
+  return (
+    <div
+      className="bg-card rounded-xl p-5 border border-border-card shadow-card flex flex-col cursor-pointer transition-all duration-250 hover:bg-card-hover hover:-translate-y-1 hover:shadow-card-hover hover:border-accent-dim relative group"
+      id={`workspace-${ws.name}`}
+      title={ws.path}
+      onClick={onOpen}
+    >
+      {statusDot === "error" && (
+        <span
+          className="absolute top-3 left-3 w-2 h-2 rounded-full"
+          style={{ backgroundColor: getStatusColor("error"), boxShadow: `0 0 6px ${getStatusColor("error")}` }}
+          title="A space in this workspace has an errored node — open to investigate"
+        />
+      )}
+      {statusDot === "waiting" && (
+        <span
+          className="absolute top-3 left-3 w-2 h-2 rounded-full"
+          style={{ backgroundColor: getStatusColor("waiting"), boxShadow: `0 0 6px ${getStatusColor("waiting")}` }}
+          title="A workflow is paused waiting for input — open to respond"
+        />
+      )}
+      {statusDot === "active" && (
+        <span
+          className="absolute top-3 left-3 w-2 h-2 rounded-full animate-pulse"
+          style={{ backgroundColor: getStatusColor("executing"), boxShadow: `0 0 6px ${getStatusColor("executing")}` }}
+          title="Workflow running in background"
+        />
+      )}
+      <button
+        className="absolute top-3 right-3 text-text-muted hover:text-danger hover:bg-danger/10 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={onRemove}
+        title="Remove workspace"
+      >
+        ✕
+      </button>
+      <span className="text-base sm:text-lg font-semibold mb-2 overflow-hidden text-ellipsis whitespace-nowrap">{ws.name}</span>
+      <span className="text-xs text-text-muted mb-4 overflow-hidden text-ellipsis whitespace-nowrap">{truncatedPath}</span>
+      <button
+        className="self-start flex items-center gap-2 cursor-pointer group/toggle"
+        onClick={onToggleBackground}
+        title={
+          ws.background_execution
+            ? "Workspace is online — workflows run in background. Click to take offline."
+            : "Workspace is offline — workflows only run while open. Click to bring online."
+        }
+      >
+        <span
+          className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${
+            ws.background_execution ? "text-success" : "text-text-muted"
+          }`}
+        >
+          {ws.background_execution ? "Online" : "Offline"}
+        </span>
+        <span
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${
+            ws.background_execution
+              ? "bg-success shadow-[0_0_6px_rgba(34,197,94,0.4)]"
+              : "bg-border-card group-hover/toggle:bg-border-subtle"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-200 ${
+              ws.background_execution ? "translate-x-4" : "translate-x-0"
+            }`}
+          />
+        </span>
+      </button>
+    </div>
+  );
 }
 
 export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
@@ -18,10 +125,21 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const { toasts, showToast } = useToast(3000);
+  const { refreshDiskRollups, setBackgroundExecution: setSessionBackground } = useBackgroundRunners();
 
   useEffect(() => {
     loadWorkspaces();
   }, []);
+
+  // Pull the on-disk per-space rollups whenever the workspace list changes
+  // (initial mount + add/remove). One batched Tauri call reads each
+  // workspace's `.hive/config.json` — no space files touched. Live in-flight
+  // state still comes from the in-memory session overlay; this populates
+  // the steady-state cross-space view used for idle workspaces.
+  useEffect(() => {
+    if (workspaces.length === 0) return;
+    void refreshDiskRollups(workspaces.map((w) => w.path));
+  }, [workspaces, refreshDiskRollups]);
 
   const loadWorkspaces = async () => {
     try {
@@ -67,6 +185,35 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
       showToast("Workspace removed", "success");
     } catch (err) {
       showToast(`Failed to remove workspace: ${err}`, "error");
+    }
+  };
+
+  const handleToggleBackground = async (ws: Workspace, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !ws.background_execution;
+    // Optimistic update; revert on failure so the icon stays consistent with disk.
+    setWorkspaces((prev) =>
+      prev.map((w) => (w.path === ws.path ? { ...w, background_execution: next } : w))
+    );
+    // Also push to any in-memory RunnerSession (retained background session
+    // for a workspace not currently open in the editor) so its post-run
+    // retention decision honors the new toggle without waiting for restart.
+    // No-op for workspaces with no live session.
+    setSessionBackground(ws.path, next);
+    try {
+      await api.setWorkspaceBackgroundExecution(ws.path, next);
+      showToast(
+        `${ws.name}: background execution ${next ? "enabled" : "disabled"}`,
+        "success"
+      );
+    } catch (err) {
+      setWorkspaces((prev) =>
+        prev.map((w) =>
+          w.path === ws.path ? { ...w, background_execution: !next } : w
+        )
+      );
+      setSessionBackground(ws.path, !next);
+      showToast(`Failed to update background execution: ${err}`, "error");
     }
   };
 
@@ -174,28 +321,14 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
               {filteredWorkspaces.length > 0 || searchQuery === "" ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 max-w-300 w-full mx-auto px-1" id="workspace-grid">
                   {filteredWorkspaces.map((ws) => (
-                    <div
+                    <WorkspaceCard
                       key={ws.path}
-                      className="bg-card rounded-xl p-5 border border-border-card shadow-card flex flex-col cursor-pointer transition-all duration-250 hover:bg-card-hover hover:-translate-y-1 hover:shadow-card-hover hover:border-accent-dim relative group"
-                      id={`workspace-${ws.name}`}
-                      title={ws.path}
-                      onClick={() => onOpenWorkspace(ws)}
-                    >
-                      <button
-                        className="absolute top-3 right-3 text-text-muted hover:text-danger hover:bg-danger/10 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => handleRemoveWorkspace(ws.path, e)}
-                        title="Remove workspace"
-                      >
-                        ✕
-                      </button>
-                      <span className="text-base sm:text-lg font-semibold mb-2 overflow-hidden text-ellipsis whitespace-nowrap">{ws.name}</span>
-                      <span className="text-xs text-text-muted mb-4 overflow-hidden text-ellipsis whitespace-nowrap">{truncatePath(ws.path)}</span>
-                      <span
-                        className={`self-start text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${ws.is_initialized ? "text-accent bg-accent-glow" : "text-node-notify bg-node-notify/10"}`}
-                      >
-                        {ws.is_initialized ? "Initialized" : "New"}
-                      </span>
-                    </div>
+                      ws={ws}
+                      truncatedPath={truncatePath(ws.path)}
+                      onOpen={() => onOpenWorkspace(ws)}
+                      onRemove={(e) => handleRemoveWorkspace(ws.path, e)}
+                      onToggleBackground={(e) => handleToggleBackground(ws, e)}
+                    />
                   ))}
 
                   {/* Add Button — always last in grid */}
