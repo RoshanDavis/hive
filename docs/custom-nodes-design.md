@@ -51,7 +51,7 @@ infrastructure:
   string, resolved server-side in Rust. Global vault at
   `app_data_dir/credentials.vault`, local at `<ws>/.hive/credentials.vault`.
   Server-side resolution helper: `resolve_credential_values(app, id, scope_hint, ws)`
-  in [src-tauri/src/commands.rs](../src-tauri/src/commands.rs). Scope-promotion exists via
+  in [src-tauri/src/commands/credentials.rs](../src-tauri/src/commands/credentials.rs). Scope-promotion exists via
   `credential_transfer` in [src-tauri/src/vault.rs](../src-tauri/src/vault.rs).
 - **Concurrency governor**: [src/services/concurrency.ts](../src/services/concurrency.ts),
   pools `local`/`cloud`/`general`.
@@ -140,7 +140,7 @@ chokepoint), reusing the concurrency governor.
 Behavior = user code, so the whole game is **isolation**. As built:
 
 - **Runs in Rust, not the renderer.** A `run_script` Tauri command
-  ([src-tauri/src/commands.rs](../src-tauri/src/commands.rs)) executes the source in an
+  ([src-tauri/src/commands/customization.rs](../src-tauri/src/commands/customization.rs)) executes the source in an
   isolated **QuickJS runtime via `rquickjs`** (JS only; `wasmtime`/WASM is reserved but not
   implemented — an unsupported runtime returns a clear error). Each run gets a fresh
   `Runtime` with `set_memory_limit`, `set_max_stack_size`, and an interrupt handler that
@@ -215,7 +215,7 @@ keeps the app lean (no Monaco bundle) and makes the on-disk file the single sour
 app_data_dir/custom-nodes/<id>/...       # global-scoped
 ```
 
-Folder-per-node. Rust commands (in [commands.rs](../src-tauri/src/commands.rs)):
+Folder-per-node. Rust commands (in [commands/customization.rs](../src-tauri/src/commands/customization.rs)):
 `list/save/delete_{global,workspace}_custom_node`, `custom_node_transfer` (promote
 workspace → global, mirroring `credential_transfer`), `open_custom_node_script`, and
 `run_script`. The Rust `CustomNodeDefinition` struct
@@ -237,7 +237,7 @@ workspace → global, mirroring `credential_transfer`), `open_custom_node_script
    nodes with unresolved grants surface a dangling-credential banner in the inspector and
    "granted but unavailable here" chips in the authoring modal.
 5. **Versioning/migration.** Reuses the `version` field + the legacy-migration discipline
-   from `storage.ts` / `commands.rs`.
+   from `storage.ts` / `commands/customization.rs`.
 6. **Security threat model (Tier 3).** SSRF (host allowlist + private-range block, explicit
    opt-in required, **plus a post-resolution private-IP check with connection pinning** to
    close DNS rebinding), secret exfiltration (credentials injected server-side, never in the JS

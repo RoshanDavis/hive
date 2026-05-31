@@ -1,7 +1,8 @@
 import { api } from "@/services/api";
 import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
-import { getUpstreamNodeEnvelope } from "./utils";
+import { getUpstreamNodeEnvelope, getUpstreamNodes } from "./utils";
+import { getLastInput, setOutputEnvelope } from "./nodeData";
 
 /**
  * Safely resolves a dot-separated property path on an object.
@@ -43,37 +44,28 @@ export class NotifyExecutor implements NodeExecutor {
     const { node, nodes, edges, updateNodeData, showToast, visited } = context;
     await concurrencyGovernor.enqueue("general", async () => {
       try {
-        let resolvedEnvelope: NodeOutputEnvelope | null = null;
+        // Check if we are retrying and already have a saved lastInputEnvelope.
+        let resolvedEnvelope: NodeOutputEnvelope | null =
+          getLastInput<NodeOutputEnvelope>(node.data, "lastInputEnvelope") ?? null;
 
-        // Check if we are retrying and already have a saved lastInputEnvelope
-        if (node.data?.lastInputEnvelope !== undefined && node.data?.lastInputEnvelope !== null) {
-          console.log(`[NOTIFY EXECUTOR] Reusing saved lastInputEnvelope from previous run:`, node.data.lastInputEnvelope);
-          resolvedEnvelope = node.data.lastInputEnvelope as NodeOutputEnvelope;
-        } else {
-          const incomingEdges = edges.filter(e => e.target === node.id);
-          if (incomingEdges.length > 0) {
-            const upstreamNodes = nodes.filter(n => incomingEdges.some(e => e.source === n.id));
-
-            for (const upstream of upstreamNodes) {
-              if (visited && !visited.has(upstream.id)) {
-                continue;
-              }
-              const env = getUpstreamNodeEnvelope(upstream);
-              if (env) {
-                resolvedEnvelope = env;
-                break;
-              }
+        if (!resolvedEnvelope) {
+          const upstreamNodes = getUpstreamNodes(node.id, edges, nodes, { visited });
+          for (const upstream of upstreamNodes) {
+            const env = getUpstreamNodeEnvelope(upstream);
+            if (env) {
+              resolvedEnvelope = env;
+              break;
             }
           }
-
           if (!resolvedEnvelope) {
             resolvedEnvelope = { value: "" };
           }
 
-          // Save resolved input envelope to node.data.lastInputEnvelope so we can reuse it on retry
+          // Save resolved input envelope so we can reuse it on retry. The run
+          // loop wipes `lastInput*` on every fresh trigger / chat send.
           updateNodeData(node.id, {
             ...node.data,
-            lastInputEnvelope: resolvedEnvelope
+            lastInputEnvelope: resolvedEnvelope,
           });
         }
 
@@ -88,24 +80,15 @@ export class NotifyExecutor implements NodeExecutor {
         const label = String(node.data?.label || "Hive");
 
         // Store standard JSON envelope and evaluated output body in node state
-        const outputEnvelope: NodeOutputEnvelope = {
+        const envelope: NodeOutputEnvelope = {
           value: finalOutputBody,
           metadata: {
             title: label,
             body: finalNotificationBody,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           },
-          data: {
-            notificationBody: finalNotificationBody,
-            outputBody: finalOutputBody,
-            upstreamEnvelope: resolvedEnvelope
-          }
         };
-
-        updateNodeData(node.id, {
-          ...node.data,
-          outputEnvelope
-        });
+        updateNodeData(node.id, setOutputEnvelope(node.data, envelope));
 
         await api.sendNotification(label, finalNotificationBody);
       } catch (err) {

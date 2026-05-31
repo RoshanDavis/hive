@@ -35,7 +35,9 @@ A [Tauri 2](https://tauri.app/) desktop app: a visual, node-graph editor for bui
 ┌───────────────────────────┴───────────────────────────────────┐
 │  Rust backend (src-tauri/)                                     │
 │                                                                │
-│  lib.rs (command registry) ─▶ commands.rs ─▶ vault.rs / utils  │
+│  lib.rs (command registry) ─▶ commands/{workspace,llm,         │
+│                                 credentials,customization}     │
+│                                 ─▶ vault.rs / utils            │
 │    • workspace + space persistence (.hive/ on disk)            │
 │    • credential vault (AES-256-GCM, OS-keychain master key)    │
 │    • LLM inference (CORS-free, keys never returned)            │
@@ -70,7 +72,7 @@ Hive has no hardcoded node types. A `NodePlugin` ([src/engine/plugin.ts](../src/
 
 1. A node's executor produces a **`NodeOutputEnvelope`** `{ value, metadata?, data? }` and writes it to node data.
 2. Downstream nodes read it via `getUpstreamNodeEnvelope` / `getUpstreamNodeData`.
-3. The **run loop** ([useWorkspaceRunner](../src/hooks/useWorkspaceRunner.ts)) walks the graph breadth-first from start nodes, driving each node's status and calling `executeNode`.
+3. The **run loop** ([src/engine/runLoop.ts](../src/engine/runLoop.ts)) walks the graph breadth-first from start nodes, driving each node's status and calling `executeNode`. It's driven by callbacks the per-workspace `RunnerSession` supplies, so the loop itself has no React or Tauri dependencies.
 4. Edges to `storage`-category nodes are excluded from logic flow and handled by a post-execution **storage sync** step.
 
 ## System map
@@ -78,9 +80,9 @@ Hive has no hardcoded node types. A `NodePlugin` ([src/engine/plugin.ts](../src/
 | System | Doc | Code |
 |---|---|---|
 | Plugin node engine (registry, envelope, connectivity) | [node-engine.md](node-engine.md) | `src/engine/` |
-| Workflow execution (the run loop) | [workflow-execution.md](workflow-execution.md) | `src/hooks/useWorkspaceRunner.ts` |
-| Credential vault | [credential-vault.md](credential-vault.md) | `src-tauri/src/vault.rs`, `commands.rs` |
-| Workspace persistence (`.hive/`) | [workspace-persistence.md](workspace-persistence.md) | `src-tauri/src/commands.rs`, `utils.rs`, `src/hooks/useWorkspaceSpaces.ts` |
+| Workflow execution (the run loop) | [workflow-execution.md](workflow-execution.md) | `src/engine/runLoop.ts`, `src/contexts/runnerSession.ts` |
+| Credential vault | [credential-vault.md](credential-vault.md) | `src-tauri/src/vault.rs`, `src-tauri/src/commands/credentials.rs` |
+| Workspace persistence (`.hive/`) | [workspace-persistence.md](workspace-persistence.md) | `src-tauri/src/commands/workspace.rs`, `utils.rs`, `src/hooks/useWorkspaceSpaces.ts` |
 | Node defaults (global + workspace) | [node-defaults.md](node-defaults.md) | `src/services/nodeDefaultsService.ts` |
 | Custom nodes + script sandbox | [custom-nodes-design.md](custom-nodes-design.md) | `src/services/customNode*`, `src-tauri/crates/sandbox/` |
 | Concurrency governor | (in [node-engine.md](node-engine.md#concurrency-governor)) | `src/services/concurrency.ts` |
@@ -101,7 +103,7 @@ Registered by side-effect import of [src/nodes/plugins/index.ts](../src/nodes/pl
 - **Frontend:** React 19, TypeScript, `@xyflow/react` (React Flow) for the canvas, Tailwind v4. Path alias `@/*` → `src/*`.
 - **Backend:** Rust, Tauri 2, `reqwest`, `tokio`, `aes-gcm`, `keyring`, `rquickjs`.
 - **Build:** Vite (dev server locked to port 1420). `npm run tauri dev` is the normal way to run.
-- **Tests:** Rust unit tests only (vault + sandbox). Sandbox tests: `cargo test -p hive-sandbox`. No JS test/lint scripts; `tsc` (via `npm run build`) is the static check.
+- **Tests:** Rust unit tests for vault + sandbox (`cargo test -p hive-sandbox`); TypeScript integration tests for the run loop under vitest+jsdom (`npm run test`). No lint script; `tsc` (via `npm run build`) is the static check.
 
 ## Key files
 
@@ -109,9 +111,10 @@ The spine of the app, for orientation and for drift-checking this doc:
 
 - [src/App.tsx](../src/App.tsx) — router between Dashboard and WorkspaceEditor; mounts `CustomNodesProvider`.
 - [src/engine/](../src/engine/) — plugin engine.
-- [src/hooks/useWorkspaceRunner.ts](../src/hooks/useWorkspaceRunner.ts) — run loop.
+- [src/engine/runLoop.ts](../src/engine/runLoop.ts) — run loop.
+- [src/contexts/runnerSession.ts](../src/contexts/runnerSession.ts) — per-workspace canonical state + run-loop wiring.
 - [src/hooks/useWorkspaceSpaces.ts](../src/hooks/useWorkspaceSpaces.ts) — load/save/auto-save.
 - [src/services/api.ts](../src/services/api.ts) — the IPC boundary.
 - [src-tauri/src/lib.rs](../src-tauri/src/lib.rs) — Tauri command registry.
-- [src-tauri/src/commands.rs](../src-tauri/src/commands.rs) — backend command implementations.
+- [src-tauri/src/commands/](../src-tauri/src/commands/) — backend command implementations, split by domain (`workspace.rs`, `llm.rs`, `credentials.rs`, `customization.rs`).
 - [src-tauri/crates/sandbox/](../src-tauri/crates/sandbox/) — script sandbox.

@@ -1,7 +1,12 @@
 import type { ExecutionContext } from "./types";
 import { pluginRegistry } from "./pluginRegistry";
-import { getUpstreamNodeData, getUpstreamNodeEnvelope } from "./utils";
-import { getStorageRecords } from "./nodeData";
+import {
+  getUpstreamNodeData,
+  getUpstreamNodeEnvelope,
+  getUpstreamNodes,
+  resolveEdgePermissions,
+} from "./utils";
+import { getStorageRecords, setOutputEnvelope } from "./nodeData";
 import type { NodeOutputEnvelope } from "./types";
 
 export * from "./types";
@@ -20,34 +25,23 @@ export const executeNode = async (
     // Passive nodes or nodes without specialized executors (trigger, router, etc.)
     let resolvedEnvelope: NodeOutputEnvelope = { value: "" };
 
-    // Find all incoming edges (excluding storage connections)
-    const incomingEdges = context.edges.filter(
-      (e) =>
-        e.target === context.node.id &&
-        e.sourceHandle !== "storage" &&
-        e.targetHandle !== "storage"
+    const upstreamNodes = getUpstreamNodes(
+      context.node.id,
+      context.edges,
+      context.nodes,
+      { visited: context.visited, excludeStorageHandles: true }
     );
 
-    if (incomingEdges.length > 0) {
-      const upstreamNodes = context.nodes.filter((n) =>
-        incomingEdges.some((e) => e.source === n.id)
-      );
-
-      for (const upstream of upstreamNodes) {
-        // Only allow upstream nodes in the active run path (visited Set)
-        if (context.visited && !context.visited.has(upstream.id)) {
-          continue;
-        }
-        resolvedEnvelope = getUpstreamNodeEnvelope(upstream);
-        break;
-      }
+    for (const upstream of upstreamNodes) {
+      resolvedEnvelope = getUpstreamNodeEnvelope(upstream);
+      break;
     }
 
     // Set the resolved upstream envelope (or empty string for trigger nodes) as our response payload
-    context.updateNodeData(context.node.id, {
-      ...context.node.data,
-      outputEnvelope: resolvedEnvelope
-    });
+    context.updateNodeData(
+      context.node.id,
+      setOutputEnvelope(context.node.data, resolvedEnvelope)
+    );
   }
 
   // ─── Post-Execution Storage Sync Middleware ───
@@ -63,8 +57,7 @@ export const executeNode = async (
     });
 
     for (const edge of storageEdges) {
-      const storageEdgeType = (edge.data?.edgeType as string) || "write-only";
-      const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
+      const { hasWrite: hasWritePermission } = resolveEdgePermissions(edge, "write-only");
 
       if (hasWritePermission) {
         const storageNode = context.nodes.find((n) => n.id === edge.target);

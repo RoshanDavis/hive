@@ -31,6 +31,18 @@ pub fn read_workspaces(app: &tauri::AppHandle) -> Result<Vec<Workspace>, String>
     serde_json::from_str(&data).map_err(|e| format!("Failed to parse workspaces: {}", e))
 }
 
+/// Serialize a value as pretty-printed JSON and write it atomically. Saves
+/// the 3-line `to_string_pretty → map_err → write_atomic` ceremony at every
+/// call site and standardizes the "Failed to serialize" error message.
+pub fn write_json<T: serde::Serialize>(
+    path: &std::path::Path,
+    value: &T,
+) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(value)
+        .map_err(|e| format!("Failed to serialize JSON for {}: {}", path.display(), e))?;
+    write_atomic(path, json.as_bytes())
+}
+
 pub fn write_atomic(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()

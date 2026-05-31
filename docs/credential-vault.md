@@ -35,7 +35,7 @@ A `CredentialVault` is `{ path, scope, master_key }`. The on-disk `VaultFile` is
 
 ## IPC surface
 
-All registered in [lib.rs](../src-tauri/src/lib.rs), implemented in [commands.rs](../src-tauri/src/commands.rs):
+All registered in [lib.rs](../src-tauri/src/lib.rs), implemented in [commands/credentials.rs](../src-tauri/src/commands/credentials.rs):
 
 | Command | Purpose |
 |---|---|
@@ -51,10 +51,10 @@ All registered in [lib.rs](../src-tauri/src/lib.rs), implemented in [commands.rs
 `resolve_credential_values(app, id, scope_hint, workspace_path)` is the server-side resolver. Default order is **local-first**, then global; a `scope_hint` of `"global"` flips it. It's used by:
 
 - **`llm_chat`** — for cloud providers a `credentialId` is required; it resolves `apiKey`/`baseURL` from the stored values, then makes the call. Ollama is local/unauthenticated and skips this path. (Phase 1 of the May 2026 refactor removed the legacy inline `api_key` argument and `apiKey` node-data field — every cloud call now flows through a `credentialId`; the executor fails early with a clear error if one isn't set.)
-- **Script nodes** — `VaultResolver` (in `commands.rs`) implements the sandbox crate's `CredentialResolver` trait, so `ctx.fetch` can inject a granted credential's key into a header without the plaintext ever entering the JS heap.
+- **Script nodes** — `VaultResolver` (in `commands/customization.rs`) implements the sandbox crate's `CredentialResolver` trait, so `ctx.fetch` can inject a granted credential's key into a header without the plaintext ever entering the JS heap.
 
 ```
-renderer                         Rust (commands.rs)                vault.rs
+renderer                         Rust (commands/credentials.rs)    vault.rs
 ────────                         ─────────────────                ─────────
 executor passes ───credentialId──▶ resolve_credential_values ───▶ load + AES-GCM decrypt
 (never the secret)                 │   (local-first, then global)   │
@@ -81,7 +81,8 @@ A plugin advertises what it can consume via `credentialSchemas: CredentialSchema
 ## Key files
 
 - [src-tauri/src/vault.rs](../src-tauri/src/vault.rs) — `CredentialVault`, encryption, master key, corrupt-file quarantine, tests.
-- [src-tauri/src/commands.rs](../src-tauri/src/commands.rs) — credential IPC + `resolve_credential_values` + `VaultResolver`.
+- [src-tauri/src/commands/credentials.rs](../src-tauri/src/commands/credentials.rs) — credential IPC + `resolve_credential_values` + vault factory helpers.
+- [src-tauri/src/commands/customization.rs](../src-tauri/src/commands/customization.rs) — `VaultResolver` that bridges the sandbox crate's `CredentialResolver` to the vault.
 - [src/types/credentialTypes.ts](../src/types/credentialTypes.ts) — `CredentialSchema` shape.
 - [src/services/credentialService.ts](../src/services/credentialService.ts) — renderer-side service wrapper.
 - [src/components/inspectors/shared/CredentialPicker.tsx](../src/components/inspectors/shared/CredentialPicker.tsx), [src/components/settings/CredentialManager.tsx](../src/components/settings/CredentialManager.tsx), [CredentialScopeGroup.tsx](../src/components/settings/CredentialScopeGroup.tsx), [CredentialRow.tsx](../src/components/settings/CredentialRow.tsx) — UX.

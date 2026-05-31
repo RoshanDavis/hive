@@ -1,7 +1,7 @@
 import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
-import { getUpstreamNodeData } from "./utils";
-import { getChatMessages, getStorageRecords } from "./nodeData";
+import { getUpstreamNodeData, getUpstreamNodes, resolveEdgePermissions } from "./utils";
+import { getChatMessages, getLastInput, getStorageRecords, setOutputEnvelope } from "./nodeData";
 import type { ChatMessage } from "@/nodes/types";
 
 export class ChatExecutor implements NodeExecutor {
@@ -19,9 +19,8 @@ export class ChatExecutor implements NodeExecutor {
 
       if (chatInput !== undefined && chatInput !== null) {
         // ─── Case A: User sent a message (Input Mode) ───
-        const storageEdgeType = (storageEdge?.data?.edgeType as string) || "read-write";
-        const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
-        const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
+        const { hasRead: hasReadPermission, hasWrite: hasWritePermission } =
+          resolveEdgePermissions(storageEdge);
 
         let updatedLocalMessages: ChatMessage[] = getChatMessages(chatNode.data);
 
@@ -60,61 +59,51 @@ export class ChatExecutor implements NodeExecutor {
           updatedLocalMessages = [...updatedLocalMessages, { role: "user" as const, content: chatInput, sender: "You" }];
         }
 
-        const outputEnvelope: NodeOutputEnvelope = {
+        const envelope: NodeOutputEnvelope = {
           value: chatInput,
           metadata: {
             chatHistoryLimit: Number(chatNode.data?.chatHistoryLimit || 0),
             messageCount: updatedLocalMessages.length,
             sender: "User",
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           },
           data: {
             messages: updatedLocalMessages,
-            latestMessage: chatInput
-          }
+            latestMessage: chatInput,
+          },
         };
 
-        updateNodeData(chatNode.id, {
-          ...chatNode.data,
-          messages: updatedLocalMessages,
-          outputEnvelope
-        });
+        updateNodeData(
+          chatNode.id,
+          setOutputEnvelope({ ...chatNode.data, messages: updatedLocalMessages }, envelope)
+        );
       } else {
         // ─── Case B: Triggered Downstream (Output/Receiver Mode) ───
         let resolvedMessage = "";
         let senderLabel = "Agent";
 
-        // Find all upstream edges where Chat is target, OR where Chat is source but edge is bi-directional
-        // Exclude storage connections (sourceHandle === "storage" or targetHandle === "storage")
-        const upstreamEdges = edges.filter(e => 
-          e.sourceHandle !== "storage" &&
-          e.targetHandle !== "storage" &&
-          (e.target === chatNode.id || 
-           (e.source === chatNode.id && e.data?.edgeType === "bi-directional"))
-        );
+        // Bi-directional + storage-handle filter: walks both directions on
+        // bi-dir edges but skips dedicated storage handles so the Chat ⇄
+        // jsonStorage edge isn't mistaken for an input source.
+        const upstreamNodes = getUpstreamNodes(chatNode.id, edges, nodes, {
+          visited,
+          includeBiDirectional: true,
+          excludeStorageHandles: true,
+        });
+        const hasUpstream = upstreamNodes.length > 0;
 
         // Check if we are retrying and already have a saved lastInputText
-        if (chatNode.data?.lastInputText !== undefined && chatNode.data?.lastInputText !== null) {
-          resolvedMessage = String(chatNode.data.lastInputText);
-          senderLabel = String(chatNode.data.lastInputSender || "Agent");
+        const cachedText = getLastInput<string>(chatNode.data, "lastInputText");
+        if (cachedText !== undefined) {
+          resolvedMessage = String(cachedText);
+          senderLabel = String(getLastInput<string>(chatNode.data, "lastInputSender") ?? "Agent");
         } else {
-
-          if (upstreamEdges.length > 0) {
-            // Find upstream nodes (the other end of these edges)
-            const upstreamNodes = nodes.filter(n => 
-              upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== chatNode.id
-            );
-
-            for (const upstream of upstreamNodes) {
-              if (visited && !visited.has(upstream.id)) {
-                continue;
-              }
-              const val = getUpstreamNodeData(upstream);
-              if (val !== null) {
-                resolvedMessage = val;
-                senderLabel = String(upstream.data?.label || upstream.type || "Agent");
-                break;
-              }
+          for (const upstream of upstreamNodes) {
+            const val = getUpstreamNodeData(upstream);
+            if (val !== null) {
+              resolvedMessage = val;
+              senderLabel = String(upstream.data?.label || upstream.type || "Agent");
+              break;
             }
           }
 
@@ -127,7 +116,7 @@ export class ChatExecutor implements NodeExecutor {
         }
 
         if (!resolvedMessage) {
-          if (upstreamEdges.length > 0) {
+          if (hasUpstream) {
             // If there are upstream edges but no data is resolved (like a Trigger node connection),
             // treat it as a system message that the workflow has reached the Chat node.
             resolvedMessage = "Workflow reached Chat. Awaiting message...";
@@ -137,9 +126,8 @@ export class ChatExecutor implements NodeExecutor {
           }
         }
 
-        const storageEdgeType = (storageEdge?.data?.edgeType as string) || "read-write";
-        const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
-        const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
+        const { hasRead: hasReadPermission, hasWrite: hasWritePermission } =
+          resolveEdgePermissions(storageEdge);
 
         let updatedLocalMessages: ChatMessage[] = getChatMessages(chatNode.data);
         const isSystemMsg = resolvedMessage === "Workflow reached Chat. Awaiting message...";
@@ -182,25 +170,24 @@ export class ChatExecutor implements NodeExecutor {
         }
 
         const envelopeValue = isSystemMsg ? "" : resolvedMessage;
-        const outputEnvelope: NodeOutputEnvelope = {
+        const envelope: NodeOutputEnvelope = {
           value: envelopeValue,
           metadata: {
             chatHistoryLimit: Number(chatNode.data?.chatHistoryLimit || 0),
             messageCount: updatedLocalMessages.length,
             sender: isSystemMsg ? "System" : senderLabel,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           },
           data: {
             messages: updatedLocalMessages,
-            latestMessage: envelopeValue
-          }
+            latestMessage: envelopeValue,
+          },
         };
 
-        updateNodeData(chatNode.id, {
-          ...chatNode.data,
-          messages: updatedLocalMessages,
-          outputEnvelope
-        });
+        updateNodeData(
+          chatNode.id,
+          setOutputEnvelope({ ...chatNode.data, messages: updatedLocalMessages }, envelope)
+        );
       }
     });
   }

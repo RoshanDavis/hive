@@ -1,6 +1,6 @@
 # Workspace Persistence (`.hive/`)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phases 1–2). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src-tauri/src/commands.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (post-refactor pass, `commands.rs` split by domain). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since the verified commit, e.g. `git log --oneline <verified>..HEAD -- src-tauri/src/commands/workspace.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
 
 A "workspace" is a user-chosen folder on disk. Hive keeps a tiny app-level registry of where workspaces are, and stores everything else *inside* each workspace under `.hive/`. All disk writes are crash-safe.
 
@@ -31,7 +31,7 @@ Also at app-data scope (shared across workspaces): the global credential vault, 
 
 A space file is the canvas: nodes, edges, viewport. If it also held every chat message and database record it would grow unbounded and churn on every keystroke. So **`save_space` strips the heavy/dynamic fields out of nodes before writing the space file**, persisting them to their own per-node files; **`load_space` reattaches them**. This keeps space JSON small and stable across runs.
 
-`save_space` ([commands.rs](../src-tauri/src/commands.rs)):
+`save_space` ([commands/workspace.rs](../src-tauri/src/commands/workspace.rs)):
 
 - `jsonStorage` nodes → `records` written to `storage/<space_id>/<nodeId>.json`, then stripped from the node.
 - `chat` nodes → `messages` stripped.
@@ -61,9 +61,9 @@ A space file is the canvas: nodes, edges, viewport. If it also held every chat m
 
 The space file IPC shape (`SpaceData`) and the `snake_case` edge fields (`source_handle`, `target_handle`, `edge_type`) are defined in [src/types/workspace.ts](../src/types/workspace.ts) and mirrored by the Rust structs in [models.rs](../src-tauri/src/models.rs).
 
-## Crash safety: `write_atomic`
+## Crash safety: `write_atomic` + `write_json`
 
-Every disk write goes through `write_atomic(path, data)` ([utils.rs](../src-tauri/src/utils.rs)): write to `<file>.tmp`, then atomically `rename` over the target. A crash mid-write leaves the previous file intact, never a half-written one.
+Every disk write goes through `write_atomic(path, data)` ([utils.rs](../src-tauri/src/utils.rs)): write to `<file>.tmp`, then atomically `rename` over the target. A crash mid-write leaves the previous file intact, never a half-written one. For the common `serialize-then-write-atomic` chain on `serde::Serialize` values, prefer the `write_json(path, &value)` helper in the same module — it consolidates the pretty-print + map_err + write_atomic boilerplate at every call site.
 
 ## First-open initialization
 
@@ -77,8 +77,8 @@ A few UI preferences live in `localStorage` via [src/services/storage.ts](../src
 
 ## Key files
 
-- [src-tauri/src/commands.rs](../src-tauri/src/commands.rs) — `load/save_workspace_config`, `load/save/create/delete_space`, `delete_chat_history`, `delete_storage_history`.
-- [src-tauri/src/utils.rs](../src-tauri/src/utils.rs) — `write_atomic`, `init_hive_structure`, registry I/O.
+- [src-tauri/src/commands/workspace.rs](../src-tauri/src/commands/workspace.rs) — `load/save_workspace_config`, `load/save/create/delete_space`, `delete_chat_history`, `delete_storage_history`, `send_notification`, workspace registry CRUD.
+- [src-tauri/src/utils.rs](../src-tauri/src/utils.rs) — `write_atomic`, `write_json`, `init_hive_structure`, registry I/O.
 - [src-tauri/src/models.rs](../src-tauri/src/models.rs) — `WorkspaceConfig`, `SpaceData`, `FlowNode`, `FlowEdge`.
 - [src/hooks/useWorkspaceSpaces.ts](../src/hooks/useWorkspaceSpaces.ts) — load, auto-save, space CRUD.
 - [src/types/workspace.ts](../src/types/workspace.ts) — renderer-side persistence types.
