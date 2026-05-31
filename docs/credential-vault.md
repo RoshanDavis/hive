@@ -1,6 +1,6 @@
 # Credential Vault
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phase 1). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src-tauri/src/vault.rs src/components/settings`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`, refactor pass Phase 1). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 0b50083..HEAD -- src-tauri/src/vault.rs src/components/settings`.
 
 API keys and tokens **never live in node data and are never returned to the renderer for execution**. They're encrypted at rest and resolved server-side at the moment of the network call. This is the security backbone for LLM nodes and Tier-3 script nodes alike.
 
@@ -53,7 +53,7 @@ All registered in [lib.rs](../src-tauri/src/lib.rs), implemented in [commands/cr
 - **`llm_chat`** — for cloud providers a `credentialId` is required; it resolves `apiKey`/`baseURL` from the stored values, then makes the call. Ollama is local/unauthenticated and skips this path. (Phase 1 of the May 2026 refactor removed the legacy inline `api_key` argument and `apiKey` node-data field — every cloud call now flows through a `credentialId`; the executor fails early with a clear error if one isn't set.)
 - **Script nodes** — `VaultResolver` (in `commands/customization.rs`) implements the sandbox crate's `CredentialResolver` trait, so `ctx.fetch` can inject a granted credential's key into a header without the plaintext ever entering the JS heap.
 
-```
+```text
 renderer                         Rust (commands/credentials.rs)    vault.rs
 ────────                         ─────────────────                ─────────
 executor passes ───credentialId──▶ resolve_credential_values ───▶ load + AES-GCM decrypt

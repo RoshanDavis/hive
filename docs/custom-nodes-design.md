@@ -1,6 +1,6 @@
 # Custom Nodes — Design & Implementation
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phases 3–4). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the key paths since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/types/customNodes.ts src/services/customNode* src/engine/ScriptExecutor.ts src/components/customNodes src-tauri/crates/sandbox`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`, refactor pass Phases 3–4). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the key paths since that commit, e.g. `git log --oneline 0b50083..HEAD -- src/types/customNodes.ts src/services/customNode* src/engine/ScriptExecutor.ts src/components/customNodes src-tauri/crates/sandbox`.
 
 Status: **All three tiers implemented.** Tier 1 (presets) and the dynamic registry are
 done; Tier 2 was folded into normal node development (it needs no custom-node

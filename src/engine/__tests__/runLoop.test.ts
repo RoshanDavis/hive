@@ -27,6 +27,7 @@ import { pluginRegistry } from "@/engine/pluginRegistry";
 import { createRunnerSession } from "@/contexts/runnerSession";
 import type { NodePlugin } from "@/engine/plugin";
 import type { ExecutionContext, NodeOutputEnvelope } from "@/engine/types";
+import { getOutputEnvelope, setOutputEnvelope } from "@/engine/nodeData";
 
 const noopToast = () => {};
 
@@ -62,10 +63,7 @@ const SOURCE_PLUGIN: NodePlugin = {
     async execute(ctx: ExecutionContext): Promise<void> {
       const value = String(ctx.node.data?.fixedValue ?? "");
       const envelope: NodeOutputEnvelope = { value };
-      ctx.updateNodeData(ctx.node.id, {
-        ...ctx.node.data,
-        outputEnvelope: envelope,
-      });
+      ctx.updateNodeData(ctx.node.id, setOutputEnvelope(ctx.node.data, envelope));
     },
   },
 };
@@ -93,18 +91,16 @@ const SINK_PLUGIN: NodePlugin = {
         const upstream = ctx.nodes.find((n) => n.id === edge.source);
         if (!upstream) continue;
         if (ctx.visited && !ctx.visited.has(upstream.id)) continue;
-        const upEnv = upstream.data?.outputEnvelope as
-          | NodeOutputEnvelope
-          | undefined;
+        const upEnv = getOutputEnvelope(upstream.data);
         if (upEnv) {
           value = upEnv.value;
           break;
         }
       }
-      ctx.updateNodeData(ctx.node.id, {
-        ...ctx.node.data,
-        outputEnvelope: { value },
-      });
+      ctx.updateNodeData(
+        ctx.node.id,
+        setOutputEnvelope(ctx.node.data, { value })
+      );
     },
   },
 };
@@ -178,7 +174,7 @@ describe("runWorkflow (in runnerSession)", () => {
     expect(source?.data?.status).toBe("success");
     expect(sink?.data?.status).toBe("success");
 
-    const sinkEnv = sink?.data?.outputEnvelope as NodeOutputEnvelope | undefined;
+    const sinkEnv = getOutputEnvelope(sink?.data);
     expect(sinkEnv?.value).toBe("hello world");
 
     expect(session.hasActiveRuns()).toBe(false);

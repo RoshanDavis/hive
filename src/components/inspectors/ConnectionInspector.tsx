@@ -46,6 +46,8 @@ export default function ConnectionInspector({
     );
   }, [sourceNode, targetNode, selectedEdge]);
 
+  const theme = useTheme();
+
   if (!sourceNode || !targetNode) return null;
 
   const sourcePlugin = pluginRegistry.get(sourceNode.type || '');
@@ -53,7 +55,6 @@ export default function ConnectionInspector({
   const edgeType = (selectedEdge.data?.edgeType as string) || connectionBehavior.defaultFlow;
   const isDatabase = ["read-only", "write-only", "read-write"].includes(edgeType);
   const isReverse = edgeType === "read-only" && targetNode.type === "jsonStorage";
-  const theme = useTheme();
 
   const sourceNodeLabel = String(sourceNode.data?.label || sourceNode.type);
   const targetNodeLabel = String(targetNode.data?.label || targetNode.type);

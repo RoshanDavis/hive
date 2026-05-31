@@ -22,6 +22,7 @@ import {
   getConnectedComponent,
   getReachableNodeIds,
 } from "./graphTraversal";
+import { LAST_INPUT_KEYS } from "./nodeData";
 
 /** How long a completed run's success/pending borders linger before fading. */
 const FADE_DELAY_MS = 1500;
@@ -240,10 +241,10 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     const currentNodes = nodes.map((n) => {
       const newData = { ...n.data };
       if (isFreshRun) {
-        delete newData.lastInputMessages;
-        delete newData.lastInputText;
-        delete newData.lastInputSender;
-        delete newData.lastInputEnvelope;
+        for (const key of LAST_INPUT_KEYS) {
+          delete newData[key];
+        }
+        delete newData.error;
       }
       if (!inScope(n.id)) {
         return { ...n, data: newData as Record<string, unknown> };
@@ -263,7 +264,10 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
       const index = currentNodes.findIndex((n) => n.id === nodeId);
       if (index !== -1) {
         const oldNode = currentNodes[index];
-        currentNodes[index] = { ...currentNodes[index], data: { ...data } };
+        currentNodes[index] = {
+          ...currentNodes[index],
+          data: { ...oldNode.data, ...data },
+        };
 
         const nodePlugin = pluginRegistry.get(oldNode.type || "");
         if (nodePlugin?.canPauseWorkflow && data.status !== oldNode.data.status) {
@@ -282,15 +286,16 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
               newStorageStatus === undefined ? undefined : data.statusRunId;
             const storageIndex = currentNodes.findIndex((n) => n.id === storageNode.id);
             if (storageIndex !== -1) {
+              const mergedStorageData = {
+                ...currentNodes[storageIndex].data,
+                status: newStorageStatus,
+                statusRunId: newStorageRunId,
+              };
               currentNodes[storageIndex] = {
                 ...currentNodes[storageIndex],
-                data: {
-                  ...currentNodes[storageIndex].data,
-                  status: newStorageStatus,
-                  statusRunId: newStorageRunId,
-                },
+                data: mergedStorageData,
               };
-              updateNodeData(storageNode.id, currentNodes[storageIndex].data);
+              updateNodeData(storageNode.id, mergedStorageData);
             }
           }
         }
@@ -362,10 +367,10 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
         nds.map((n) => {
           const newData = { ...n.data };
           if (isFreshRun) {
-            delete newData.lastInputMessages;
-            delete newData.lastInputText;
-            delete newData.lastInputSender;
-            delete newData.lastInputEnvelope;
+            for (const key of LAST_INPUT_KEYS) {
+              delete newData[key];
+            }
+            delete newData.error;
           }
           if (!inScope(n.id)) {
             return { ...n, data: newData };

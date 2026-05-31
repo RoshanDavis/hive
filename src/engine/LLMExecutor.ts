@@ -84,24 +84,28 @@ export class LLMExecutor implements NodeExecutor {
           }
         }
 
-        // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry
+        // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry.
+        // Persist a clone — the request array below prepends the system prompt and would
+        // otherwise mutate the cached entry, causing duplicate system prompts on retries.
         updateNodeData(node.id, {
           ...node.data,
-          lastInputMessages: llmMessages
+          lastInputMessages: [...llmMessages]
         });
       }
 
-      // 3. Prepend system prompt if configured
-      if (systemPrompt.trim() !== "") {
-        llmMessages.unshift({ role: "system", content: systemPrompt });
-      }
+      // 3. Build the request array, prepending the system prompt if configured.
+      // Keeps llmMessages (and the saved lastInputMessages) untouched.
+      const requestMessages: ChatMessage[] =
+        systemPrompt.trim() !== ""
+          ? [{ role: "system", content: systemPrompt }, ...llmMessages]
+          : llmMessages;
 
       try {
         const response = await api.llmChat(
           provider,
           baseURL,
           modelName,
-          llmMessages,
+          requestMessages,
           temp,
           maxT,
           credentialId,

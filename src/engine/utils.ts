@@ -120,7 +120,11 @@ export function resolveEdgePermissions(
   edge: Edge | undefined,
   defaultType: "read-only" | "write-only" | "read-write" = "read-write"
 ): EdgePermissions {
-  const edgeType = (edge?.data?.edgeType as string) || defaultType;
+  const raw = edge?.data?.edgeType as string | undefined;
+  const edgeType: "read-only" | "write-only" | "read-write" =
+    raw === "read-only" || raw === "write-only" || raw === "read-write"
+      ? raw
+      : defaultType;
   return {
     hasRead: edgeType === "read-only" || edgeType === "read-write",
     hasWrite: edgeType === "write-only" || edgeType === "read-write",

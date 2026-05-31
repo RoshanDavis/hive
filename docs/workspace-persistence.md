@@ -1,6 +1,6 @@
 # Workspace Persistence (`.hive/`)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (post-refactor pass, `commands.rs` split by domain). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since the verified commit, e.g. `git log --oneline <verified>..HEAD -- src-tauri/src/commands/workspace.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`, post-refactor pass, `commands.rs` split by domain). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since the verified commit, e.g. `git log --oneline 0b50083..HEAD -- src-tauri/src/commands/workspace.rs src-tauri/src/utils.rs src/hooks/useWorkspaceSpaces.ts`.
 
 A "workspace" is a user-chosen folder on disk. Hive keeps a tiny app-level registry of where workspaces are, and stores everything else *inside* each workspace under `.hive/`. All disk writes are crash-safe.
 
