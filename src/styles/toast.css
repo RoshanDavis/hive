@@ -43,10 +43,10 @@
     transition: all 0.3s ease;
   }
 
-  /* Toast success shares the positive emerald used by chat nodes. */
+  /* Toast success shares the positive emerald used for user content. */
   .toast.success {
-    border-color: var(--node-chat);
-    box-shadow: 0 8px 32px color-mix(in srgb, var(--node-chat) 15%, transparent), 0 4px 12px rgba(0, 0, 0, 0.4);
+    border-color: var(--content-user);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--content-user) 15%, transparent), 0 4px 12px rgba(0, 0, 0, 0.4);
   }
 
   .toast.error {
@@ -65,7 +65,7 @@
   }
 
   .toast.success .toast-icon {
-    color: var(--node-chat);
+    color: var(--content-user);
   }
 
   .toast.error .toast-icon {

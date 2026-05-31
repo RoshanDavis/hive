@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { nodeDefaultsService, type DefaultsScope } from "@/services/nodeDefaultsService";
 import AutoDefaultsEditor from "./AutoDefaultsEditor";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface DefaultsEditorModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export default function DefaultsEditorModal({
   onSaved,
 }: DefaultsEditorModalProps) {
   const plugin = pluginRegistry.get(pluginType);
+  const theme = useTheme();
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
@@ -98,7 +100,7 @@ export default function DefaultsEditorModal({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
           <div className="flex items-center gap-3">
-            <span className="text-2xl" style={{ filter: `drop-shadow(0 0 6px ${plugin.meta.color}55)` }}>
+            <span className="text-2xl" style={{ filter: `drop-shadow(0 0 6px ${theme.accents.primary}55)` }}>
               {plugin.meta.icon}
             </span>
             <div className="flex flex-col">

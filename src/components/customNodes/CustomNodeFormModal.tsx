@@ -7,7 +7,7 @@ import {
 } from "@/components/customNodes/PresetNodeForm";
 import ScriptNodeForm from "@/components/customNodes/ScriptNodeForm";
 import { formInputClass, formLabelClass } from "@/components/shared/FormField";
-import { getCategoryColor } from "@/theme/colors";
+import { useTheme } from "@/contexts/ThemeContext";
 import {
   isCustomType,
   type CustomNodeScope,
@@ -132,12 +132,14 @@ export default function CustomNodeFormModal({
   );
   const [icon, setIcon] = useState(initial?.icon ?? preset.base?.meta.icon ?? "🧩");
 
-  // Category drives the synthesized plugin's color. New presets inherit the
-  // base plugin's category so they group sensibly; new scripts default to
-  // "custom". Existing definitions on disk are loaded verbatim.
+  // Category is still part of the on-disk shape (used for organization
+  // surfaces). New presets inherit the base plugin's category so they group
+  // sensibly; new scripts default to "custom". Existing definitions are
+  // loaded verbatim. The modal header icon glow uses the theme accent.
   const category: NodePlugin["meta"]["category"] =
     initial?.category ?? (kind === "script" ? "custom" : preset.base?.meta.category ?? "custom");
-  const color = getCategoryColor(category);
+  const theme = useTheme();
+  const glowColor = theme.accents.primary;
 
   if (!isOpen) return null;
 
@@ -238,7 +240,7 @@ export default function CustomNodeFormModal({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
           <div className="flex items-center gap-3">
-            <span className="text-2xl" style={{ filter: `drop-shadow(0 0 6px ${color}55)` }}>
+            <span className="text-2xl" style={{ filter: `drop-shadow(0 0 6px ${glowColor}55)` }}>
               {icon}
             </span>
             <span className="text-sm font-bold text-text-main">

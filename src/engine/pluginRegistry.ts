@@ -3,7 +3,6 @@ import type { NodePlugin } from "./plugin";
 import type { NodeExecutor } from "./types";
 import type { NodeDefinition } from "@/nodes/types";
 import type { CredentialSchema } from "@/types/credentialTypes";
-import { NODE_FALLBACK } from "@/theme/colors";
 
 export type CustomScope = "global" | "workspace";
 
@@ -87,11 +86,6 @@ class PluginRegistry {
   /** Get the executor for a node type */
   getExecutor(type: string): NodeExecutor | undefined {
     return this.plugins.get(type)?.executor;
-  }
-
-  /** Get the color for a node type */
-  getColor(type: string): string {
-    return this.plugins.get(type)?.meta.color || NODE_FALLBACK;
   }
 
   /** Get the icon for a node type */

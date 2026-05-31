@@ -5,7 +5,6 @@ import DashedAddCard from "@/components/shared/DashedAddCard";
 import CustomNodeFormModal, {
   type CustomNodeFormInitial,
 } from "@/components/customNodes/CustomNodeFormModal";
-import { getCategoryColor } from "@/theme/colors";
 import type { CustomNodeDefinition, CustomNodeScope } from "@/types/customNodes";
 
 interface Props {
@@ -64,7 +63,6 @@ export default function CustomNodesPanel({ showToast }: Props) {
         key={def.id}
         icon={def.icon}
         label={def.name}
-        color={getCategoryColor(def.category)}
         title={`Edit ${def.name}`}
         onClick={() => openEdit(def, scope)}
         onClear={scope === "workspace" ? () => handleDelete(scope, def.id) : undefined}

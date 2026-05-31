@@ -5,7 +5,7 @@ import { getConnectionBehavior } from "@/engine/connectivity";
 import { getUpstreamNodeEnvelope } from "@/engine/utils";
 import DataConsole from "./shared/DataConsole";
 import DatabaseRecordFeed from "./shared/DatabaseRecordFeed";
-import { ACCENT, DATABASE } from "@/theme/colors";
+import { useTheme } from "@/contexts/ThemeContext";
 import { getChatMessages, getStorageRecords } from "@/engine/nodeData";
 import { formLabelClass } from "@/components/shared/FormField";
 
@@ -53,6 +53,7 @@ export default function ConnectionInspector({
   const edgeType = (selectedEdge.data?.edgeType as string) || connectionBehavior.defaultFlow;
   const isDatabase = ["read-only", "write-only", "read-write"].includes(edgeType);
   const isReverse = edgeType === "read-only" && targetNode.type === "jsonStorage";
+  const theme = useTheme();
 
   const sourceNodeLabel = String(sourceNode.data?.label || sourceNode.type);
   const targetNodeLabel = String(targetNode.data?.label || targetNode.type);
@@ -246,8 +247,8 @@ export default function ConnectionInspector({
                     className="absolute top-0 h-full w-2.5 rounded-full animate-[flowDash_1.6s_linear_infinite]"
                     style={{
                       background: isDatabase
-                        ? `linear-gradient(90deg, transparent, ${DATABASE}, transparent)`
-                        : `linear-gradient(90deg, transparent, ${ACCENT}, transparent)`,
+                        ? `linear-gradient(90deg, transparent, ${theme.edges.database}, transparent)`
+                        : `linear-gradient(90deg, transparent, ${theme.accents.primary}, transparent)`,
                       animationDirection: isReverse ? "reverse" : "normal"
                     }}
                   ></div>

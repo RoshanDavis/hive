@@ -23,7 +23,7 @@ import { api } from "@/services/api";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { createRunLoop } from "@/engine/runLoop";
 import { getConnectionBehavior } from "@/engine/connectivity";
-import { EDGE } from "@/theme/colors";
+import { getEdges } from "@/theme/colors";
 import {
   type SpaceEntry,
   type SpaceData,
@@ -483,6 +483,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
         data: n.data,
       }));
 
+      const edgeColor = getEdges().default;
       const loadedEdges: Edge[] = data.edges.map((e) => {
         const targetNode = data.nodes.find((n) => n.id === e.target);
         const targetPlugin = targetNode
@@ -506,6 +507,13 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
           edgeType = "one-way";
         }
 
+        const marker = {
+          type: MarkerType.ArrowClosed,
+          color: edgeColor,
+          width: 16,
+          height: 16,
+        };
+
         return {
           id: e.id,
           source: e.source,
@@ -514,25 +522,9 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
           targetHandle,
           type: "custom",
           data: { edgeType },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: EDGE.default,
-            width: 16,
-            height: 16,
-          },
-          markerStart:
-            edgeType === "bi-directional"
-              ? {
-                  type: MarkerType.ArrowClosed,
-                  color: EDGE.default,
-                  width: 16,
-                  height: 16,
-                }
-              : undefined,
-          style: {
-            stroke: EDGE.default,
-            strokeWidth: 2,
-          },
+          markerEnd: marker,
+          markerStart: edgeType === "bi-directional" ? marker : undefined,
+          style: { stroke: edgeColor, strokeWidth: 2 },
         };
       });
 

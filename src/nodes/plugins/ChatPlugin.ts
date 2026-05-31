@@ -2,7 +2,6 @@ import type { NodePlugin } from "@/engine/plugin";
 import type { NodeOutputEnvelope } from "@/engine/types";
 import { ChatExecutor } from "@/engine/ChatExecutor";
 import { ChatInspector } from "@/components/inspectors";
-import { NODE_COLORS, DATABASE } from "@/theme/colors";
 import { getChatMessages } from "@/engine/nodeData";
 
 const ChatPlugin: NodePlugin = {
@@ -12,7 +11,6 @@ const ChatPlugin: NodePlugin = {
     icon: "💬",
     description: "Provides chat input to an agent",
     category: "input",
-    color: NODE_COLORS.chat,
   },
   defaultData: { label: "Chat", messages: [] },
   inspector: ChatInspector,
@@ -20,7 +18,9 @@ const ChatPlugin: NodePlugin = {
   handles: [
     { type: "target", position: "left" },
     { type: "source", position: "right" },
-    { type: "source", position: "bottom", id: "storage", style: { bottom: -2, backgroundColor: DATABASE } },
+    // Storage handle tinted via the theme's --edge-database CSS variable so
+    // it tracks theme switches without re-rendering each handle.
+    { type: "source", position: "bottom", id: "storage", style: { bottom: -2, backgroundColor: "var(--edge-database)" } },
   ],
   canPauseWorkflow: true,
   skipStorageSync: true,

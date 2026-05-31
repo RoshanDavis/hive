@@ -25,7 +25,8 @@ import "@/nodes/plugins"; // Side-effect import: registers all node plugins
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import GenericNodeShell from "@/nodes/GenericNodeShell";
 import CustomConnectionEdge from "@/components/CustomConnectionEdge";
-import { EDGE, CANVAS, getStatusColor } from "@/theme/colors";
+import { getStatusColor } from "@/theme/colors";
+import { useTheme } from "@/contexts/ThemeContext";
 import { type NodeDefinition } from "@/nodes/types";
 import { useWorkspaceClipboard } from "@/hooks/useWorkspaceClipboard";
 
@@ -65,6 +66,10 @@ function WorkspaceEditorInner({
   onBack,
 }: WorkspaceEditorProps) {
   const { toasts, showToast } = useToast(3500);
+  // Subscribe to theme so the canvas chrome (dots, minimap, edge styles)
+  // re-renders on theme switch. getStatusColor + the edge color helpers
+  // inside the hooks below read from the active theme on every call.
+  const theme = useTheme();
 
   // ─── Session attach/detach (lives in BackgroundRunnersContext) ───
   // The session is the canonical source of truth for nodes/edges/viewport/
@@ -372,7 +377,7 @@ function WorkspaceEditorInner({
           colorMode="dark"
           defaultEdgeOptions={{
             type: "custom",
-            style: { stroke: EDGE.default, strokeWidth: 2 },
+            style: { stroke: theme.edges.default, strokeWidth: 2 },
           }}
           panOnDrag={[1, 2]}
           selectionOnDrag={true}
@@ -381,7 +386,7 @@ function WorkspaceEditorInner({
             variant={BackgroundVariant.Dots}
             gap={20}
             size={1.2}
-            color={CANVAS.backgroundDots}
+            color={theme.canvas.backgroundDots}
           />
           <Controls position="bottom-left" showInteractive={false} />
           {/* The "Clear statuses" affordance moved into the Workflows section
@@ -390,10 +395,10 @@ function WorkspaceEditorInner({
           <MiniMap
             position="bottom-right"
             nodeColor={(n) => getStatusColor(n.data?.status)}
-            maskColor={CANVAS.minimapMask}
+            maskColor={theme.canvas.minimapMask}
             style={{
-              background: CANVAS.minimapBg,
-              border: `1px solid ${CANVAS.minimapBorder}`,
+              background: theme.canvas.minimapBg,
+              border: `1px solid ${theme.canvas.minimapBorder}`,
               borderRadius: "8px",
             }}
           />

@@ -28,13 +28,13 @@ export default function DatabaseRecordFeed({ records }: DatabaseRecordFeedProps)
 
         let sourceColor = "text-text-secondary"; // Default
         if (sourceLower === "user" || sourceLower === "you") {
-          sourceColor = "text-node-chat"; // User green
+          sourceColor = "text-content-user"; // User emerald
         } else if (sourceLower === "system") {
           sourceColor = "text-[#818cf8]"; // System purple-blue
         } else if (sourceLower.includes("ollama") || sourceLower.includes("llm") || sourceLower.includes("robot")) {
           sourceColor = "text-[#c084fc]"; // AI Ollama purple
         } else if (sourceLower.includes("notify")) {
-          sourceColor = "text-node-notify"; // Notify blue
+          sourceColor = "text-content-notification"; // Notification blue
         }
 
         return (

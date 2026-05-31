@@ -2,7 +2,6 @@ import type { NodePlugin } from "@/engine/plugin";
 import { LLMExecutor } from "@/engine/LLMExecutor";
 import { LLMInspector } from "@/components/inspectors";
 import LLMDefaultsEditor from "@/components/defaults/LLMDefaultsEditor";
-import { NODE_COLORS } from "@/theme/colors";
 
 const LLMPlugin: NodePlugin = {
   type: "llm",
@@ -11,7 +10,6 @@ const LLMPlugin: NodePlugin = {
     icon: "🧠",
     description: "Generic LLM inference node",
     category: "processing",
-    color: NODE_COLORS.llm,
   },
   defaultData: {
     label: "LLM",

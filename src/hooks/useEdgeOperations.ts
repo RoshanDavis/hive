@@ -6,7 +6,7 @@ import {
   type Edge,
   type OnConnect,
 } from "@xyflow/react";
-import { EDGE } from "@/theme/colors";
+import { getEdges } from "@/theme/colors";
 import { getConnectionBehavior } from "@/engine/connectivity";
 import type { ShowToastFunc } from "@/types/workspace";
 
@@ -17,12 +17,17 @@ interface UseEdgeOperationsArgs {
   showToast: ShowToastFunc;
 }
 
-const ARROW_MARKER = {
-  type: MarkerType.ArrowClosed,
-  color: EDGE.default,
-  width: 16,
-  height: 16,
-} as const;
+/** Build the React Flow arrow marker spec using the current theme's edge color.
+ * Resolved at edge-create / edge-update time, so theme switches propagate to
+ * newly-created edges immediately. */
+function makeArrowMarker() {
+  return {
+    type: MarkerType.ArrowClosed,
+    color: getEdges().default,
+    width: 16,
+    height: 16,
+  } as const;
+}
 
 /**
  * Owns edge creation, edge-type changes, and edge deletion. Keeps the marker
@@ -46,15 +51,15 @@ export function useEdgeOperations({
           params.sourceHandle,
           params.targetHandle
         );
-
+        const marker = makeArrowMarker();
         return addEdge(
           {
             ...params,
             type: "custom",
             data: { edgeType: defaultFlow },
-            markerEnd: ARROW_MARKER,
-            markerStart: defaultFlow === "bi-directional" ? ARROW_MARKER : undefined,
-            style: { stroke: EDGE.default, strokeWidth: 2 },
+            markerEnd: marker,
+            markerStart: defaultFlow === "bi-directional" ? marker : undefined,
+            style: { stroke: getEdges().default, strokeWidth: 2 },
           },
           eds
         );
@@ -70,7 +75,7 @@ export function useEdgeOperations({
           return {
             ...e,
             data: { ...e.data, edgeType },
-            markerStart: edgeType === "bi-directional" ? ARROW_MARKER : undefined,
+            markerStart: edgeType === "bi-directional" ? makeArrowMarker() : undefined,
           };
         })
       );

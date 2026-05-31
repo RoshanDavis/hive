@@ -79,7 +79,7 @@ Defined in [src/types/customNodes.ts](../src/types/customNodes.ts):
 interface CustomNodeBase {
   id: string;              // registry type becomes `custom:<id>`
   name: string; icon: string;
-  category: NodePlugin["meta"]["category"];  // drives synthesized meta.color via getCategoryColor()
+  category: NodePlugin["meta"]["category"];  // used for organization/grouping surfaces only
   version: number;
 }
 
@@ -101,12 +101,13 @@ The synthesized `script` plugin carries **no `source` field** — code lives onl
 `script.js` on disk (single source of truth). `scope` is not stored in the definition; the
 registry tracks it (`customScopes` map) and the loader threads it into the executor.
 
-**No color field.** Phase 3 (May 2026) dropped the per-definition `color` knob. The
-synthesized plugin's color is derived purely from `category` via `getCategoryColor`
-([src/theme/colors.ts](../src/theme/colors.ts)), so authors only pick a category and
-custom nodes group sensibly with built-ins of the same kind. The Rust
-`CustomNodeDefinition` ([models.rs](../src-tauri/src/models.rs)) accepts an optional
-legacy `color` on read and drops it on write, so older `node.json` files still load.
+**No node colors at all.** Phase 3 (May 2026) dropped the per-definition `color` knob;
+the post-refactor pass dropped the per-type `meta.color` field too. Picker cards and
+modal icons get their glow from the theme accent via `useTheme()`, so theme switching
+cascades automatically and adding a new node type is purely metadata + executor. The
+Rust `CustomNodeDefinition` ([models.rs](../src-tauri/src/models.rs)) accepts an
+optional legacy `color` on read and drops it on write, so older `node.json` files
+still load.
 
 A **loader** ([src/services/customNodeLoader.ts](../src/services/customNodeLoader.ts))
 reads definitions, synthesizes a `NodePlugin` per definition via `synthesizePlugin(def,
