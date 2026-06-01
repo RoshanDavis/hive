@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { rankedSearch } from "@/utils/rankedSearch";
 import { formInputClass } from "@/components/shared/FormField";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface NodePickerMenuProps {
   /** Plugin types to hide from the list (e.g. ones already added). */
@@ -20,6 +21,7 @@ export default function NodePickerMenu({
   title = "Add a node to override",
 }: NodePickerMenuProps) {
   const [query, setQuery] = useState("");
+  const theme = useTheme();
 
   // Close on Escape for keyboard parity with the backdrop click.
   useEffect(() => {
@@ -102,7 +104,7 @@ export default function NodePickerMenu({
                 >
                   <span
                     className="text-xl"
-                    style={{ filter: `drop-shadow(0 0 5px ${p.meta.color}55)` }}
+                    style={{ filter: `drop-shadow(0 0 5px ${theme.accents.primary}55)` }}
                   >
                     {p.meta.icon}
                   </span>

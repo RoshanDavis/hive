@@ -37,7 +37,6 @@ export function makeUnknownCustomPlugin(type: string): NodePlugin {
     meta: {
       label: "Unknown custom node",
       icon: "❓",
-      color: "#ef4444",
       category: "custom",
       description: "Missing custom-node definition",
     },

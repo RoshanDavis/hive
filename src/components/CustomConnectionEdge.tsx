@@ -1,5 +1,5 @@
 import { EdgeProps, getBezierPath } from "@xyflow/react";
-import { EDGE } from "@/theme/colors";
+import { useTheme } from "@/contexts/ThemeContext";
 
 export default function CustomConnectionEdge({
   id,
@@ -27,11 +27,12 @@ export default function CustomConnectionEdge({
 
   const edgeType = (data?.edgeType as string) || "one-way";
 
+  const { edges: edgeTheme } = useTheme();
   const isDatabase = ["read-only", "write-only", "read-write"].includes(edgeType);
-  const strokeColor = isDatabase ? EDGE.database : EDGE.default;
+  const strokeColor = isDatabase ? edgeTheme.database : edgeTheme.default;
   const glowShadow = isDatabase
-    ? (selected ? EDGE.glowDatabase : undefined)
-    : (selected ? EDGE.glowDefault : undefined);
+    ? (selected ? edgeTheme.glowDatabase : undefined)
+    : (selected ? edgeTheme.glowDefault : undefined);
 
   let isReverse = false;
   if (edgeType === "read-only") {

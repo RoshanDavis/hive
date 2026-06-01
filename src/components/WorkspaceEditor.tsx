@@ -1,11 +1,9 @@
-import { useCallback, useState, useMemo, useRef, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useState, useMemo, useEffect, useSyncExternalStore } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
-  addEdge,
-  type OnConnect,
   type Node,
   type Edge,
   type NodeChange,
@@ -13,32 +11,26 @@ import {
   type OnSelectionChangeFunc,
   BackgroundVariant,
   ReactFlowProvider,
-  MarkerType,
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { api } from "@/services/api";
 
 import SpacesSidebar from "@/components/SpacesSidebar";
 import InspectorPanel from "@/components/InspectorPanel";
 import { SettingsModal } from "@/components/settings";
-import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
+import ContextMenu from "@/components/ContextMenu";
 import { ToastContainer } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
-import { storage } from "@/services/storage";
 import "@/nodes/plugins"; // Side-effect import: registers all node plugins
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import GenericNodeShell from "@/nodes/GenericNodeShell";
 import CustomConnectionEdge from "@/components/CustomConnectionEdge";
-import { EDGE, CANVAS, getStatusColor } from "@/theme/colors";
+import { getStatusColor } from "@/theme/colors";
+import { useTheme } from "@/contexts/ThemeContext";
 import { type NodeDefinition } from "@/nodes/types";
 import { useWorkspaceClipboard } from "@/hooks/useWorkspaceClipboard";
-import { getConnectionBehavior } from "@/engine/connectivity";
 
-// Import consolidated types & custom hooks
-import {
-  type ContextMenuState,
-} from "@/types/workspace";
+import { type ContextMenuState } from "@/types/workspace";
 import { useWorkspaceSpaces } from "@/hooks/useWorkspaceSpaces";
 import { NodeDefaultsProvider, useNodeDefaults } from "@/contexts/NodeDefaultsContext";
 import { useRegistryVersion } from "@/hooks/useRegistryVersion";
@@ -47,6 +39,9 @@ import { makeUnknownCustomPlugin } from "@/components/customNodes/unknownCustomP
 import { useWorkspaceDragDrop } from "@/hooks/useWorkspaceDragDrop";
 import { useWorkspaceRunner } from "@/hooks/useWorkspaceRunner";
 import { useBackgroundRunners } from "@/contexts/BackgroundRunnersContext";
+import { useRightClickDragGuard } from "@/hooks/useRightClickDragGuard";
+import { useWorkspaceContextMenus } from "@/hooks/useWorkspaceContextMenus";
+import { useEdgeOperations } from "@/hooks/useEdgeOperations";
 
 // ─── Props ───────────────────────────────────────────────────
 interface WorkspaceEditorProps {
@@ -71,6 +66,10 @@ function WorkspaceEditorInner({
   onBack,
 }: WorkspaceEditorProps) {
   const { toasts, showToast } = useToast(3500);
+  // Subscribe to theme so the canvas chrome (dots, minimap, edge styles)
+  // re-renders on theme switch. getStatusColor + the edge color helpers
+  // inside the hooks below read from the active theme on every call.
+  const theme = useTheme();
 
   // ─── Session attach/detach (lives in BackgroundRunnersContext) ───
   // The session is the canonical source of truth for nodes/edges/viewport/
@@ -142,22 +141,7 @@ function WorkspaceEditorInner({
     [session]
   );
 
-  const rightClickStartRef = useRef<{ x: number; y: number } | null>(null);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 2) {
-      rightClickStartRef.current = { x: e.clientX, y: e.clientY };
-    }
-  }, []);
-
-  const wasRightClickDrag = useCallback((event: MouseEvent | React.MouseEvent) => {
-    if (!rightClickStartRef.current) return false;
-    const dx = event.clientX - rightClickStartRef.current.x;
-    const dy = event.clientY - rightClickStartRef.current.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    rightClickStartRef.current = null; // reset
-    return dist > 5;
-  }, []);
+  const { handleMouseDown, wasRightClickDrag } = useRightClickDragGuard();
 
   // ─── Spaces view bound to session ─────────────────────────
   const {
@@ -253,48 +237,13 @@ function WorkspaceEditorInner({
     session.setViewport(v);
   }, [reactFlowInstance, session]);
 
-  // ─── Connection handling ───────────────────────────────────
-  const onConnect: OnConnect = useCallback(
-    (params) =>
-      setEdges((eds) => {
-        const sourceNode = nodes.find((n) => n.id === params.source);
-        const targetNode = nodes.find((n) => n.id === params.target);
-        const { defaultFlow } = getConnectionBehavior(
-          sourceNode?.type,
-          targetNode?.type,
-          params.sourceHandle,
-          params.targetHandle
-        );
-
-        return addEdge(
-          {
-            ...params,
-            type: "custom",
-            data: {
-              edgeType: defaultFlow,
-            },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              color: EDGE.default,
-              width: 16,
-              height: 16,
-            },
-            markerStart: defaultFlow === "bi-directional" ? {
-              type: MarkerType.ArrowClosed,
-              color: EDGE.default,
-              width: 16,
-              height: 16,
-            } : undefined,
-            style: {
-              stroke: EDGE.default,
-              strokeWidth: 2,
-            },
-          },
-          eds
-        );
-      }),
-    [setEdges, nodes]
-  );
+  // ─── Edge create / update / delete ────────────────────────
+  const { onConnect, handleUpdateEdgeData, handleDeleteEdge } = useEdgeOperations({
+    nodes,
+    setEdges,
+    setSelectedEdge,
+    showToast,
+  });
 
   // ─── Selection tracking ───────────────────────────────────
   const onSelectionChange: OnSelectionChangeFunc = useCallback(
@@ -324,270 +273,28 @@ function WorkspaceEditorInner({
     setContextMenu(null);
   }, []);
 
-  // ─── Context menu: right-click node ────────────────────────
-  const onNodeContextMenu = useCallback(
-    (event: React.MouseEvent, node: Node) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      // If the right-click was part of a drag-pan operation, skip the context menu
-      if (wasRightClickDrag(event)) return;
-
-      const selectedNodes = nodes.filter((n) => n.selected);
-      const isClickedSelected = selectedNodes.some((n) => n.id === node.id);
-      const count = isClickedSelected ? selectedNodes.length : 1;
-
-      if (!isClickedSelected) {
-        // Deselect everything else and select only this node
-        setNodes((nds) =>
-          nds.map((n) => ({
-            ...n,
-            selected: n.id === node.id,
-          }))
-        );
-      }
-
-      setContextMenu({
-        x: event.clientX,
-        y: event.clientY,
-        items: [
-          {
-            label: count > 1 ? `Copy Selection (${count})` : "Copy Node",
-            icon: "📋",
-            onClick: () => copySelection(false),
-          },
-          {
-            label: count > 1 ? `Copy Selection with Data (${count})` : "Copy Node with Data",
-            icon: "🗂️",
-            onClick: () => copySelection(true),
-          },
-          {
-            label: count > 1 ? `Cut Selection (${count})` : "Cut Node",
-            icon: "✂️",
-            onClick: () => cutSelection(false),
-          },
-          {
-            label: count > 1 ? `Delete Selection (${count})` : "Delete Node",
-            icon: "🗑️",
-            danger: true,
-            onClick: () => {
-              if (count > 1) {
-                deleteSelected();
-              } else {
-                const delPlugin = pluginRegistry.get(node.type || '');
-                if (delPlugin?.meta.category === 'storage') {
-                  api.deleteStorageHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
-                    console.error("Failed to delete storage history:", err);
-                  });
-                }
-                if (node.type === 'chat' || delPlugin?.baseType === 'chat') {
-                  api.deleteChatHistory(workspacePath, activeSpaceId, node.id).catch((err) => {
-                    console.error("Failed to delete chat history:", err);
-                  });
-                }
-                setNodes((nds) => nds.filter((n) => n.id !== node.id));
-                setEdges((eds) =>
-                  eds.filter((e) => e.source !== node.id && e.target !== node.id)
-                );
-                if (selectedNode?.id === node.id) setSelectedNode(null);
-                showToast("Node deleted", "info");
-              }
-            },
-          },
-        ],
-      });
-    },
-    [nodes, setNodes, setEdges, selectedNode, showToast, workspacePath, activeSpaceId, copySelection, cutSelection, deleteSelected, wasRightClickDrag]
-  );
-
-  // ─── Context menu: right-click edge ────────────────────────
-  const onEdgeContextMenu = useCallback(
-    (event: React.MouseEvent, edge: Edge) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (wasRightClickDrag(event)) return;
-
-      setContextMenu({
-        x: event.clientX,
-        y: event.clientY,
-        items: [
-          {
-            label: "Delete Connection",
-            icon: "✂️",
-            danger: true,
-            onClick: () => {
-              setEdges((eds) => eds.filter((e) => e.id !== edge.id));
-              showToast("Connection deleted", "info");
-            },
-          },
-        ],
-      });
-    },
-    [setEdges, showToast, wasRightClickDrag]
-  );
-
-  // Canvas background context menu (Paste / Select All / Selection Actions)
-  const onPaneContextMenu = useCallback(
-    (event: MouseEvent | React.MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (wasRightClickDrag(event)) return;
-
-      const selectedNodes = nodes.filter((n) => n.selected);
-      const count = selectedNodes.length;
-
-      const hasClipboard = storage.hasClipboard();
-      const items: ContextMenuItem[] = [];
-
-      if (count > 0) {
-        items.push({
-          label: count > 1 ? `Copy Selection (${count})` : "Copy Node",
-          icon: "📋",
-          onClick: () => copySelection(false),
-        });
-        items.push({
-          label: count > 1 ? `Copy Selection with Data (${count})` : "Copy Node with Data",
-          icon: "🗂️",
-          onClick: () => copySelection(true),
-        });
-        items.push({
-          label: count > 1 ? `Cut Selection (${count})` : "Cut Node",
-          icon: "✂️",
-          onClick: () => cutSelection(false),
-        });
-        items.push({
-          label: count > 1 ? `Delete Selection (${count})` : "Delete Node",
-          icon: "🗑️",
-          danger: true,
-          onClick: () => deleteSelected(),
-        });
-      }
-
-      if (hasClipboard) {
-        items.push({
-          label: "Paste Node(s)",
-          icon: "📋",
-          onClick: () => pasteSelection(event.clientX, event.clientY),
-        });
-      }
-
-      items.push({
-        label: "Select All Nodes",
-        icon: "✨",
-        onClick: () => {
-          setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
-          setEdges((eds) => eds.map((e) => ({ ...e, selected: true })));
-          showToast("Selected all elements", "info");
-        },
-      });
-
-      setContextMenu({
-        x: event.clientX,
-        y: event.clientY,
-        items,
-      });
-    },
-    [nodes, copySelection, cutSelection, deleteSelected, pasteSelection, setNodes, setEdges, showToast, wasRightClickDrag]
-  );
-
-  // Global context menu catcher for overlays (e.g., selection overlay)
-  const handleWrapperContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      if (event.isPropagationStopped()) return;
-
-      const selectedNodes = nodes.filter((n) => n.selected);
-      const count = selectedNodes.length;
-
-      if (count >= 1) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (wasRightClickDrag(event)) return;
-
-        const singleNode = selectedNodes[0];
-
-        setContextMenu({
-          x: event.clientX,
-          y: event.clientY,
-          items: count > 1 ? [
-            {
-              label: `Copy Selection (${count})`,
-              icon: "📋",
-              onClick: () => copySelection(false),
-            },
-            {
-              label: `Copy Selection with Data (${count})`,
-              icon: "🗂️",
-              onClick: () => copySelection(true),
-            },
-            {
-              label: `Cut Selection (${count})`,
-              icon: "✂️",
-              onClick: () => cutSelection(false),
-            },
-            {
-              label: `Delete Selection (${count})`,
-              icon: "🗑️",
-              danger: true,
-              onClick: () => deleteSelected(),
-            },
-            {
-              label: "Select All Nodes",
-              icon: "✨",
-              onClick: () => {
-                setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
-                setEdges((eds) => eds.map((e) => ({ ...e, selected: true })));
-                showToast("Selected all elements", "info");
-              },
-            },
-          ] : [
-            {
-              label: "Copy Node",
-              icon: "📋",
-              onClick: () => copySelection(false),
-            },
-            {
-              label: "Copy Node with Data",
-              icon: "🗂️",
-              onClick: () => copySelection(true),
-            },
-            {
-              label: "Cut Node",
-              icon: "✂️",
-              onClick: () => cutSelection(false),
-            },
-            {
-              label: "Delete Node",
-              icon: "🗑️",
-              danger: true,
-              onClick: () => {
-                const delPlugin = pluginRegistry.get(singleNode.type || '');
-                if (delPlugin?.meta.category === 'storage') {
-                  api.deleteStorageHistory(workspacePath, activeSpaceId, singleNode.id).catch((err) => {
-                    console.error("Failed to delete storage history:", err);
-                  });
-                }
-                if (singleNode.type === 'chat' || delPlugin?.baseType === 'chat') {
-                  api.deleteChatHistory(workspacePath, activeSpaceId, singleNode.id).catch((err) => {
-                    console.error("Failed to delete chat history:", err);
-                  });
-                }
-                setNodes((nds) => nds.filter((n) => n.id !== singleNode.id));
-                setEdges((eds) =>
-                  eds.filter((e) => e.source !== singleNode.id && e.target !== singleNode.id)
-                );
-                if (selectedNode?.id === singleNode.id) setSelectedNode(null);
-                showToast("Node deleted", "info");
-              },
-            },
-          ],
-        });
-      }
-    },
-    [nodes, copySelection, cutSelection, deleteSelected, setNodes, setEdges, showToast, wasRightClickDrag, workspacePath, activeSpaceId, selectedNode]
-  );
+  // ─── Right-click context menus (node / edge / pane) ──────────
+  const {
+    onNodeContextMenu,
+    onEdgeContextMenu,
+    onPaneContextMenu,
+    handleWrapperContextMenu,
+  } = useWorkspaceContextMenus({
+    nodes,
+    selectedNode,
+    setSelectedNode,
+    setNodes,
+    setEdges,
+    setContextMenu,
+    copySelection,
+    cutSelection,
+    deleteSelected,
+    pasteSelection,
+    workspacePath,
+    activeSpaceId,
+    showToast,
+    wasRightClickDrag,
+  });
 
   // ─── Add node from palette ─────────────────────────────────
   // Layer overrides on top of plugin.defaultData:
@@ -607,53 +314,6 @@ function WorkspaceEditorInner({
       showToast(`Added ${definition.label} node`, "info");
     },
     [nodes.length, setNodes, showToast, getMergedOverrides]
-  );
-
-  // ─── Update edge type ──────────────────────────────────────
-  const handleUpdateEdgeData = useCallback(
-    (edgeId: string, edgeType: string) => {
-      setEdges((eds) =>
-        eds.map((e) => {
-          if (e.id === edgeId) {
-            return {
-              ...e,
-              data: {
-                ...e.data,
-                edgeType,
-              },
-              markerStart: edgeType === "bi-directional" ? {
-                type: MarkerType.ArrowClosed,
-                color: EDGE.default,
-                width: 16,
-                height: 16,
-              } : undefined,
-            };
-          }
-          return e;
-        })
-      );
-      setSelectedEdge((prev) =>
-        prev && prev.id === edgeId
-          ? {
-              ...prev,
-              data: {
-                ...prev.data,
-                edgeType,
-              },
-            }
-          : prev
-      );
-    },
-    [setEdges]
-  );
-
-  const handleDeleteEdge = useCallback(
-    (edgeId: string) => {
-      setEdges((eds) => eds.filter((e) => e.id !== edgeId));
-      setSelectedEdge(null);
-      showToast("Connection deleted", "info");
-    },
-    [setEdges, showToast]
   );
 
   // ─── Back handler ──────────────────────────────────────────
@@ -717,7 +377,7 @@ function WorkspaceEditorInner({
           colorMode="dark"
           defaultEdgeOptions={{
             type: "custom",
-            style: { stroke: EDGE.default, strokeWidth: 2 },
+            style: { stroke: theme.edges.default, strokeWidth: 2 },
           }}
           panOnDrag={[1, 2]}
           selectionOnDrag={true}
@@ -726,7 +386,7 @@ function WorkspaceEditorInner({
             variant={BackgroundVariant.Dots}
             gap={20}
             size={1.2}
-            color={CANVAS.backgroundDots}
+            color={theme.canvas.backgroundDots}
           />
           <Controls position="bottom-left" showInteractive={false} />
           {/* The "Clear statuses" affordance moved into the Workflows section
@@ -735,10 +395,10 @@ function WorkspaceEditorInner({
           <MiniMap
             position="bottom-right"
             nodeColor={(n) => getStatusColor(n.data?.status)}
-            maskColor={CANVAS.minimapMask}
+            maskColor={theme.canvas.minimapMask}
             style={{
-              background: CANVAS.minimapBg,
-              border: `1px solid ${CANVAS.minimapBorder}`,
+              background: theme.canvas.minimapBg,
+              border: `1px solid ${theme.canvas.minimapBorder}`,
               borderRadius: "8px",
             }}
           />

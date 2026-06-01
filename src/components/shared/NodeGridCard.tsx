@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface NodeGridCardProps {
   icon: string;
   label: string;
-  /** Plugin accent color — drives the icon glow. */
-  color: string;
   /** Tooltip text. */
   title?: string;
   onClick: () => void;
@@ -15,17 +14,18 @@ interface NodeGridCardProps {
   subtitle?: ReactNode;
 }
 
-/** Square, clickable node card shared by the Nodes tab and the workspace defaults panel. */
+/** Square, clickable node card shared by the Nodes tab and the workspace defaults panel.
+ * The icon glow uses the theme accent — no per-node color input. */
 export default function NodeGridCard({
   icon,
   label,
-  color,
   title,
   onClick,
   onClear,
   clearTitle = "Remove",
   subtitle,
 }: NodeGridCardProps) {
+  const theme = useTheme();
   return (
     <div className="relative group aspect-square">
       {onClear && (
@@ -49,7 +49,7 @@ export default function NodeGridCard({
       >
         <span
           className="text-4xl mb-2 transition-transform group-hover:scale-110"
-          style={{ filter: `drop-shadow(0 0 8px ${color}55)` }}
+          style={{ filter: `drop-shadow(0 0 8px ${theme.accents.primary}55)` }}
         >
           {icon}
         </span>

@@ -1,6 +1,6 @@
 # Node Defaults (global + per-workspace)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/services/nodeDefaultsService.ts src/contexts/NodeDefaultsContext.tsx`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 0b50083..HEAD -- src/services/nodeDefaultsService.ts src/contexts/NodeDefaultsContext.tsx`.
 
 A new node starts from its plugin's `defaultData`. Node defaults let users override that starting config at two scopes — global and per-workspace — so repeated setup (provider/model/credential, etc.) isn't retyped for every node.
 
@@ -27,7 +27,7 @@ The merge happens in exactly one place per add-path, both reading `getMergedOver
 | Global | `app_data_dir/node-defaults.json` | `{ version, defaults, models }` |
 | Workspace | `<workspace>/.hive/node-defaults.json` | same |
 
-`defaults` is `Record<pluginType, Partial<nodeData>>`; `models` is `Record<provider, ModelEntry[]>` (user-added LLM models). A missing file returns an empty config — no migration needed. Rust commands: `load/save_global_node_defaults` and `load/save_workspace_node_defaults` ([commands.rs](../src-tauri/src/commands.rs)); the struct is `NodeDefaultsConfig` ([models.rs](../src-tauri/src/models.rs)).
+`defaults` is `Record<pluginType, Partial<nodeData>>`; `models` is `Record<provider, ModelEntry[]>` (user-added LLM models). A missing file returns an empty config — no migration needed. Rust commands: `load/save_global_node_defaults` and `load/save_workspace_node_defaults` ([commands/customization.rs](../src-tauri/src/commands/customization.rs)); the struct is `NodeDefaultsConfig` ([models.rs](../src-tauri/src/models.rs)).
 
 ## Service + context (single source of truth)
 
@@ -70,4 +70,4 @@ Set `defaultsEditor` on the plugin, or rely on `AutoDefaultsEditor`. No other wi
 - [src/components/defaults/](../src/components/defaults/) — editors + modal.
 - [src/components/NodesPage.tsx](../src/components/NodesPage.tsx), [src/components/settings/NodeDefaultsPanel.tsx](../src/components/settings/NodeDefaultsPanel.tsx) — surfaces.
 - [src/services/builtInModels.ts](../src/services/builtInModels.ts), [src/services/llmProviders.ts](../src/services/llmProviders.ts) — model + provider config.
-- [src-tauri/src/commands.rs](../src-tauri/src/commands.rs), [src-tauri/src/models.rs](../src-tauri/src/models.rs) — persistence.
+- [src-tauri/src/commands/customization.rs](../src-tauri/src/commands/customization.rs), [src-tauri/src/models.rs](../src-tauri/src/models.rs) — persistence.

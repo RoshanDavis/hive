@@ -72,7 +72,6 @@ export default function NodeDefaultsPanel({ workspacePath, showToast }: NodeDefa
                 key={p.type}
                 icon={p.meta.icon}
                 label={p.meta.label}
-                color={p.meta.color}
                 title={`Edit ${p.meta.label} workspace defaults`}
                 onClick={() => setEditingType(p.type)}
                 onClear={() => handleClear(p.type)}

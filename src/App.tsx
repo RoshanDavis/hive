@@ -4,6 +4,7 @@ import WorkspaceEditor from "@/components/WorkspaceEditor";
 import "@/nodes/plugins"; // Side-effect import: registers all built-in node plugins app-wide
 import { CustomNodesProvider } from "@/contexts/CustomNodesContext";
 import { BackgroundRunnersProvider } from "@/contexts/BackgroundRunnersContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import "./App.css";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -23,28 +24,30 @@ function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspace | null>(null);
 
   return (
-    <BackgroundRunnersProvider>
-      <CustomNodesProvider workspacePath={activeWorkspace?.path ?? null}>
-        {activeWorkspace ? (
-          <WorkspaceEditor
-            workspaceName={activeWorkspace.name}
-            workspacePath={activeWorkspace.path}
-            backgroundExecution={activeWorkspace.backgroundExecution}
-            onBack={() => setActiveWorkspace(null)}
-          />
-        ) : (
-          <Dashboard
-            onOpenWorkspace={(ws) =>
-              setActiveWorkspace({
-                name: ws.name,
-                path: ws.path,
-                backgroundExecution: ws.background_execution,
-              })
-            }
-          />
-        )}
-      </CustomNodesProvider>
-    </BackgroundRunnersProvider>
+    <ThemeProvider>
+      <BackgroundRunnersProvider>
+        <CustomNodesProvider workspacePath={activeWorkspace?.path ?? null}>
+          {activeWorkspace ? (
+            <WorkspaceEditor
+              workspaceName={activeWorkspace.name}
+              workspacePath={activeWorkspace.path}
+              backgroundExecution={activeWorkspace.backgroundExecution}
+              onBack={() => setActiveWorkspace(null)}
+            />
+          ) : (
+            <Dashboard
+              onOpenWorkspace={(ws) =>
+                setActiveWorkspace({
+                  name: ws.name,
+                  path: ws.path,
+                  backgroundExecution: ws.background_execution,
+                })
+              }
+            />
+          )}
+        </CustomNodesProvider>
+      </BackgroundRunnersProvider>
+    </ThemeProvider>
   );
 }
 

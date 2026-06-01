@@ -1,30 +1,25 @@
 import { useMemo, useState } from "react";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { useCustomNodes } from "@/contexts/CustomNodesContext";
-import { api } from "@/services/api";
 import {
   PresetBaseTypeSection,
   PresetConfigSection,
 } from "@/components/customNodes/PresetNodeForm";
 import ScriptNodeForm from "@/components/customNodes/ScriptNodeForm";
 import { formInputClass, formLabelClass } from "@/components/shared/FormField";
-import { getCategoryColor } from "@/theme/colors";
+import { useTheme } from "@/contexts/ThemeContext";
 import {
   isCustomType,
-  type CustomNodeDefinition,
   type CustomNodeScope,
   type NetworkGrant,
   type ScriptField,
   type ScriptLimits,
 } from "@/types/customNodes";
 import type { HandleConfig, NodePlugin } from "@/engine/plugin";
+import { usePresetFormState } from "@/hooks/usePresetFormState";
+import { useScriptFormState } from "@/hooks/useScriptFormState";
 
 type CustomNodeKind = "preset" | "script";
-
-const DEFAULT_SCRIPT_LIMITS: ScriptLimits = {
-  timeoutMs: 5000,
-  memoryBytes: 16 * 1024 * 1024,
-};
 
 /** node.data keys that are execution state, not configuration — never snapshot these.
  *  `lastResponse` and `outputContent` are legacy run-state fields removed in the
@@ -49,31 +44,6 @@ export function stripRuntimeFields(
     if (!RUNTIME_FIELDS.includes(k)) out[k] = v;
   }
   return out;
-}
-
-/**
- * Validate a script definition's authoring fields. Config keys must be non-empty and
- * unique (they key into `ctx.config`); handle ids must be non-empty and unique once
- * there's more than one handle, or React Flow can't disambiguate which handle an edge
- * connects to. Returns an error message, or null when valid.
- */
-function validateScriptDef(
-  configSchema: ScriptField[],
-  handles: HandleConfig[]
-): string | null {
-  const keys = configSchema.map((f) => f.key.trim());
-  if (keys.some((k) => k === "")) return "Every config field needs a non-empty key.";
-  const dupKey = keys.find((k, i) => keys.indexOf(k) !== i);
-  if (dupKey) return `Duplicate config field key: "${dupKey}".`;
-
-  if (handles.length > 1) {
-    const ids = handles.map((h) => (h.id ?? "").trim());
-    if (ids.some((id) => id === ""))
-      return "With more than one handle, every handle needs a non-empty id.";
-    const dupId = ids.find((id, i) => ids.indexOf(id) !== i);
-    if (dupId) return `Duplicate handle id: "${dupId}".`;
-  }
-  return null;
 }
 
 export interface CustomNodeFormInitial {
@@ -120,61 +90,63 @@ export default function CustomNodeFormModal({
   allowWorkspaceScope,
   initial,
 }: Props) {
-  const { saveCustomNode, deleteCustomNode, promoteToGlobal, workspacePath } = useCustomNodes();
+  const { saveCustomNode, deleteCustomNode, promoteToGlobal, workspacePath } =
+    useCustomNodes();
 
   const editing = Boolean(initial?.id);
   const options = useMemo(baseTypeOptions, []);
   const fallbackBase = options[0]?.type ?? "";
 
+  // ─── Common meta (shared across both kinds) ──────────────────
   const [kind, setKind] = useState<CustomNodeKind>(initial?.kind ?? "preset");
-  const [baseType, setBaseType] = useState(initial?.baseType ?? fallbackBase);
-  const base = pluginRegistry.get(baseType);
-
-  const [name, setName] = useState(initial?.name ?? base?.meta.label ?? "Custom node");
-  const [icon, setIcon] = useState(initial?.icon ?? base?.meta.icon ?? "🧩");
-  // Category drives the synthesized plugin's color. New presets inherit the
-  // base plugin's category so they group sensibly; new scripts default to
-  // "custom". Existing definitions on disk are loaded verbatim.
-  const category: NodePlugin["meta"]["category"] =
-    initial?.category ?? (kind === "script" ? "custom" : base?.meta.category ?? "custom");
-  const color = getCategoryColor(category);
   const [scope, setScope] = useState<CustomNodeScope>(
     initial?.scope ?? (allowWorkspaceScope ? "workspace" : "global")
   );
-  const [presetData, setPresetData] = useState<Record<string, unknown>>(
-    initial?.presetData ?? {}
-  );
-  const [limits, setLimits] = useState<ScriptLimits>(
-    initial?.limits ?? DEFAULT_SCRIPT_LIMITS
-  );
-  const [network, setNetwork] = useState<NetworkGrant>(
-    initial?.network ?? { mode: "none", allow: [] }
-  );
-  const [credentials, setCredentials] = useState<string[]>(initial?.credentials ?? []);
-  const [configSchema, setConfigSchema] = useState<ScriptField[]>(
-    initial?.configSchema ?? []
-  );
-  const [handles, setHandles] = useState<HandleConfig[]>(initial?.handles ?? []);
-  const [opening, setOpening] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Script fields not edited in the UI — preserved verbatim on edit.
-  const scriptRuntime = initial?.runtime ?? "js";
-  const scriptEntry = initial?.entry ?? "script.js";
+  // ─── Kind-specific state, each in its own hook ──────────────
+  // Both hooks always run; the inactive one is just unused. This avoids
+  // the conditional-hook violation while keeping the modal's render tree
+  // simple. The cost is one extra useState tree per kind switch, which is
+  // trivial for a modal lifetime.
+  const preset = usePresetFormState({
+    initialBaseType: initial?.baseType,
+    initialPresetData: initial?.presetData,
+    fallbackBase,
+  });
+  const script = useScriptFormState({
+    initialLimits: initial?.limits,
+    initialNetwork: initial?.network,
+    initialCredentials: initial?.credentials,
+    initialConfigSchema: initial?.configSchema,
+    initialHandles: initial?.handles,
+    scriptRuntime: initial?.runtime ?? "js",
+    scriptEntry: initial?.entry ?? "script.js",
+  });
+
+  // Name/icon track the active kind's base plugin until the user overrides
+  // them. They live here (not in the per-kind hooks) so kind switches reseed
+  // them sensibly via `onKindChange`.
+  const [name, setName] = useState(
+    initial?.name ?? preset.base?.meta.label ?? "Custom node"
+  );
+  const [icon, setIcon] = useState(initial?.icon ?? preset.base?.meta.icon ?? "🧩");
+
+  // Category is still part of the on-disk shape (used for organization
+  // surfaces). New presets inherit the base plugin's category so they group
+  // sensibly; new scripts default to "custom". Existing definitions are
+  // loaded verbatim. The modal header icon glow uses the theme accent.
+  const category: NodePlugin["meta"]["category"] =
+    initial?.category ?? (kind === "script" ? "custom" : preset.base?.meta.category ?? "custom");
+  const theme = useTheme();
+  const glowColor = theme.accents.primary;
 
   if (!isOpen) return null;
 
-  // When the base type changes in create mode, refresh meta defaults to match.
-  // Category is read off the base plugin (used to derive the icon glow color);
-  // changing the base type implicitly reshapes the category via `base?.meta.category`.
   const onBaseChange = (next: string) => {
-    setBaseType(next);
-    const p = pluginRegistry.get(next);
-    if (p) {
-      setName(p.meta.label);
-      setIcon(p.meta.icon);
-    }
-    setPresetData({});
+    const seed = preset.onBaseChange(next);
+    if (seed.name !== undefined) setName(seed.name);
+    if (seed.icon !== undefined) setIcon(seed.icon);
   };
 
   const onKindChange = (next: CustomNodeKind) => {
@@ -183,23 +155,7 @@ export default function CustomNodeFormModal({
       setName("Script node");
       setIcon("📜");
     } else {
-      onBaseChange(baseType || fallbackBase);
-    }
-  };
-
-  const openScriptInEditor = async () => {
-    if (!initial?.id) return;
-    setOpening(true);
-    try {
-      await api.openCustomNodeScript(
-        scope,
-        initial.id,
-        scope === "workspace" ? workspacePath : null
-      );
-    } catch (err) {
-      showToast(`Failed to open script: ${err}`, "error");
-    } finally {
-      setOpening(false);
+      onBaseChange(preset.baseType || fallbackBase);
     }
   };
 
@@ -208,81 +164,22 @@ export default function CustomNodeFormModal({
       showToast("Give the custom node a name", "error");
       return;
     }
-    if (kind === "preset" && !base) {
-      showToast("Pick a base node type first", "error");
+    const active = kind === "preset" ? preset : script;
+    const validationErr = active.validate();
+    if (validationErr) {
+      showToast(validationErr, "error");
       return;
-    }
-    if (kind === "script") {
-      const scriptErr = validateScriptDef(configSchema, handles);
-      if (scriptErr) {
-        showToast(scriptErr, "error");
-        return;
-      }
     }
     setSaving(true);
     try {
       const id = initial?.id ?? crypto.randomUUID();
-
-      if (kind === "script") {
-        // Persist trimmed keys/ids (validated above) so on-disk config keys and handle
-        // ids never carry stray whitespace. A lone handle may keep an empty (undefined) id.
-        const normConfig = configSchema.map((f) => ({
-          ...f,
-          key: f.key.trim(),
-          label: f.label.trim(),
-        }));
-        const normHandles = handles.map((h) => ({
-          ...h,
-          id: (h.id ?? "").trim() || undefined,
-        }));
-        const def: CustomNodeDefinition = {
-          id,
-          kind: "script",
-          name: name.trim(),
-          icon: icon.trim() || "📜",
-          category,
-          version: 1,
-          runtime: scriptRuntime,
-          entry: scriptEntry,
-          configSchema: normConfig,
-          network,
-          credentials,
-          limits,
-          ...(normHandles.length > 0 ? { handles: normHandles } : {}),
-        };
-        await saveCustomNode(scope, def);
-        // Seed + reveal script.js so the user can start editing right away.
-        if (!editing) {
-          try {
-            await api.openCustomNodeScript(
-              scope,
-              id,
-              scope === "workspace" ? workspacePath : null
-            );
-          } catch {
-            /* non-fatal: the node is saved; the inspector offers "Open" too */
-          }
-        }
-        showToast(editing ? "Script node updated" : "Script node created", "success");
-        onClose();
-        return;
-      }
-
-      // Preset: `label` is owned by the preset name (see synthesizePlugin) — don't
-      // store it redundantly in presetData.
-      const { label: _label, ...cleanPreset } = presetData;
-      const def: CustomNodeDefinition = {
-        id,
-        kind: "preset",
-        name: name.trim(),
-        icon: icon.trim() || "🧩",
-        category,
-        version: 1,
-        baseType,
-        presetData: cleanPreset,
-      };
+      const def = active.buildDef({ id, name, icon, category });
       await saveCustomNode(scope, def);
-      showToast(editing ? "Custom node updated" : "Custom node created", "success");
+      if (kind === "script" && !editing) {
+        await script.seedAndReveal({ id, scope, workspacePath });
+      }
+      const noun = kind === "script" ? "Script node" : "Custom node";
+      showToast(editing ? `${noun} updated` : `${noun} created`, "success");
       onClose();
     } catch (err) {
       showToast(`Failed to save custom node: ${err}`, "error");
@@ -321,15 +218,16 @@ export default function CustomNodeFormModal({
 
   const lockBase = initial?.lockBaseType || editing;
 
-  // The network grant is stored as { mode, allow }, but the UI presents three choices.
-  // "Allow all" is just the sentinel allow:["*"] — the Rust guard treats "*" as any host
-  // while still blocking private/loopback unless listed exactly, so it needs no new mode.
+  // The network grant is stored as { mode, allow }, but the UI presents three
+  // choices. "Allow all" is just the sentinel allow:["*"] — the Rust guard
+  // treats "*" as any host while still blocking private/loopback unless listed
+  // exactly, so it needs no new mode.
   const isAllowAll =
-    network.mode === "allowlist" &&
-    network.allow.length === 1 &&
-    network.allow[0].trim() === "*";
+    script.network.mode === "allowlist" &&
+    script.network.allow.length === 1 &&
+    script.network.allow[0].trim() === "*";
   const netMode: "none" | "all" | "allowlist" =
-    network.mode === "none" ? "none" : isAllowAll ? "all" : "allowlist";
+    script.network.mode === "none" ? "none" : isAllowAll ? "all" : "allowlist";
 
   return (
     <div
@@ -342,7 +240,7 @@ export default function CustomNodeFormModal({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
           <div className="flex items-center gap-3">
-            <span className="text-2xl" style={{ filter: `drop-shadow(0 0 6px ${color}55)` }}>
+            <span className="text-2xl" style={{ filter: `drop-shadow(0 0 6px ${glowColor}55)` }}>
               {icon}
             </span>
             <span className="text-sm font-bold text-text-main">
@@ -363,7 +261,9 @@ export default function CustomNodeFormModal({
             <label className={formLabelClass}>Kind</label>
             {editing ? (
               <div className="text-sm text-text-secondary bg-input border border-border-subtle rounded-md px-3 py-2">
-                {kind === "script" ? "📜 Script — user-authored executor" : "🧩 Preset — saved configuration"}
+                {kind === "script"
+                  ? "📜 Script — user-authored executor"
+                  : "🧩 Preset — saved configuration"}
               </div>
             ) : (
               <div className="flex gap-2">
@@ -397,10 +297,10 @@ export default function CustomNodeFormModal({
           {kind === "preset" && (
             <PresetBaseTypeSection
               options={options}
-              baseType={baseType}
+              baseType={preset.baseType}
               onBaseChange={onBaseChange}
               lockBase={lockBase}
-              base={base}
+              base={preset.base}
             />
           )}
 
@@ -464,12 +364,12 @@ export default function CustomNodeFormModal({
           </div>
 
           {/* Preset configuration editor (preset branch — lower) */}
-          {kind === "preset" && base && (
+          {kind === "preset" && preset.base && (
             <PresetConfigSection
-              base={base}
-              baseType={baseType}
-              presetData={presetData}
-              setPresetData={setPresetData}
+              base={preset.base}
+              baseType={preset.baseType}
+              presetData={preset.presetData}
+              setPresetData={preset.setPresetData}
               workspacePath={scope === "workspace" ? workspacePath : null}
               scope={scope}
             />
@@ -479,20 +379,28 @@ export default function CustomNodeFormModal({
           {kind === "script" && (
             <ScriptNodeForm
               editing={editing}
-              scriptEntry={scriptEntry}
-              opening={opening}
-              openScriptInEditor={openScriptInEditor}
-              limits={limits}
-              setLimits={setLimits}
-              network={network}
-              setNetwork={setNetwork}
+              scriptEntry={initial?.entry ?? "script.js"}
+              opening={script.opening}
+              openScriptInEditor={() => {
+                if (!initial?.id) return Promise.resolve();
+                return script.openScriptInEditor({
+                  id: initial.id,
+                  scope,
+                  workspacePath,
+                  showToast,
+                });
+              }}
+              limits={script.limits}
+              setLimits={script.setLimits}
+              network={script.network}
+              setNetwork={script.setNetwork}
               netMode={netMode}
-              credentials={credentials}
-              setCredentials={setCredentials}
-              configSchema={configSchema}
-              setConfigSchema={setConfigSchema}
-              handles={handles}
-              setHandles={setHandles}
+              credentials={script.credentials}
+              setCredentials={script.setCredentials}
+              configSchema={script.configSchema}
+              setConfigSchema={script.setConfigSchema}
+              handles={script.handles}
+              setHandles={script.setHandles}
               workspacePath={scope === "workspace" ? workspacePath : null}
               scope={scope}
             />

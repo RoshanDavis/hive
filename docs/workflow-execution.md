@@ -1,8 +1,8 @@
 # Workflow Execution (the run loop)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phase 5). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/hooks/useWorkspaceRunner.ts src/engine/graphTraversal.ts`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`, post-refactor pass, run loop extracted to `src/engine/runLoop.ts`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since the verified commit, e.g. `git log --oneline 0b50083..HEAD -- src/engine/runLoop.ts src/engine/graphTraversal.ts src/contexts/runnerSession.ts`.
 
-This is the most intricate code in the app. [src/hooks/useWorkspaceRunner.ts](../src/hooks/useWorkspaceRunner.ts) owns *when* nodes run, how their visual status changes, how a run pauses for chat input, and how runs are cancelled and retried. *How a single node runs* is the engine's job — see [node-engine.md](node-engine.md).
+This is the most intricate code in the app. [src/engine/runLoop.ts](../src/engine/runLoop.ts) owns *when* nodes run, how their visual status changes, how a run pauses for chat input, and how runs are cancelled and retried. The run loop is a standalone module driven by a callback-based `RunLoopDeps` interface — the per-workspace [src/contexts/runnerSession.ts](../src/contexts/runnerSession.ts) wires it up with the session's `getNodes/getEdges/setNodes/updateNodeData/showToast` and a `adjustRunningStartCount` delta callback that bumps the snapshot-visible `runningStartNodeIds` map. *How a single node runs* is the engine's job — see [node-engine.md](node-engine.md).
 
 ## Vocabulary
 
@@ -104,7 +104,7 @@ When the loop ends (success or error), a `FADE_DELAY_MS` (1500 ms) timer clears 
 
 ## Retry and re-execution history
 
-`executedNodeIdsMapRef` tracks, per `startKey`, which nodes have run. On a retry-from-a-node (not a Trigger start):
+`executedNodeIdsMap` (held inside `runLoop.ts`, keyed by `startKey`) tracks which nodes have run. On a retry-from-a-node (not a Trigger start):
 
 - All reachable downstream nodes are removed from history so they re-execute freshly with the new signal.
 - Successful **ancestors** are *added* to history (and the visited set) so they are treated as already-done and reused rather than re-run.
@@ -121,9 +121,13 @@ A Trigger start clears the history for that `startKey` entirely — a clean slat
 
 ## Key files
 
-- [src/hooks/useWorkspaceRunner.ts](../src/hooks/useWorkspaceRunner.ts) — the entire run loop, cancel, retry, fade.
+- [src/engine/runLoop.ts](../src/engine/runLoop.ts) — the standalone run loop: `runWorkflow`, `cancelWorkflow`, `executeWorkflow`, `handleChatSend`, `retryWorkflow`, `clearAllStatuses`. Communicates back to the session via `RunLoopDeps` callbacks.
+- [src/contexts/runnerSession.ts](../src/contexts/runnerSession.ts) — per-workspace session that wires the loop into snapshot state + persistence.
 - [src/engine/graphTraversal.ts](../src/engine/graphTraversal.ts) — reachability + ancestor BFS.
 - [src/engine/index.ts](../src/engine/index.ts) — `executeNode` (called per node).
+- [src/engine/utils.ts](../src/engine/utils.ts) — shared executor helpers: `getUpstreamNodes`, `resolveEdgePermissions`, envelope readers.
+- [src/engine/nodeData.ts](../src/engine/nodeData.ts) — typed accessors (`getOutputEnvelope`, `setOutputEnvelope`, `getLastInput`, `LAST_INPUT_KEYS`).
 - [src/engine/ChatExecutor.ts](../src/engine/ChatExecutor.ts) — the canonical `canPauseWorkflow` node; input vs. receiver modes.
 - [src/engine/LLMExecutor.ts](../src/engine/LLMExecutor.ts) — reads chat history / upstream input; concurrency-pooled.
+- [src/engine/__tests__/runLoop.test.ts](../src/engine/__tests__/runLoop.test.ts) — integration tests guarding the loop's smoke, error, and cancel paths.
 - [src/nodes/StatusBorder.tsx](../src/nodes/StatusBorder.tsx) — renders the status colors.

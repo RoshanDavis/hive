@@ -239,7 +239,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                   <div className="flex flex-col gap-1 max-w-md">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-text-main">Cloud Model Pool</span>
-                      <span className="px-2 py-0.5 text-[9px] font-bold bg-node-notify/10 border border-node-notify/25 text-node-notify rounded-full">Remote APIs</span>
+                      <span className="px-2 py-0.5 text-[9px] font-bold bg-content-notification/10 border border-content-notification/25 text-content-notification rounded-full">Remote APIs</span>
                     </div>
                     <p className="text-[10.5px] text-text-secondary leading-normal">
                       Controls parallel HTTP connections to cloud models (OpenAI, Anthropic, Google). Since cloud calls run on remote servers, limits are only useful for rate-limiting.
@@ -276,7 +276,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                   <div className="flex flex-col gap-1 max-w-md">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-text-main">General Tasks</span>
-                      <span className="px-2 py-0.5 text-[9px] font-bold bg-node-chat/10 border border-node-chat/25 text-node-chat rounded-full">Utility Nodes</span>
+                      <span className="px-2 py-0.5 text-[9px] font-bold bg-content-user/10 border border-content-user/25 text-content-user rounded-full">Utility Nodes</span>
                     </div>
                     <p className="text-[10.5px] text-text-secondary leading-normal">
                       Concurrency for instant workflows like notifications, local workspace state saves, and JSON database updates. Typically runs without limits to prevent blocking execution.

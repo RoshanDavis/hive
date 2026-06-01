@@ -1,6 +1,6 @@
 # Custom Nodes — Design & Implementation
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-29** (commit `44704f6`, refactor pass Phases 3–4). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the key paths since that commit, e.g. `git log --oneline 44704f6..HEAD -- src/types/customNodes.ts src/services/customNode* src/engine/ScriptExecutor.ts src/components/customNodes src-tauri/crates/sandbox`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`, refactor pass Phases 3–4). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the key paths since that commit, e.g. `git log --oneline 0b50083..HEAD -- src/types/customNodes.ts src/services/customNode* src/engine/ScriptExecutor.ts src/components/customNodes src-tauri/crates/sandbox`.
 
 Status: **All three tiers implemented.** Tier 1 (presets) and the dynamic registry are
 done; Tier 2 was folded into normal node development (it needs no custom-node
@@ -51,7 +51,7 @@ infrastructure:
   string, resolved server-side in Rust. Global vault at
   `app_data_dir/credentials.vault`, local at `<ws>/.hive/credentials.vault`.
   Server-side resolution helper: `resolve_credential_values(app, id, scope_hint, ws)`
-  in [src-tauri/src/commands.rs](../src-tauri/src/commands.rs). Scope-promotion exists via
+  in [src-tauri/src/commands/credentials.rs](../src-tauri/src/commands/credentials.rs). Scope-promotion exists via
   `credential_transfer` in [src-tauri/src/vault.rs](../src-tauri/src/vault.rs).
 - **Concurrency governor**: [src/services/concurrency.ts](../src/services/concurrency.ts),
   pools `local`/`cloud`/`general`.
@@ -79,7 +79,7 @@ Defined in [src/types/customNodes.ts](../src/types/customNodes.ts):
 interface CustomNodeBase {
   id: string;              // registry type becomes `custom:<id>`
   name: string; icon: string;
-  category: NodePlugin["meta"]["category"];  // drives synthesized meta.color via getCategoryColor()
+  category: NodePlugin["meta"]["category"];  // used for organization/grouping surfaces only
   version: number;
 }
 
@@ -101,12 +101,13 @@ The synthesized `script` plugin carries **no `source` field** — code lives onl
 `script.js` on disk (single source of truth). `scope` is not stored in the definition; the
 registry tracks it (`customScopes` map) and the loader threads it into the executor.
 
-**No color field.** Phase 3 (May 2026) dropped the per-definition `color` knob. The
-synthesized plugin's color is derived purely from `category` via `getCategoryColor`
-([src/theme/colors.ts](../src/theme/colors.ts)), so authors only pick a category and
-custom nodes group sensibly with built-ins of the same kind. The Rust
-`CustomNodeDefinition` ([models.rs](../src-tauri/src/models.rs)) accepts an optional
-legacy `color` on read and drops it on write, so older `node.json` files still load.
+**No node colors at all.** Phase 3 (May 2026) dropped the per-definition `color` knob;
+the post-refactor pass dropped the per-type `meta.color` field too. Picker cards and
+modal icons get their glow from the theme accent via `useTheme()`, so theme switching
+cascades automatically and adding a new node type is purely metadata + executor. The
+Rust `CustomNodeDefinition` ([models.rs](../src-tauri/src/models.rs)) accepts an
+optional legacy `color` on read and drops it on write, so older `node.json` files
+still load.
 
 A **loader** ([src/services/customNodeLoader.ts](../src/services/customNodeLoader.ts))
 reads definitions, synthesizes a `NodePlugin` per definition via `synthesizePlugin(def,
@@ -140,7 +141,7 @@ chokepoint), reusing the concurrency governor.
 Behavior = user code, so the whole game is **isolation**. As built:
 
 - **Runs in Rust, not the renderer.** A `run_script` Tauri command
-  ([src-tauri/src/commands.rs](../src-tauri/src/commands.rs)) executes the source in an
+  ([src-tauri/src/commands/customization.rs](../src-tauri/src/commands/customization.rs)) executes the source in an
   isolated **QuickJS runtime via `rquickjs`** (JS only; `wasmtime`/WASM is reserved but not
   implemented — an unsupported runtime returns a clear error). Each run gets a fresh
   `Runtime` with `set_memory_limit`, `set_max_stack_size`, and an interrupt handler that
@@ -215,7 +216,7 @@ keeps the app lean (no Monaco bundle) and makes the on-disk file the single sour
 app_data_dir/custom-nodes/<id>/...       # global-scoped
 ```
 
-Folder-per-node. Rust commands (in [commands.rs](../src-tauri/src/commands.rs)):
+Folder-per-node. Rust commands (in [commands/customization.rs](../src-tauri/src/commands/customization.rs)):
 `list/save/delete_{global,workspace}_custom_node`, `custom_node_transfer` (promote
 workspace → global, mirroring `credential_transfer`), `open_custom_node_script`, and
 `run_script`. The Rust `CustomNodeDefinition` struct
@@ -237,7 +238,7 @@ workspace → global, mirroring `credential_transfer`), `open_custom_node_script
    nodes with unresolved grants surface a dangling-credential banner in the inspector and
    "granted but unavailable here" chips in the authoring modal.
 5. **Versioning/migration.** Reuses the `version` field + the legacy-migration discipline
-   from `storage.ts` / `commands.rs`.
+   from `storage.ts` / `commands/customization.rs`.
 6. **Security threat model (Tier 3).** SSRF (host allowlist + private-range block, explicit
    opt-in required, **plus a post-resolution private-IP check with connection pinning** to
    close DNS rebinding), secret exfiltration (credentials injected server-side, never in the JS

@@ -20,11 +20,10 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import { api } from "@/services/api";
-import { executeNode } from "@/engine";
 import { pluginRegistry } from "@/engine/pluginRegistry";
-import { getAncestorNodeIds, getConnectedComponent, getReachableNodeIds } from "@/engine/graphTraversal";
+import { createRunLoop } from "@/engine/runLoop";
 import { getConnectionBehavior } from "@/engine/connectivity";
-import { EDGE } from "@/theme/colors";
+import { getEdges } from "@/theme/colors";
 import {
   type SpaceEntry,
   type SpaceData,
@@ -58,13 +57,6 @@ export interface RunnerSessionSnapshot {
   isLoading: boolean;
   runningStartNodeIds: Map<string, number>;
   backgroundExecution: boolean;
-}
-
-interface RunControl {
-  startKey: string;
-  cancelled: boolean;
-  inLoop: boolean;
-  countReleased: boolean;
 }
 
 export interface RunnerSession {
@@ -221,10 +213,10 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   }
 
   // ─── Run-state bookkeeping ─────────────────────────────────────────
-  const fadeTimeouts: Map<string, number> = new Map();
-  const executedNodeIdsMap: Map<string, Set<string>> = new Map();
-  const activeRuns: Map<string, RunControl> = new Map();
-  let runCounter = 0;
+  // The run loop itself (BFS traversal, status transitions, retry/cancel
+  // controls, fade timers) lives in `src/engine/runLoop.ts`. The session
+  // observes activity through the snapshot-visible `runningStartNodeIds`
+  // map, which the loop bumps via `adjustRunningStartCount`.
 
   function hasActiveRuns(): boolean {
     return runningStartNodeIds.size > 0;
@@ -413,655 +405,49 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     }
   }
 
-  function isCancelled(runId: string): boolean {
-    return activeRuns.get(runId)?.cancelled === true;
-  }
+  // The run loop is created below, after `setNodes` / `updateNodeData` / the
+  // running-start-id delta callback are all defined. See the `runLoop` const.
 
-  function releaseRunCount(runId: string): void {
-    const control = activeRuns.get(runId);
-    if (!control || control.countReleased) return;
-    control.countReleased = true;
-    const key = control.startKey;
-    updateRunningStartNodeIds((prev) => {
-      const next = new Map(prev);
-      const count = (next.get(key) ?? 0) - 1;
-      if (count > 0) next.set(key, count);
-      else next.delete(key);
-      return next;
-    });
-  }
-
-  function clearBordersForRuns(runIds: Set<string>): void {
-    setNodes((nds) =>
-      nds.map((n) => {
-        const rid = n.data.statusRunId as string | undefined;
-        if (rid && runIds.has(rid)) {
-          return {
-            ...n,
-            data: { ...n.data, status: undefined, statusRunId: undefined, error: undefined },
-          };
-        }
-        return n;
-      })
-    );
-  }
-
-  /** Conservative sweep: nodes whose `statusRunId` references a run no
-   * longer in `activeRuns` get their runId cleared (the linkage is dead).
-   * `status` and `error` are preserved so the user still sees what failed
-   * — useful after a force-kill where Rust promoted `executing → error`
-   * but the persisted runId no longer points anywhere live. Cheap; safe
-   * to call repeatedly. */
-  function clearOrphanRunIds(): void {
-    setNodes((nds) =>
-      nds.map((n) => {
-        const rid = n.data.statusRunId as string | undefined;
-        if (rid && !activeRuns.has(rid)) {
-          return { ...n, data: { ...n.data, statusRunId: undefined } };
-        }
-        return n;
-      })
-    );
-  }
-
-  /** Aggressive sweep used by Retry: clear `status`/`statusRunId`/`error`
-   * on every node NOT currently part of an active run. Nodes still tied to
-   * an in-flight workflow (e.g. a concurrent run) are left alone. Used
-   * because Retry semantically means "fresh slate from this node" — sibling
-   * errors from the previous run shouldn't linger across the retry. */
-  function clearOrphanStatusesAggressive(): void {
-    setNodes((nds) =>
-      nds.map((n) => {
-        const rid = n.data.statusRunId as string | undefined;
-        if (rid && activeRuns.has(rid)) return n;
-        if (!n.data.status && !n.data.statusRunId && !n.data.error) return n;
-        return {
-          ...n,
-          data: { ...n.data, status: undefined, statusRunId: undefined, error: undefined },
-        };
-      })
-    );
-  }
-
-  /** Public "Clear all" — cancel every active run AND wipe every node's
-   * status/statusRunId/error in the active space. Two phases:
-   *   1. Mark each active run cancelled, drop its fade timer, decrement its
-   *      runningStartNodeIds count, and delete it from activeRuns. This is
-   *      what stops in-flight executors from re-applying status mid-clear.
-   *   2. A single setNodes pass wipes status/statusRunId/error on every node
-   *      — both the just-cancelled run's nodes AND any stuck waiting/error
-   *      borders carried over from earlier runs.
-   * Used as the workspace-level reset surfaced via the Workflows section. */
-  function clearAllStatuses(): void {
-    // Phase 1: end all active runs. Same shape as `cancelWorkflow` (no nodeId)
-    // but without the bail-on-empty guard, since we always want to fall
-    // through to the node wipe.
-    const allRunIds = Array.from(activeRuns.keys());
-    for (const rid of allRunIds) {
-      const r = activeRuns.get(rid);
-      if (!r) continue;
-      r.cancelled = true;
-      releaseRunCount(rid);
-      const t = fadeTimeouts.get(rid);
-      if (t) {
-        clearTimeout(t);
-        fadeTimeouts.delete(rid);
-      }
-      if (!r.inLoop) activeRuns.delete(rid);
-    }
-
-    // Phase 2: wipe every node in one setNodes pass. Covers nodes tied to a
-    // just-cancelled run AND any stuck statuses from earlier runs.
-    let touched = 0;
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (!n.data.status && !n.data.statusRunId && !n.data.error) return n;
-        touched += 1;
-        return {
-          ...n,
-          data: { ...n.data, status: undefined, statusRunId: undefined, error: undefined },
-        };
-      })
-    );
-
-    if (allRunIds.length > 0 && touched > 0) {
-      showToast(
-        `Cancelled ${allRunIds.length} workflow${allRunIds.length === 1 ? "" : "s"} and cleared ${touched} node${touched === 1 ? "" : "s"}`,
-        "info"
-      );
-    } else if (allRunIds.length > 0) {
-      showToast(
-        `Cancelled ${allRunIds.length} workflow${allRunIds.length === 1 ? "" : "s"}`,
-        "info"
-      );
-    } else if (touched > 0) {
-      showToast(`Cleared status on ${touched} node${touched === 1 ? "" : "s"}`, "info");
-    }
-  }
-
-  // ─── Run loop (moved from useWorkspaceRunner; reads session state) ─
-  async function runWorkflow(startNodeIds: string[], chatInput?: string): Promise<void> {
-    const startKey = startNodeIds.join(",");
-    const runId = `${++runCounter}-${Date.now()}`;
-    activeRuns.set(runId, {
-      startKey,
-      cancelled: false,
-      inLoop: true,
-      countReleased: false,
-    });
-
-    updateRunningStartNodeIds((prev) => {
-      const next = new Map(prev);
-      next.set(startKey, (next.get(startKey) ?? 0) + 1);
-      return next;
-    });
-
-    if (!chatInput) {
-      showToast("Workflow started", "info");
-    }
-
-    const isResuming = !!chatInput;
-    console.log(
-      "[RUNWORKFLOW] runId:",
-      runId,
-      "startNodeIds:",
-      startNodeIds,
-      "isResuming:",
-      isResuming
-    );
-
-    const reachableDownstreamIds = getReachableNodeIds(startNodeIds, edges);
-    const ancestorIds = getAncestorNodeIds(startNodeIds, edges);
-    const startingStorageNodeIds = new Set<string>();
-    startNodeIds.forEach((sid) => {
-      const connectedEdges = edges.filter(
-        (e) => e.source === sid && e.sourceHandle === "storage"
-      );
-      connectedEdges.forEach((e) => {
-        startingStorageNodeIds.add(e.target);
+  // ─── Run loop (now lives in src/engine/runLoop.ts) ────────────────
+  // The session forwards execute/cancel/retry/clearAll into the loop. The
+  // loop pushes deltas into `runningStartNodeIds` via the callback below, so
+  // snapshot subscribers continue to see active-run transitions.
+  const runLoop = createRunLoop({
+    workspacePath,
+    getNodes: () => nodes,
+    getEdges: () => edges,
+    setNodes,
+    updateNodeData,
+    showToast,
+    adjustRunningStartCount: (startKey: string, delta: number) => {
+      updateRunningStartNodeIds((prev) => {
+        const next = new Map(prev);
+        const count = (next.get(startKey) ?? 0) + delta;
+        if (count > 0) next.set(startKey, count);
+        else next.delete(startKey);
+        return next;
       });
-    });
-
-    const hasTriggerStart = startNodeIds.some((sid) => {
-      const n = nodes.find((node) => node.id === sid);
-      return n?.type && !pluginRegistry.get(n.type)?.executor;
-    });
-    const isFreshRun = hasTriggerStart || !!chatInput;
-
-    const inScope = (nodeId: string): boolean =>
-      startNodeIds.includes(nodeId) ||
-      startingStorageNodeIds.has(nodeId) ||
-      reachableDownstreamIds.has(nodeId);
-
-    const initStatusFor = (nodeId: string): string | undefined => {
-      if (startNodeIds.includes(nodeId)) return undefined;
-      if (startingStorageNodeIds.has(nodeId)) return "pending";
-      if (reachableDownstreamIds.has(nodeId)) return "pending";
-      return undefined;
-    };
-
-    const currentNodes = nodes.map((n) => {
-      const newData = { ...n.data };
-      if (isFreshRun) {
-        delete newData.lastInputMessages;
-        delete newData.lastInputText;
-        delete newData.lastInputSender;
-        delete newData.lastInputEnvelope;
-      }
-      if (!inScope(n.id)) {
-        return { ...n, data: newData as Record<string, unknown> };
-      }
-      const newStatus = initStatusFor(n.id);
-      return {
-        ...n,
-        data: {
-          ...newData,
-          status: newStatus,
-          statusRunId: newStatus === undefined ? undefined : runId,
-        } as Record<string, unknown>,
-      };
-    });
-
-    const localUpdateNodeData = (nodeId: string, data: Record<string, unknown>): void => {
-      const index = currentNodes.findIndex((n) => n.id === nodeId);
-      if (index !== -1) {
-        const oldNode = currentNodes[index];
-        currentNodes[index] = { ...currentNodes[index], data: { ...data } };
-
-        const nodePlugin = pluginRegistry.get(oldNode.type || "");
-        if (nodePlugin?.canPauseWorkflow && data.status !== oldNode.data.status) {
-          const storageEdge = edges.find(
-            (e) => e.source === nodeId && e.sourceHandle === "storage"
-          );
-          const storageNode = storageEdge
-            ? currentNodes.find(
-                (n) => n.id === storageEdge.target && n.type === "jsonStorage"
-              )
-            : null;
-
-          if (storageNode) {
-            const newStorageStatus = data.status === "waiting" ? undefined : data.status;
-            const newStorageRunId =
-              newStorageStatus === undefined ? undefined : data.statusRunId;
-            const storageIndex = currentNodes.findIndex((n) => n.id === storageNode.id);
-            if (storageIndex !== -1) {
-              currentNodes[storageIndex] = {
-                ...currentNodes[storageIndex],
-                data: {
-                  ...currentNodes[storageIndex].data,
-                  status: newStorageStatus,
-                  statusRunId: newStorageRunId,
-                },
-              };
-              updateNodeData(storageNode.id, currentNodes[storageIndex].data);
-            }
-          }
-        }
-      }
-      updateNodeData(nodeId, data);
-    };
-
-    // Push a status transition to BOTH the run-local working copy (full
-    // snapshot — the BFS loop reads it on the next iteration) AND the live
-    // session state (delta only — preserves any concurrent inspector edits
-    // to unrelated fields). `extraLive` carries additional fields that must
-    // reach live state, e.g. the error message on the failure path.
-    const applyStatus = (
-      nodeId: string,
-      baseData: Record<string, unknown>,
-      status: string | undefined,
-      extraLive: Record<string, unknown> = {}
-    ): void => {
-      const statusRunId = status === undefined ? undefined : runId;
-      const fullForCurrent = { ...baseData, status, statusRunId };
-      const liveDelta: Record<string, unknown> = { status, statusRunId, ...extraLive };
-
-      // Run-local working copy: full snapshot is required because the run loop
-      // reads currentNodes[i].data on subsequent iterations.
-      const index = currentNodes.findIndex((n) => n.id === nodeId);
-      if (index !== -1) {
-        const oldNode = currentNodes[index];
-        currentNodes[index] = { ...currentNodes[index], data: fullForCurrent };
-
-        // Pause-capable storage propagation: mirror the status onto the
-        // pause-node's storage neighbor, with the existing waiting → undefined
-        // override. Both halves (currentNodes + live) updated symmetrically.
-        const nodePlugin = pluginRegistry.get(oldNode.type || "");
-        if (nodePlugin?.canPauseWorkflow && status !== oldNode.data.status) {
-          const storageEdge = edges.find(
-            (e) => e.source === nodeId && e.sourceHandle === "storage"
-          );
-          const storageNode = storageEdge
-            ? currentNodes.find(
-                (n) => n.id === storageEdge.target && n.type === "jsonStorage"
-              )
-            : null;
-          if (storageNode) {
-            const newStorageStatus = status === "waiting" ? undefined : status;
-            const newStorageRunId =
-              newStorageStatus === undefined ? undefined : statusRunId;
-            const storageIndex = currentNodes.findIndex((n) => n.id === storageNode.id);
-            if (storageIndex !== -1) {
-              currentNodes[storageIndex] = {
-                ...currentNodes[storageIndex],
-                data: {
-                  ...currentNodes[storageIndex].data,
-                  status: newStorageStatus,
-                  statusRunId: newStorageRunId,
-                },
-              };
-              updateNodeData(storageNode.id, {
-                status: newStorageStatus,
-                statusRunId: newStorageRunId,
-              });
-            }
-          }
-        }
-      }
-
-      updateNodeData(nodeId, liveDelta);
-    };
-
-    let haltedAtChat = false;
-
-    try {
-      // Initialize statuses
-      setNodes((nds) =>
-        nds.map((n) => {
-          const newData = { ...n.data };
-          if (isFreshRun) {
-            delete newData.lastInputMessages;
-            delete newData.lastInputText;
-            delete newData.lastInputSender;
-            delete newData.lastInputEnvelope;
-          }
-          if (!inScope(n.id)) {
-            return { ...n, data: newData };
-          }
-          const newStatus = initStatusFor(n.id);
-          return {
-            ...n,
-            data: {
-              ...newData,
-              status: newStatus,
-              statusRunId: newStatus === undefined ? undefined : runId,
-            },
-          };
-        })
-      );
-
-      if (!executedNodeIdsMap.has(startKey)) {
-        executedNodeIdsMap.set(startKey, new Set<string>());
-      }
-      const executedNodeIds = executedNodeIdsMap.get(startKey)!;
-
-      if (hasTriggerStart) {
-        executedNodeIds.clear();
-      } else {
-        reachableDownstreamIds.forEach((id) => {
-          executedNodeIds.delete(id);
-        });
-
-        ancestorIds.forEach((ancId) => {
-          const ancNode = currentNodes.find((n) => n.id === ancId);
-          if (ancNode?.data?.status === "success") {
-            executedNodeIds.add(ancId);
-          }
-        });
-      }
-
-      const visited = new Set<string>(executedNodeIds);
-      startNodeIds.forEach((sid) => visited.delete(sid));
-      const queue = [...startNodeIds];
-
-      while (queue.length > 0) {
-        if (isCancelled(runId)) break;
-
-        const currentId = queue.shift()!;
-        const isVisited = visited.has(currentId);
-        const currentNode = currentNodes.find((n) => n.id === currentId);
-        if (!currentNode) continue;
-
-        if (isVisited) {
-          const nodePlugin = pluginRegistry.get(currentNode.type || "");
-          if (!nodePlugin?.canPauseWorkflow) {
-            continue;
-          }
-        }
-        visited.add(currentId);
-
-        applyStatus(currentId, currentNode.data, "executing");
-        const updatedNode = currentNodes.find((n) => n.id === currentId)!;
-
-        await new Promise<void>((resolve) => setTimeout(resolve, 600));
-        if (isCancelled(runId)) break;
-
-        const postExecNodePlugin = pluginRegistry.get(updatedNode.type || "");
-        const isStartingPauseNode =
-          postExecNodePlugin?.canPauseWorkflow &&
-          startNodeIds.includes(updatedNode.id) &&
-          !isVisited;
-
-        try {
-          await executeNode(updatedNode.type || "default", {
-            node: updatedNode,
-            nodes: currentNodes,
-            edges,
-            updateNodeData: localUpdateNodeData,
-            showToast,
-            chatInput: isStartingPauseNode ? chatInput : undefined,
-            visited,
-            workspacePath,
-          });
-
-          if (isCancelled(runId)) break;
-
-          const postExecNode = currentNodes.find((n) => n.id === currentId) || updatedNode;
-
-          if (postExecNodePlugin?.canPauseWorkflow && !isStartingPauseNode) {
-            const isReturnPath =
-              isVisited ||
-              ancestorIds.has(currentId) ||
-              edges.some(
-                (e) =>
-                  e.source === currentId &&
-                  e.data?.edgeType === "bi-directional" &&
-                  executedNodeIds.has(e.target)
-              );
-
-            if (isReturnPath) {
-              applyStatus(currentId, postExecNode.data, "success");
-              executedNodeIds.add(currentId);
-              continue;
-            } else {
-              applyStatus(currentId, postExecNode.data, "waiting");
-              executedNodeIds.add(currentId);
-              haltedAtChat = true;
-              continue;
-            }
-          } else {
-            const hasBiDirectionalEdge = edges.some(
-              (e) =>
-                (e.source === currentId && e.data?.edgeType === "bi-directional") ||
-                (e.target === currentId && e.data?.edgeType === "bi-directional")
-            );
-            if (postExecNodePlugin?.canPauseWorkflow && hasBiDirectionalEdge) {
-              applyStatus(currentId, postExecNode.data, "pending");
-            } else {
-              applyStatus(currentId, postExecNode.data, "success");
-            }
-            executedNodeIds.add(currentId);
-          }
-        } catch (err) {
-          if (isCancelled(runId)) break;
-          console.error(`[RUNWORKFLOW] Error executing node ${currentId}:`, err);
-          const postExecNode = currentNodes.find((n) => n.id === currentId) || updatedNode;
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          // The error message goes to BOTH the run-local snapshot (so the
-          // node's `data.error` is visible in subsequent BFS reads) and live
-          // state. Passing it via `extraLive` ensures it lands on live state
-          // even though the live update path is now delta-only.
-          applyStatus(
-            currentId,
-            { ...postExecNode.data, error: errorMessage },
-            "error",
-            { error: errorMessage }
-          );
-          throw err;
-        }
-
-        const downstreamTargets = edges
-          .filter((e) => {
-            if (e.sourceHandle === "storage" || e.targetHandle === "storage") return false;
-            const srcNode = currentNodes.find((n) => n.id === e.source);
-            const tgtNode = currentNodes.find((n) => n.id === e.target);
-            const srcPlugin = pluginRegistry.get(srcNode?.type || "");
-            const tgtPlugin = pluginRegistry.get(tgtNode?.type || "");
-            if (
-              srcPlugin?.meta.category === "storage" ||
-              tgtPlugin?.meta.category === "storage"
-            )
-              return false;
-            return (
-              e.source === currentId ||
-              (e.target === currentId && e.data?.edgeType === "bi-directional")
-            );
-          })
-          .map((e) => (e.source === currentId ? e.target : e.source));
-
-        queue.push(...downstreamTargets);
-      }
-
-      if (!isCancelled(runId)) {
-        if (haltedAtChat) {
-          showToast("Workflow paused at Chat. Awaiting message...", "info");
-        } else {
-          showToast("Workflow completed ✓", "success");
-        }
-      }
-    } catch (err) {
-      showToast(`Workflow failed: ${err}`, "error");
-    } finally {
-      const control = activeRuns.get(runId);
-      if (control) control.inLoop = false;
-
-      releaseRunCount(runId);
-
-      if (isCancelled(runId)) {
-        clearBordersForRuns(new Set([runId]));
-        const t = fadeTimeouts.get(runId);
-        if (t) {
-          clearTimeout(t);
-          fadeTimeouts.delete(runId);
-        }
-        activeRuns.delete(runId);
-      } else {
-        const timeoutId = window.setTimeout(() => {
-          setNodes((nds) =>
-            nds.map((n) => {
-              if (n.data.statusRunId !== runId) return n;
-              const s = n.data.status;
-              if (s === "error" || s === "waiting") return n;
-              if (s === "success" || s === "pending" || s === "executing") {
-                return { ...n, data: { ...n.data, status: undefined, statusRunId: undefined } };
-              }
-              return n;
-            })
-          );
-          fadeTimeouts.delete(runId);
-          activeRuns.delete(runId);
-        }, FADE_DELAY_MS);
-        fadeTimeouts.set(runId, timeoutId);
-      }
-    }
-  }
-
-  function cancelWorkflow(nodeId?: string): void {
-    // No-node call: legacy "cancel everything" path. Used by no callers in-
-    // tree today (Clear-all goes through clearAllStatuses), but kept for
-    // API stability.
-    if (!nodeId) {
-      if (activeRuns.size === 0) return;
-      const allRunIds = Array.from(activeRuns.keys());
-      for (const rid of allRunIds) {
-        const r = activeRuns.get(rid);
-        if (!r) continue;
-        r.cancelled = true;
-        releaseRunCount(rid);
-        const t = fadeTimeouts.get(rid);
-        if (t) {
-          clearTimeout(t);
-          fadeTimeouts.delete(rid);
-        }
-        if (!r.inLoop) activeRuns.delete(rid);
-      }
-      clearBordersForRuns(new Set(allRunIds));
-      showToast("Workflow cancelled", "info");
-      return;
-    }
-
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-
-    // Scope to the node's connected component. Anything in a different
-    // component (a separate workflow) is left alone, so a Stop click on
-    // workflow B never reaches into a running workflow A. Storage edges
-    // are excluded from the component walk so shared storage nodes don't
-    // fuse two flows together.
-    const component = getConnectedComponent(nodeId, edges);
-
-    // Cancel every active run whose start nodes intersect this component.
-    // A run can only ever touch nodes in one component (its BFS stays
-    // within reachable edges), so intersection-on-start is sufficient.
-    const cancelledRunIds: string[] = [];
-    for (const [rid, control] of activeRuns) {
-      const startIds = control.startKey.split(",");
-      if (!startIds.some((id) => component.has(id))) continue;
-      control.cancelled = true;
-      releaseRunCount(rid);
-      const t = fadeTimeouts.get(rid);
-      if (t) {
-        clearTimeout(t);
-        fadeTimeouts.delete(rid);
-      }
-      if (!control.inLoop) activeRuns.delete(rid);
-      cancelledRunIds.push(rid);
-    }
-
-    // One setNodes pass: clear borders for nodes IN this component matching
-    // any of three conditions. Together they ensure every "live-looking"
-    // indicator in the component is gone after Stop:
-    //   1. inCancelledRun: rid points at a run we just cancelled above.
-    //   2. stuck: status is waiting/executing/pending — typical for a chat
-    //      past its 1.5s fade window with no live run left to reference.
-    //   3. orphanRid: rid set but not in any live run and not in cancelledRunIds
-    //      (e.g. a success node whose run silently disappeared). Defensive
-    //      backstop so that "Stop on any workflow node clears that workflow"
-    //      holds even in odd timing windows.
-    const cancelledRunIdSet = new Set(cancelledRunIds);
-    let touched = 0;
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (!component.has(n.id)) return n;
-        const rid = n.data?.statusRunId as string | undefined;
-        const s = n.data?.status;
-        const inCancelledRun = !!rid && cancelledRunIdSet.has(rid);
-        const stuck = s === "waiting" || s === "executing" || s === "pending";
-        const orphanRid =
-          !!rid && !cancelledRunIdSet.has(rid) && !activeRuns.has(rid);
-        if (inCancelledRun || stuck || orphanRid) {
-          touched += 1;
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              status: undefined,
-              statusRunId: undefined,
-              error: undefined,
-            },
-          };
-        }
-        return n;
-      })
-    );
-
-    if (cancelledRunIds.length > 0 || touched > 0) {
-      showToast("Workflow cancelled", "info");
-    }
-  }
+    },
+  });
 
   async function executeWorkflow(triggerNodeId?: string): Promise<void> {
-    let triggerNodes = nodes.filter((n) => {
-      const plugin = pluginRegistry.get(n.type || "");
-      return plugin && !plugin.executor;
-    });
-    if (triggerNodeId && typeof triggerNodeId === "string") {
-      triggerNodes = triggerNodes.filter((n) => n.id === triggerNodeId);
-    }
-    if (triggerNodes.length === 0) {
-      showToast("No Trigger node found", "error");
-      return;
-    }
-    const startNodeIds = triggerNodes.map((n) => n.id);
-    await runWorkflow(startNodeIds);
+    await runLoop.executeWorkflow(triggerNodeId);
   }
 
   async function handleChatSend(nodeId: string, text: string): Promise<void> {
-    const chatNode = nodes.find((n) => n.id === nodeId);
-    if (!chatNode) return;
-    await runWorkflow([nodeId], text);
+    await runLoop.handleChatSend(nodeId, text);
   }
 
   async function retryWorkflow(nodeId: string): Promise<void> {
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    // Retry implies "fresh slate from this node" — clear leftover borders
-    // from runs that are no longer active so sibling/upstream errors from a
-    // previous failed run don't linger across the retry. Nodes still tied
-    // to a genuinely active concurrent run are preserved.
-    clearOrphanStatusesAggressive();
-    showToast(`Retrying workflow from ${node.data?.label || node.type}...`, "info");
-    await runWorkflow([nodeId]);
+    await runLoop.retryWorkflow(nodeId);
+  }
+
+  function cancelWorkflow(nodeId?: string): void {
+    runLoop.cancelWorkflow(nodeId);
+  }
+
+  function clearAllStatuses(): void {
+    runLoop.clearAllStatuses();
   }
 
   // ─── Initial load (called once by the context when session is first created) ─
@@ -1097,6 +483,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
         data: n.data,
       }));
 
+      const edgeColor = getEdges().default;
       const loadedEdges: Edge[] = data.edges.map((e) => {
         const targetNode = data.nodes.find((n) => n.id === e.target);
         const targetPlugin = targetNode
@@ -1120,6 +507,13 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
           edgeType = "one-way";
         }
 
+        const marker = {
+          type: MarkerType.ArrowClosed,
+          color: edgeColor,
+          width: 16,
+          height: 16,
+        };
+
         return {
           id: e.id,
           source: e.source,
@@ -1128,25 +522,9 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
           targetHandle,
           type: "custom",
           data: { edgeType },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: EDGE.default,
-            width: 16,
-            height: 16,
-          },
-          markerStart:
-            edgeType === "bi-directional"
-              ? {
-                  type: MarkerType.ArrowClosed,
-                  color: EDGE.default,
-                  width: 16,
-                  height: 16,
-                }
-              : undefined,
-          style: {
-            stroke: EDGE.default,
-            strokeWidth: 2,
-          },
+          markerEnd: marker,
+          markerStart: edgeType === "bi-directional" ? marker : undefined,
+          style: { stroke: edgeColor, strokeWidth: 2 },
         };
       });
 
@@ -1160,12 +538,11 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
       }
       notify();
       // Any `statusRunId` we just loaded points at a run from a previous
-      // session — none of those are in our (empty) `activeRuns` map, so
-      // they're all orphans. Drop the linkage but keep status/error so the
-      // user still sees what happened (e.g. "Interrupted by app exit" from
-      // the Rust-side force-kill sweep). This prevents the global Cancel
-      // path from referencing dead runIds in any future user action.
-      clearOrphanRunIds();
+      // session — none of those are in the run loop's (empty) activeRuns
+      // map, so they're all orphans. Drop the linkage but keep status/error
+      // so the user still sees what happened (e.g. "Interrupted by app
+      // exit" from the Rust-side force-kill sweep).
+      runLoop.clearOrphanRunIds();
       // Surface any persisted error/waiting state to the dashboard's
       // red/yellow dot listeners.
       checkStatusTransition();
@@ -1225,11 +602,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    for (const t of fadeTimeouts.values()) {
-      clearTimeout(t);
-    }
-    fadeTimeouts.clear();
-    activeRuns.clear();
+    runLoop.dispose();
     listeners.clear();
     liveShowToast = null;
     pendingToasts.length = 0;

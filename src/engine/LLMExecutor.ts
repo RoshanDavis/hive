@@ -1,8 +1,8 @@
 import { api } from "@/services/api";
 import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
-import { getUpstreamNodeData } from "./utils";
-import { getChatMessages } from "./nodeData";
+import { getUpstreamNodeData, getUpstreamNodes } from "./utils";
+import { getChatMessages, getLastInput, setOutputEnvelope } from "./nodeData";
 import type { ChatMessage } from "@/nodes/types";
 
 export class LLMExecutor implements NodeExecutor {
@@ -42,23 +42,19 @@ export class LLMExecutor implements NodeExecutor {
     const poolType = isLocal ? "local" : "cloud";
 
     await concurrencyGovernor.enqueue(poolType, async () => {
-      // Find all upstream edges where LLM is target, OR where LLM is source but edge is bi-directional
-      const upstreamEdges = edges.filter(e => 
-        e.target === node.id || 
-        (e.source === node.id && e.data?.edgeType === "bi-directional")
-      );
-      const upstreamNodes = nodes.filter(n => 
-        upstreamEdges.some(e => e.source === n.id || e.target === n.id) && n.id !== node.id
-      );
-
-      // Filter to only allow upstream nodes that are in the active run path (visited Set)
-      const visitedNodes = upstreamNodes.filter(n => !visited || visited.has(n.id));
+      // Bi-directional: include neighbors on the reverse side of bi-dir edges
+      // too. Already filtered by `visited` so cross-run noise stays out.
+      const visitedNodes = getUpstreamNodes(node.id, edges, nodes, {
+        visited,
+        includeBiDirectional: true,
+      });
 
       let llmMessages: ChatMessage[] = [];
 
-      // Check if we are retrying and already have a saved lastInputMessages
-      if (node.data?.lastInputMessages && Array.isArray(node.data.lastInputMessages) && node.data.lastInputMessages.length > 0) {
-        llmMessages = [...(node.data.lastInputMessages as ChatMessage[])];
+      // Check if we are retrying and already have a saved lastInputMessages.
+      const cached = getLastInput<ChatMessage[]>(node.data, "lastInputMessages");
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        llmMessages = [...cached];
       } else {
         // 1. If an upstream Chat node exists on the active run path, load the full conversation log
         const chatNode = visitedNodes.find(n => n.type === "chat");
@@ -88,24 +84,28 @@ export class LLMExecutor implements NodeExecutor {
           }
         }
 
-        // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry
+        // Save resolved messages to node.data.lastInputMessages so we can reuse them on retry.
+        // Persist a clone — the request array below prepends the system prompt and would
+        // otherwise mutate the cached entry, causing duplicate system prompts on retries.
         updateNodeData(node.id, {
           ...node.data,
-          lastInputMessages: llmMessages
+          lastInputMessages: [...llmMessages]
         });
       }
 
-      // 3. Prepend system prompt if configured
-      if (systemPrompt.trim() !== "") {
-        llmMessages.unshift({ role: "system", content: systemPrompt });
-      }
+      // 3. Build the request array, prepending the system prompt if configured.
+      // Keeps llmMessages (and the saved lastInputMessages) untouched.
+      const requestMessages: ChatMessage[] =
+        systemPrompt.trim() !== ""
+          ? [{ role: "system", content: systemPrompt }, ...llmMessages]
+          : llmMessages;
 
       try {
         const response = await api.llmChat(
           provider,
           baseURL,
           modelName,
-          llmMessages,
+          requestMessages,
           temp,
           maxT,
           credentialId,
@@ -114,25 +114,20 @@ export class LLMExecutor implements NodeExecutor {
         );
 
         // 4. Create standard JSON envelope
-        const outputEnvelope: NodeOutputEnvelope = {
+        const envelope: NodeOutputEnvelope = {
           value: response,
           metadata: {
             model: modelName,
             provider,
             temperature: temp,
             maxTokens: maxT,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           },
-          data: {
-            reply: response
-          }
+          data: { reply: response },
         };
 
         // 5. Update the LLM node with the response and rich envelope
-        updateNodeData(node.id, {
-          ...node.data,
-          outputEnvelope
-        });
+        updateNodeData(node.id, setOutputEnvelope(node.data, envelope));
       } catch (err) {
         showToast(`LLM execution error: ${err}`, "error");
         throw err;

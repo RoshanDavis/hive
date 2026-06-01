@@ -1,85 +1,56 @@
 /**
- * Single source of truth for colors consumed in JS/TS — React Flow canvas
- * chrome, node identity, and plugin handle styles. These mirror the matching
- * CSS custom properties in src/App.css (--accent, --info, --node-*, surfaces).
+ * Thin functional facade over the active theme for non-React consumers.
  *
- * NOTE: these are plain JS strings handed to React Flow, so unlike the CSS
- * token layer they do NOT live-swap on a future runtime theme change — wiring
- * that up would mean reading the computed CSS variables at render time.
+ * **React components**: prefer `useTheme()` from `@/contexts/ThemeContext`
+ * so they re-render on theme switch.
+ *
+ * **Non-React callsites** (engine helpers, React Flow's `MiniMap.nodeColor`
+ * callback, edge style functions): use the functions here. They read from
+ * the module-level active theme in `@/theme`, which the ThemeContext keeps
+ * in sync — but they don't subscribe, so callers that need re-rendering
+ * must already be inside a component that subscribes via `useTheme()`.
+ *
+ * Note: there are no more hardcoded hex constants or per-node colors here.
+ * Per-node `meta.color` was removed; node-picker cards use the theme accent.
  */
 
-export const ACCENT = "#d4e600";
-export const DATABASE = "#38bdf8"; // storage / database edges + handles
+import { getActiveTheme } from "./index";
+import type { Theme } from "./types";
 
-/** Fallback for a node type with no declared color. */
-export const NODE_FALLBACK = "#888888";
-
-/** Node identity colors — mirror of the --node-* tokens in App.css. */
-export const NODE_COLORS = {
-  trigger: ACCENT,
-  notify: "#60a5fa",
-  ollama: "#a78bfa",
-  llm: "#a78bfa",
-  chat: "#34d399",
-  output: "#fb923c",
-} as const;
-
-/**
- * Category palette — used to derive a color for custom nodes from their
- * `meta.category` so users don't have to pick one. Built-in plugins still
- * declare `meta.color` directly to preserve their distinct identities.
- */
-export const CATEGORY_COLORS: Record<string, string> = {
-  input: "#34d399",      // emerald
-  processing: "#a78bfa", // violet
-  output: "#fb923c",     // amber
-  storage: DATABASE,     // sky
-  custom: NODE_FALLBACK, // neutral
-};
-
-export function getCategoryColor(category: string | undefined): string {
-  return CATEGORY_COLORS[category ?? "custom"] ?? NODE_FALLBACK;
+export function getEdges(): Theme["edges"] {
+  return getActiveTheme().edges;
 }
 
-/** React Flow MiniMap + background chrome. */
-export const CANVAS = {
-  backgroundDots: "#333333",
-  minimapMask: "rgba(0, 0, 0, 0.7)",
-  minimapBg: "#1a1a1a",
-  minimapBorder: "#2a2a2a",
-} as const;
+export function getCanvas(): Theme["canvas"] {
+  return getActiveTheme().canvas;
+}
 
-/** Edge stroke + selection glow. */
-export const EDGE = {
-  default: ACCENT,
-  database: DATABASE,
-  glowDefault: "drop-shadow(0 0 4px rgba(212, 230, 0, 0.6))",
-  glowDatabase: "drop-shadow(0 0 4px rgba(56, 189, 248, 0.65))",
-} as const;
+export function getAccent(): string {
+  return getActiveTheme().accents.primary;
+}
+
+export function getDatabaseColor(): string {
+  return getActiveTheme().edges.database;
+}
 
 /**
- * Per-status colors — mirror of the `--success` / `--warning` / `--error` /
- * `--info` tokens in `tokens.css`. Used by React Flow's MiniMap, which needs
- * plain JS strings rather than CSS custom properties.
+ * Map a node's `data.status` to its semantic color. Used by React Flow's
+ * MiniMap and any chart/badge that wants the same scheme as the in-canvas
+ * status border.
  */
-const STATUS_IDLE = "#52525b";
-const STATUS_SUCCESS = "#22c55e";
-const STATUS_WARNING = "#eab308";
-const STATUS_ERROR = "#ef4444";
-const STATUS_INFO = "#38bdf8";
-
 export function getStatusColor(status: unknown): string {
+  const s = getActiveTheme().status;
   switch (status) {
     case "executing":
     case "success":
-      return STATUS_SUCCESS;
+      return s.success;
     case "waiting":
-      return STATUS_WARNING;
+      return s.warning;
     case "pending":
-      return STATUS_INFO;
+      return s.info;
     case "error":
-      return STATUS_ERROR;
+      return s.error;
     default:
-      return STATUS_IDLE;
+      return s.idle;
   }
 }

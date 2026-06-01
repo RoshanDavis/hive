@@ -25,13 +25,15 @@ export interface NodePlugin {
   /** Unique node type identifier */
   type: string;
 
-  /** Display metadata */
+  /** Display metadata.
+   * Note: no per-type color. Node-picker cards / icons use the theme
+   * accent for their glow, so theme switching cascades automatically and
+   * adding a node type is just metadata + executor — no color decision. */
   meta: {
     label: string;
     icon: string;
     description: string;
     category: "input" | "processing" | "output" | "storage" | "custom";
-    color: string;
   };
 
   /** Default data applied when a new node of this type is created */
