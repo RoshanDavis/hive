@@ -6,6 +6,7 @@ import { getUpstreamNodeEnvelope } from "@/engine/utils";
 import DataConsole from "./shared/DataConsole";
 import DatabaseRecordFeed from "./shared/DatabaseRecordFeed";
 import CollapsibleSection from "./CollapsibleSection";
+import { actionButtonDangerClass } from "./actionButtonStyles";
 import { getChatMessages, getStorageRecords } from "@/engine/nodeData";
 
 // ─── Props ───────────────────────────────────────────────────
@@ -408,10 +409,10 @@ export default function ConnectionInspector({
           <button
             type="button"
             onClick={() => onDeleteEdge?.(selectedEdge.id)}
-            className="w-full bg-danger/10 hover:bg-danger/20 border border-danger/30 hover:border-danger/50 text-danger hover:text-danger-hover rounded-md py-2 text-xs font-semibold cursor-pointer transition-colors flex justify-center items-center gap-2"
+            className={actionButtonDangerClass}
           >
             <span>🗑️</span>
-            <span>Delete Connection</span>
+            <span>Delete connection</span>
           </button>
         </CollapsibleSection>
       </div>

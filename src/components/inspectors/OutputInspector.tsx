@@ -3,6 +3,7 @@ import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 import CollapsibleSection from "./CollapsibleSection";
 import InspectorActions from "./InspectorActions";
+import { actionButtonNeutralClass } from "./actionButtonStyles";
 
 export default function OutputInspector({
   node,
@@ -37,15 +38,18 @@ export default function OutputInspector({
 
       <InspectorActions onSaveAsCustom={onSaveAsCustom} onDeleteNode={onDeleteNode}>
         <button
-          className="w-full rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-danger hover:text-danger hover:bg-danger/10 hover:shadow-none"
+          type="button"
+          className={actionButtonNeutralClass}
           onClick={() =>
             onUpdate(node.id, {
               ...node.data,
               outputEnvelope: undefined,
             })
           }
+          disabled={!hasContent && !envelope}
+          title={!hasContent && !envelope ? "No output to clear" : undefined}
         >
-          Clear Output
+          <span>Clear output</span>
         </button>
       </InspectorActions>
     </div>

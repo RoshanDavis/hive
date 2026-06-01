@@ -1,6 +1,7 @@
 import type { InspectorProps } from "./types";
 import CollapsibleSection from "./CollapsibleSection";
 import InspectorActions from "./InspectorActions";
+import { actionButtonNeutralClass } from "./actionButtonStyles";
 
 interface JSONStorageRecord {
   id: string;
@@ -25,34 +26,7 @@ export default function JSONStorageInspector({
     });
   };
 
-  const handleExportCSV = () => {
-    if (records.length === 0) return;
-
-    // Construct CSV content
-    const headers = ["ID", "Timestamp", "Source", "Content"];
-    const rows = records.map(r => [
-      r.id,
-      r.timestamp,
-      r.source,
-      `"${r.content.replace(/"/g, '""')}"` // escape double quotes
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.join(","))
-    ].join("\n");
-
-    // Download triggers
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `${node.data?.label || "json_storage"}_export.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const canClear = records.length > 0 && !isRunning;
 
   return (
     <div className="flex flex-col gap-3">
@@ -102,26 +76,17 @@ export default function JSONStorageInspector({
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Data" icon="📊" defaultOpen={true}>
-        <div className="flex gap-2">
-          <button
-            className="flex-1 bg-card border border-border-subtle hover:bg-card-hover text-text-main rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleExportCSV}
-            disabled={records.length === 0}
-          >
-            📥 Export CSV
-          </button>
-          <button
-            className="flex-1 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-danger hover:text-danger hover:bg-danger/10 rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleClear}
-            disabled={records.length === 0 || isRunning}
-          >
-            🧹 Clear Data
-          </button>
-        </div>
-      </CollapsibleSection>
-
-      <InspectorActions onSaveAsCustom={onSaveAsCustom} onDeleteNode={onDeleteNode} />
+      <InspectorActions onSaveAsCustom={onSaveAsCustom} onDeleteNode={onDeleteNode}>
+        <button
+          type="button"
+          className={actionButtonNeutralClass}
+          onClick={handleClear}
+          disabled={!canClear}
+          title={records.length === 0 ? "No records to clear" : isRunning ? "Wait for the current run to finish" : undefined}
+        >
+          <span>Clear data</span>
+        </button>
+      </InspectorActions>
     </div>
   );
 }

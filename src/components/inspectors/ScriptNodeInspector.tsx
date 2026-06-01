@@ -4,6 +4,11 @@ import type { NodeOutputEnvelope } from "@/engine/types";
 import DataConsole from "./shared/DataConsole";
 import CollapsibleSection from "./CollapsibleSection";
 import InspectorActions from "./InspectorActions";
+import {
+  actionButtonNeutralClass,
+  actionButtonPrimaryActiveClass,
+  actionButtonPrimaryClass,
+} from "./actionButtonStyles";
 import { api } from "@/services/api";
 import { credentialService } from "@/services/credentialService";
 import { useCustomNodes } from "@/contexts/CustomNodesContext";
@@ -151,7 +156,7 @@ export default function ScriptNodeInspector({
           onClick={handleOpen}
           disabled={opening}
           title="Create script.js if missing, then open it in your default editor"
-          className="w-full bg-card hover:bg-card-hover border border-border-subtle hover:border-border-card text-text-main rounded-md py-2 text-xs font-semibold cursor-pointer transition-colors flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={actionButtonNeutralClass}
         >
           <span>📝</span>
           <span>{opening ? "Opening…" : "Open script in editor"}</span>
@@ -161,19 +166,18 @@ export default function ScriptNodeInspector({
           type="button"
           onClick={() => onRun && onRun(node.id)}
           disabled={isRunning}
-          className={`w-full border border-accent text-accent rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-            isRunning
-              ? "bg-accent text-primary shadow-[0_0_12px_rgba(212,230,0,0.3)]"
-              : "bg-card hover:bg-accent hover:text-primary hover:shadow-[0_0_12px_rgba(212,230,0,0.3)]"
-          }`}
+          className={isRunning ? actionButtonPrimaryActiveClass : actionButtonPrimaryClass}
         >
           {isRunning ? (
             <>
               <span className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              Running…
+              <span>Running…</span>
             </>
           ) : (
-            <>▶ Run from this node</>
+            <>
+              <span>▶</span>
+              <span>Run from this node</span>
+            </>
           )}
         </button>
 

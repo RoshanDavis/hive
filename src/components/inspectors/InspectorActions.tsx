@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 import CollapsibleSection from "./CollapsibleSection";
+import {
+  actionButtonDangerClass,
+  actionButtonNeutralClass,
+} from "./actionButtonStyles";
 
 interface InspectorActionsProps {
   /** Inspector-specific extras rendered above the standard buttons (e.g. Trigger's
@@ -31,10 +35,9 @@ export default function InspectorActions({
             type="button"
             onClick={onSaveAsCustom}
             title="Save this node's configuration as a reusable custom node"
-            className="w-full bg-card hover:bg-card-hover border border-border-subtle hover:border-border-card text-text-main rounded-md py-2 text-xs font-semibold cursor-pointer transition-colors flex justify-center items-center gap-2"
+            className={actionButtonNeutralClass}
           >
-            <span>＋</span>
-            <span>Save as custom</span>
+            <span>Save as custom node</span>
           </button>
         )}
         {onDeleteNode && (
@@ -42,7 +45,7 @@ export default function InspectorActions({
             type="button"
             onClick={onDeleteNode}
             title="Delete this node and its connections"
-            className="w-full bg-danger/10 hover:bg-danger/20 border border-danger/30 hover:border-danger/50 text-danger hover:text-danger-hover rounded-md py-2 text-xs font-semibold cursor-pointer transition-colors flex justify-center items-center gap-2"
+            className={actionButtonDangerClass}
           >
             <span>🗑️</span>
             <span>Delete node</span>
