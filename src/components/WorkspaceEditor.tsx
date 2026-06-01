@@ -60,7 +60,6 @@ const edgeTypes = {
 
 // ─── Inner component (needs ReactFlowProvider) ──────────────
 function WorkspaceEditorInner({
-  workspaceName: _workspaceName,
   workspacePath,
   backgroundExecution,
   onBack,
@@ -418,7 +417,6 @@ function WorkspaceEditorInner({
 
       {/* Right — Inspector Panel */}
       <InspectorPanel
-        workspaceName={_workspaceName}
         workspacePath={workspacePath}
         selectedNode={currentSelectedNode}
         onAddNode={handleAddNode}

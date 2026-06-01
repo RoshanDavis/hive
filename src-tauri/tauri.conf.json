@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "hive",
+        "title": "Hive",
         "width": 800,
         "height": 600,
         "dragDropEnabled": false

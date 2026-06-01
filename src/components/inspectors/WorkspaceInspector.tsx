@@ -4,7 +4,6 @@ import NodePaletteSection from "./NodePaletteSection";
 import WorkflowsSection from "./WorkflowsSection";
 
 interface WorkspaceInspectorProps {
-  workspaceName: string;
   nodes: Node[];
   runningStartNodeIds: Map<string, number>;
   onAddNode: (definition: NodeDefinition) => void;
@@ -17,7 +16,6 @@ interface WorkspaceInspectorProps {
 }
 
 export default function WorkspaceInspector({
-  workspaceName,
   nodes,
   runningStartNodeIds,
   onAddNode,
@@ -35,9 +33,6 @@ export default function WorkspaceInspector({
           <span>🐝</span>
           Workspace
         </h2>
-        <span className="text-[10px] uppercase tracking-widest font-bold text-accent bg-accent-glow self-start px-2 py-0.5 rounded-sm">
-          {workspaceName}
-        </span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">

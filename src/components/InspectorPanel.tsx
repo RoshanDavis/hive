@@ -12,7 +12,6 @@ import { isCustomType } from "@/types/customNodes";
 import { formLabelClass, formInputClass } from "@/components/shared/FormField";
 
 interface InspectorPanelProps {
-  workspaceName: string;
   workspacePath: string;
   selectedNode: Node | null;
   onAddNode: (definition: NodeDefinition) => void;
@@ -34,7 +33,6 @@ interface InspectorPanelProps {
 }
 
 export default function InspectorPanel({
-  workspaceName,
   workspacePath,
   selectedNode,
   onAddNode,
@@ -291,7 +289,6 @@ export default function InspectorPanel({
         />
       ) : (
         <WorkspaceInspector
-          workspaceName={workspaceName}
           nodes={nodes || []}
           runningStartNodeIds={runningStartNodeIds || new Map()}
           onAddNode={onAddNode}
