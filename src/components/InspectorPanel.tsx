@@ -162,7 +162,6 @@ export default function InspectorPanel({
           <div className="p-4 border-b border-border-subtle bg-card flex flex-col gap-1">
             <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2 min-w-0">
               {pluginRegistry.getIcon(selectedNode.type || '')}
-              {" "}
               <span className="truncate">
                 {pluginRegistry.get(selectedNode.type || '')?.meta.label || selectedNode.type}
               </span>

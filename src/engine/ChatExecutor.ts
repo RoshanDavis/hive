@@ -77,6 +77,21 @@ export class ChatExecutor implements NodeExecutor {
       const syncFromMergedRead = (): ChatMessage[] =>
         getMergedChatRecords(chatNode.id, nodes, edges).map(recordToChatMessage);
 
+      // A write reaches the merged-read view only when some storage target
+      // has BOTH a write-enabled and a read-enabled edge from this chat
+      // (i.e. the read sources and write sinks overlap at the node level).
+      // If they're disjoint — e.g. one read-only "source of truth" storage
+      // and one write-only "archive" storage — the message we just wrote
+      // lands in the archive but never appears in the merged view, so the
+      // chat would drop the user's own message. We detect that and append
+      // explicitly below.
+      const writeTargetIds = new Set(
+        storageEdges.filter((se) => se.hasWrite).map((se) => se.target.id)
+      );
+      const writeReachesReadSource = storageEdges.some(
+        (se) => se.hasRead && writeTargetIds.has(se.target.id)
+      );
+
       if (chatInput !== undefined && chatInput !== null) {
         // ─── Case A: User sent a message (Input Mode) ───
         fanOutWrite("User", chatInput);
@@ -84,6 +99,15 @@ export class ChatExecutor implements NodeExecutor {
         let updatedLocalMessages: ChatMessage[];
         if (anyReadEnabled) {
           updatedLocalMessages = syncFromMergedRead();
+          if (!writeReachesReadSource) {
+            // Writes went only to storages outside the read set (or no
+            // writes happened at all) — append so the chat still shows
+            // what the user just sent.
+            updatedLocalMessages = [
+              ...updatedLocalMessages,
+              { role: "user", content: chatInput, sender: "User" },
+            ];
+          }
         } else {
           updatedLocalMessages = [
             ...getChatMessages(chatNode.data),
@@ -162,6 +186,15 @@ export class ChatExecutor implements NodeExecutor {
         let updatedLocalMessages: ChatMessage[];
         if (anyReadEnabled) {
           updatedLocalMessages = syncFromMergedRead();
+          if (!writeReachesReadSource) {
+            // Same disjoint-storage edge case as Case A — the inbound
+            // message landed in a write-only sink that no read source
+            // observes, so append explicitly.
+            updatedLocalMessages = [
+              ...updatedLocalMessages,
+              { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel },
+            ];
+          }
         } else {
           updatedLocalMessages = [
             ...getChatMessages(chatNode.data),

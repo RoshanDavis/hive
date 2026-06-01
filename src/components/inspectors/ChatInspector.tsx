@@ -115,7 +115,7 @@ export default function ChatInspector({
               disabled={isThisChatRunning}
             />
             <button
-              className={`w-full border border-accent text-accent rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${isThisChatRunning ? "bg-accent text-primary shadow-[0_0_12px_rgba(212,230,0,0.3)]" : "bg-card hover:bg-accent hover:text-primary hover:shadow-[0_0_12px_rgba(212,230,0,0.3)]"}`}
+              className={`w-full border border-accent text-accent rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${isThisChatRunning ? "bg-accent text-primary shadow-[0_0_12px_var(--accent-glow)]" : "bg-card hover:bg-accent hover:text-primary hover:shadow-[0_0_12px_var(--accent-glow)]"}`}
               onClick={handleSend}
               disabled={!chatInput.trim() || isThisChatRunning}
             >

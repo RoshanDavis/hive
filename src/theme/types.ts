@@ -93,12 +93,6 @@ export interface ThemeControls {
 }
 
 /**
- * Semantic *content* colors — author-of-content tints used by the chat history
- * feed, the chat-toast variant, and the concurrency-pool badges. Distinct from
- * `status` (which is workflow execution state) and from the dropped per-node
- * identity colors.
- */
-/**
  * Drop-shadow elevations. Every named slot is a full CSS `box-shadow` value
  * (one or more layers) so a future light theme can swap the entire shadow —
  * not just its color — to match its visual weight. Depth + tint live together
@@ -129,6 +123,12 @@ export interface ThemeShadows {
   toastOuter: string;
 }
 
+/**
+ * Semantic *content* colors — author-of-content tints used by the chat history
+ * feed, the chat-toast variant, and the concurrency-pool badges. Distinct from
+ * `status` (which is workflow execution state) and from the dropped per-node
+ * identity colors.
+ */
 export interface ThemeContent {
   /** "User"-authored content: chat user messages, chat-variant toast. */
   user: string;

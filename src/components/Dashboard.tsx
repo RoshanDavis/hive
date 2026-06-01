@@ -103,7 +103,7 @@ function WorkspaceCard({
           className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${
             ws.background_execution
               ? "bg-success shadow-[0_0_6px_rgba(34,197,94,0.4)]"
-              : "bg-border-card group-hover/toggle:bg-border-subtle"
+              : "bg-card group-hover/toggle:bg-card-hover"
           }`}
         >
           <span

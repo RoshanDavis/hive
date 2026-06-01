@@ -10,7 +10,6 @@ export interface TriggerNodeData {
 export interface NotifyNodeData {
   label: string;
   message: string;
-  output: string;
   [key: string]: unknown;
 }
 

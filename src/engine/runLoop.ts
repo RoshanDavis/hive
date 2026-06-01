@@ -285,16 +285,21 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
               (n) => n.id === storageEdge.target && n.type === "jsonStorage"
             );
             if (storageIndex === -1) continue;
-            const mergedStorageData = {
-              ...currentNodes[storageIndex].data,
-              status: newStorageStatus,
-              statusRunId: newStorageRunId,
-            };
             currentNodes[storageIndex] = {
               ...currentNodes[storageIndex],
-              data: mergedStorageData,
+              data: {
+                ...currentNodes[storageIndex].data,
+                status: newStorageStatus,
+                statusRunId: newStorageRunId,
+              },
             };
-            updateNodeData(currentNodes[storageIndex].id, mergedStorageData);
+            // Live state gets the status delta only — same shape as
+            // applyStatus uses below — so a concurrent inspector edit
+            // to an unrelated field on the storage node isn't clobbered.
+            updateNodeData(currentNodes[storageIndex].id, {
+              status: newStorageStatus,
+              statusRunId: newStorageRunId,
+            });
           }
         }
       }
