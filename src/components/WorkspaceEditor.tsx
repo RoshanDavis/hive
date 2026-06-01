@@ -220,10 +220,13 @@ function WorkspaceEditorInner({
   // ─── Runner view (bound to session) ─────────────────────────
   const {
     runningStartNodeIds,
+    otherSpaceWorkflows,
     executeWorkflow,
     handleChatSend,
     retryWorkflow,
+    retryWorkflowInSpace,
     cancelWorkflow,
+    cancelWorkflowInSpace,
     clearAllStatuses,
   } = useWorkspaceRunner(session);
 
@@ -437,8 +440,12 @@ function WorkspaceEditorInner({
         onChatSend={handleChatSend}
         onRetryWorkflow={retryWorkflow}
         onCancelWorkflow={cancelWorkflow}
+        onRetryWorkflowInSpace={retryWorkflowInSpace}
+        onCancelWorkflowInSpace={cancelWorkflowInSpace}
         onClearAllStatuses={clearAllStatuses}
         runningStartNodeIds={runningStartNodeIds}
+        activeSpaceId={activeSpaceId}
+        otherSpaceWorkflows={otherSpaceWorkflows}
         nodes={nodes}
         edges={edges}
         onDragStartNode={handleDragStartNode}

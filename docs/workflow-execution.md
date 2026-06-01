@@ -1,30 +1,33 @@
 # Workflow Execution (the run loop)
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`, post-refactor pass, run loop extracted to `src/engine/runLoop.ts`). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since the verified commit, e.g. `git log --oneline 0b50083..HEAD -- src/engine/runLoop.ts src/engine/graphTraversal.ts src/contexts/runnerSession.ts`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-06-01** (commit `947e421`, post space-aware run-loop refactor). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since the verified commit, e.g. `git log --oneline 947e421..HEAD -- src/engine/runLoop.ts src/engine/graphTraversal.ts src/contexts/runnerSession.ts`.
 
-This is the most intricate code in the app. [src/engine/runLoop.ts](../src/engine/runLoop.ts) owns *when* nodes run, how their visual status changes, how a run pauses for chat input, and how runs are cancelled and retried. The run loop is a standalone module driven by a callback-based `RunLoopDeps` interface — the per-workspace [src/contexts/runnerSession.ts](../src/contexts/runnerSession.ts) wires it up with the session's `getNodes/getEdges/setNodes/updateNodeData/showToast` and a `adjustRunningStartCount` delta callback that bumps the snapshot-visible `runningStartNodeIds` map. *How a single node runs* is the engine's job — see [node-engine.md](node-engine.md).
+This is the most intricate code in the app. [src/engine/runLoop.ts](../src/engine/runLoop.ts) owns *when* nodes run, how their visual status changes, how a run pauses for chat input, and how runs are cancelled and retried. The run loop is a standalone module driven by a callback-based, **space-aware** `RunLoopDeps` interface — the per-workspace [src/contexts/runnerSession.ts](../src/contexts/runnerSession.ts) wires it up with `getNodes(spaceId)/getEdges(spaceId)/setNodes(spaceId, …)/updateNodeData(spaceId, …)/showToast` and an `adjustRunningStartCount(spaceId, startKey, delta)` callback that bumps the per-space `runningStartNodeIdsBySpace` map (the snapshot exposes the active-space slice). *How a single node runs* is the engine's job — see [node-engine.md](node-engine.md).
 
 ## Vocabulary
 
 - **Start nodes** — where a run begins. Either Trigger nodes (no executor) for a full run, or a single node for a Chat send / retry.
 - **`runId`** — `"<counter>-<timestamp>"`, unique per run. Stamped onto every node this run touches (`node.data.statusRunId`) so cleanup never clobbers a *different* run's borders. Multiple runs can be live at once.
 - **`startKey`** — `startNodeIds.join(",")`, identifies a workflow's start signature; used to track re-execution history across retries.
+- **`spaceId`** — the space the run was started in. Captured onto `RunControl.spaceId` at run start and threaded through every read/write so a fast space-switch by the user can't redirect an in-flight run. `executedNodeIdsMap` is keyed by `${spaceId}::${startKey}` so retry-cache history is scoped to the run's space.
 - **visited set** — node ids already executed in this run. Normally a node runs at most once; pause-capable nodes are the exception.
 - **status** — `executing` / `success` / `error` / `waiting` / `pending` / `undefined`, rendered as the node's border color.
 
 ## Entry points
 
-All three funnel into `runWorkflow(startNodeIds, chatInput?)`:
+All three funnel into `runWorkflow(spaceId, startNodeIds, chatInput?)`. The session captures `activeSpaceId` at call-time (before any await) and passes it through, so a switch right after the click can't redirect the run:
 
-- `executeWorkflow(triggerNodeId?)` — start from Trigger nodes (all of them, or one if given). A full fresh run.
-- `handleChatSend(nodeId, text)` — the user sent a chat message; start from that Chat node with `chatInput = text`.
-- `retryWorkflow(nodeId)` — re-run starting from a given node.
+- `executeWorkflow(spaceId, triggerNodeId?)` — start from Trigger nodes (all of them, or one if given). A full fresh run.
+- `handleChatSend(spaceId, nodeId, text)` — the user sent a chat message; start from that Chat node with `chatInput = text`.
+- `retryWorkflow(spaceId, nodeId)` — re-run starting from a given node.
+- `cancelWorkflow(spaceId, nodeId?)` / `clearAllStatuses(spaceId)` are space-scoped: a Stop click in space 2 never cancels a workflow running in space 1.
 
 ## The run loop, step by step
 
 ```
-runWorkflow(startNodeIds, chatInput?)
-  1. allocate runId; mark workflow "running" (startKey)
+runWorkflow(spaceId, startNodeIds, chatInput?)
+  1. allocate runId (RunControl.spaceId = spaceId); mark workflow "running"
+     (bump runningStartNodeIdsBySpace[spaceId][startKey])
   2. compute graph relationships (excluding storage edges):
        reachableDownstreamIds = getReachableNodeIds(startNodeIds, edges)
        ancestorIds            = getAncestorNodeIds(startNodeIds, edges)
@@ -96,7 +99,7 @@ When the loop ends (success or error), a `FADE_DELAY_MS` (1500 ms) timer clears 
 
 ## Cancellation
 
-`cancelWorkflow(nodeId?)` — with a `nodeId`, cancels just the run that owns that node; otherwise cancels every active run. Each run has a `RunControl { startKey, cancelled, inLoop }`:
+`cancelWorkflow(spaceId, nodeId?)` — scoped to one space. With a `nodeId`, cancels just the run that owns that node (within `spaceId`); otherwise cancels every active run in that space. Runs in other spaces are never touched. Each run has a `RunControl { spaceId, startKey, cancelled, inLoop }`:
 
 - Set `cancelled = true`. The loop checks `isCancelled(runId)` at each step and breaks.
 - If the loop already exited (it's in its fade window, `inLoop === false`), tear the run down immediately; otherwise the loop's `finally` block cleans up when it next sees the flag.
@@ -104,16 +107,16 @@ When the loop ends (success or error), a `FADE_DELAY_MS` (1500 ms) timer clears 
 
 ## Retry and re-execution history
 
-`executedNodeIdsMap` (held inside `runLoop.ts`, keyed by `startKey`) tracks which nodes have run. On a retry-from-a-node (not a Trigger start):
+`executedNodeIdsMap` (held inside `runLoop.ts`, keyed by `${spaceId}::${startKey}` so a startKey reused across two spaces keeps independent history) tracks which nodes have run. On a retry-from-a-node (not a Trigger start):
 
 - All reachable downstream nodes are removed from history so they re-execute freshly with the new signal.
 - Successful **ancestors** are *added* to history (and the visited set) so they are treated as already-done and reused rather than re-run.
 
-A Trigger start clears the history for that `startKey` entirely — a clean slate.
+A Trigger start clears the history for that `${spaceId}::${startKey}` entry entirely — a clean slate.
 
 ## Pause / resume worked example (Chat ↔ LLM, bi-directional)
 
-1. User types in Chat and sends → `handleChatSend(chatId, text)` → `runWorkflow([chatId], text)`.
+1. User types in Chat and sends → `handleChatSend(spaceId, chatId, text)` → `runWorkflow(spaceId, [chatId], text)`.
 2. Chat runs as the *starting* pause node (gets `chatInput`), writes the user message, and — having a bi-directional edge — is set to `pending`.
 3. BFS propagates to LLM. LLM reads the Chat history, calls the model, writes its reply.
 4. BFS propagates back to Chat (a bi-directional edge). Chat re-enters as a *receiver*. Because it already ran (`isVisited`), this is a **return path** → Chat goes `success`, the reply is appended, the cycle ends.

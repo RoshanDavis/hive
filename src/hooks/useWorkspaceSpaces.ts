@@ -67,10 +67,17 @@ export function useWorkspaceSpaces({
   const handleSwitchSpace = useCallback(
     async (newSpaceId: string) => {
       if (newSpaceId === activeSpaceId) return;
+      // Flush any pending writes for every dirty space (including a
+      // backgrounded one whose run loop is mid-stream). With per-space slots
+      // the session retains the previous space's state in memory, so this
+      // is purely a "make disk match RAM" step.
       await session.flushSave();
+      // Hydrate the new slot BEFORE flipping the active pointer so the
+      // canvas swap is atomic: no transient empty-canvas frame. Idempotent
+      // — a no-op if a workflow has already kept this slot warm in memory.
+      await session.loadSpaceData(newSpaceId);
       session.setActiveSpaceId(newSpaceId);
       setSelectedNode(null);
-      await session.loadSpaceData(newSpaceId);
       try {
         const config = await api.loadWorkspaceConfig(workspacePath);
         config.active_space = newSpaceId;
@@ -157,9 +164,14 @@ export function useWorkspaceSpaces({
         if (activeSpaceId === spaceId) {
           const nextSpace = updatedSpaces[0];
           if (nextSpace) {
+            // Pre-hydrate the next slot before flipping the active pointer
+            // so the canvas swap is atomic. Also drop the deleted space's
+            // in-memory state (and any active runs there) — its file is
+            // gone, so anything left in the session is garbage.
+            await session.loadSpaceData(nextSpace.id);
             session.setActiveSpaceId(nextSpace.id);
             setSelectedNode(null);
-            await session.loadSpaceData(nextSpace.id);
+            session.removeSpaceState(spaceId);
             try {
               const config = await api.loadWorkspaceConfig(workspacePath);
               config.active_space = nextSpace.id;
@@ -168,6 +180,9 @@ export function useWorkspaceSpaces({
               // Non-critical
             }
           }
+        } else {
+          // Deleting a non-active space: just drop its in-memory state.
+          session.removeSpaceState(spaceId);
         }
 
         showToast("Space deleted", "info");

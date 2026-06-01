@@ -282,9 +282,6 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-linear-to-r from-accent via-text-main to-text-secondary" id="dashboard-title">
               Hive
             </h1>
-            <p className="text-xs sm:text-sm text-text-secondary mt-2 max-w-md mx-auto leading-relaxed">
-              Design, orchestrate, and automate agentic LLM workflows locally
-            </p>
           </div>
 
           {/* Search */}
