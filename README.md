@@ -1,6 +1,6 @@
 # Hive
 
-A desktop app for building visual, node-based AI workflows. Wire together LLM calls, chat, storage, triggers, and your own custom nodes on a graph canvas — with API keys kept encrypted and off the renderer.
+A desktop app for building visual, node-based workflows. Wire together LLM calls, chat, storage, triggers, and your own custom nodes on a graph canvas — with API keys kept encrypted and off the renderer.
 
 Built with [Tauri 2](https://tauri.app/) (Rust backend) + React 19 + TypeScript, using [React Flow](https://reactflow.dev/) (`@xyflow/react`) for the canvas and Tailwind v4 for styling.
 

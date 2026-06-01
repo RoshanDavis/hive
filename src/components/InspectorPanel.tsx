@@ -5,6 +5,7 @@ import { pluginRegistry } from "@/engine/pluginRegistry";
 import { getConnectedComponent } from "@/engine/graphTraversal";
 import { ConnectionInspector, WorkspaceInspector } from "@/components/inspectors";
 import CollapsibleSection from "@/components/inspectors/CollapsibleSection";
+import { type SpaceWorkflowSummary } from "@/engine/workflowRows";
 import { storage } from "@/services/storage";
 import CustomNodeFormModal, {
   stripRuntimeFields,
@@ -21,8 +22,15 @@ interface InspectorPanelProps {
   onChatSend?: (nodeId: string, text: string) => void;
   onRetryWorkflow?: (nodeId: string) => void;
   onCancelWorkflow?: (nodeId?: string) => void;
+  /** Space-scoped variants used by the cross-space Workflows list. */
+  onRetryWorkflowInSpace?: (spaceId: string, nodeId: string) => void;
+  onCancelWorkflowInSpace?: (spaceId: string, nodeId?: string) => void;
   onClearAllStatuses: () => void;
   runningStartNodeIds?: Map<string, number>;
+  /** The active space id and the activity summaries for sibling spaces — fed
+   * to the Workflows section so it can list runs across every space. */
+  activeSpaceId?: string;
+  otherSpaceWorkflows?: SpaceWorkflowSummary[];
   nodes?: Node[];
   edges?: Edge[];
   onDragStartNode?: (type: string) => void;
@@ -43,8 +51,12 @@ export default function InspectorPanel({
   onChatSend,
   onRetryWorkflow,
   onCancelWorkflow,
+  onRetryWorkflowInSpace,
+  onCancelWorkflowInSpace,
   onClearAllStatuses,
   runningStartNodeIds,
+  activeSpaceId,
+  otherSpaceWorkflows,
   nodes,
   edges,
   onDragStartNode,
@@ -320,12 +332,18 @@ export default function InspectorPanel({
         <WorkspaceInspector
           nodes={nodes || []}
           runningStartNodeIds={runningStartNodeIds || new Map()}
+          activeSpaceId={activeSpaceId || ""}
+          otherSpaceWorkflows={otherSpaceWorkflows || []}
           onAddNode={onAddNode}
           onDragStartNode={onDragStartNode}
           onDragEndNode={onDragEndNode}
           onCreateCustom={() => setShowCreateCustom(true)}
-          onRetryWorkflow={(id) => onRetryWorkflow?.(id)}
-          onCancelWorkflow={(id) => onCancelWorkflow?.(id)}
+          onRetryWorkflowInSpace={(spaceId, id) =>
+            onRetryWorkflowInSpace?.(spaceId, id)
+          }
+          onCancelWorkflowInSpace={(spaceId, id) =>
+            onCancelWorkflowInSpace?.(spaceId, id)
+          }
           onClearAllStatuses={onClearAllStatuses}
         />
       )}

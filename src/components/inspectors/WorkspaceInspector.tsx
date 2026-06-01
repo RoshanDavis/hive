@@ -1,29 +1,34 @@
 import type { Node } from "@xyflow/react";
 import { type NodeDefinition } from "@/nodes/types";
+import { type SpaceWorkflowSummary } from "@/engine/workflowRows";
 import NodePaletteSection from "./NodePaletteSection";
 import WorkflowsSection from "./WorkflowsSection";
 
 interface WorkspaceInspectorProps {
   nodes: Node[];
   runningStartNodeIds: Map<string, number>;
+  activeSpaceId: string;
+  otherSpaceWorkflows: SpaceWorkflowSummary[];
   onAddNode: (definition: NodeDefinition) => void;
   onDragStartNode?: (type: string) => void;
   onDragEndNode?: () => void;
   onCreateCustom?: () => void;
-  onRetryWorkflow: (nodeId: string) => void;
-  onCancelWorkflow: (nodeId?: string) => void;
+  onRetryWorkflowInSpace: (spaceId: string, nodeId: string) => void;
+  onCancelWorkflowInSpace: (spaceId: string, nodeId?: string) => void;
   onClearAllStatuses: () => void;
 }
 
 export default function WorkspaceInspector({
   nodes,
   runningStartNodeIds,
+  activeSpaceId,
+  otherSpaceWorkflows,
   onAddNode,
   onDragStartNode,
   onDragEndNode,
   onCreateCustom,
-  onRetryWorkflow,
-  onCancelWorkflow,
+  onRetryWorkflowInSpace,
+  onCancelWorkflowInSpace,
   onClearAllStatuses,
 }: WorkspaceInspectorProps) {
   return (
@@ -39,8 +44,10 @@ export default function WorkspaceInspector({
         <WorkflowsSection
           nodes={nodes}
           runningStartNodeIds={runningStartNodeIds}
-          onRetryWorkflow={onRetryWorkflow}
-          onCancelWorkflow={onCancelWorkflow}
+          activeSpaceId={activeSpaceId}
+          otherSpaceWorkflows={otherSpaceWorkflows}
+          onRetryWorkflowInSpace={onRetryWorkflowInSpace}
+          onCancelWorkflowInSpace={onCancelWorkflowInSpace}
           onClearAllStatuses={onClearAllStatuses}
         />
         <NodePaletteSection

@@ -8,6 +8,12 @@
  * itself on the last detach (matching today's behavior). Step 6 of the
  * background-execution feature flips this so a session with `backgroundExecution`
  * on and active runs is retained instead of disposed.
+ *
+ * State is keyed by `spaceId`, not flattened to a single canvas. The snapshot
+ * exposes only the active space's slice so the editor view is unchanged, but
+ * a workflow can keep running in space 1 while the user is viewing space 2 —
+ * its writes route to space 1's slot via the run loop's space-aware deps,
+ * and space 1's auto-save fires independently of which space is foregrounded.
  */
 
 import {
@@ -25,6 +31,10 @@ import { createRunLoop } from "@/engine/runLoop";
 import { getConnectionBehavior } from "@/engine/connectivity";
 import { getEdges } from "@/theme/colors";
 import {
+  buildWorkflowRows,
+  type SpaceWorkflowSummary,
+} from "@/engine/workflowRows";
+import {
   type SpaceEntry,
   type SpaceData,
   type ShowToastFunc,
@@ -35,6 +45,10 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
 /** Cap the queued-toast buffer so a long-running background workspace can't
  * accumulate hundreds of stale toasts before the user re-opens it. */
 const PENDING_TOAST_LIMIT = 20;
+
+/** Default space-id used by tests that drive the session via `setNodes`/
+ * `setEdges` before `init()` has chosen one. Mirrors the Rust default. */
+const FALLBACK_SPACE_ID = "space_1";
 
 interface PendingToast {
   message: string;
@@ -47,15 +61,38 @@ export interface Viewport {
   zoom: number;
 }
 
-export interface RunnerSessionSnapshot {
+interface SpaceState {
   nodes: Node[];
   edges: Edge[];
+  viewport: Viewport;
+  /** Per-space debounced save timer. Each space dirties independently so a
+   * write into space 1 (e.g. from a background run loop) flushes to its own
+   * file even when the user is viewing space 2. */
+  saveTimer: ReturnType<typeof setTimeout> | null;
+  /** Has at least one mutation landed against this slot since `init`/load?
+   * Guards `flushSave` from writing an empty buffer for a never-loaded space. */
+  dirty: boolean;
+}
+
+export interface RunnerSessionSnapshot {
+  /** Nodes for the active space only. Empty array if no space is active. */
+  nodes: Node[];
+  /** Edges for the active space only. */
+  edges: Edge[];
+  /** Viewport for the active space only. */
   viewport: Viewport;
   spaces: SpaceEntry[];
   activeSpaceId: string;
   editingSpaceId: string | null;
   isLoading: boolean;
+  /** Running start-node-id counts for the active space only. */
   runningStartNodeIds: Map<string, number>;
+  /** Workflow activity (running / waiting / errored) for every space OTHER
+   * than the active one that currently has activity. Spaces are purely
+   * organizational, so the Workflows inspector lists these alongside the
+   * active space's own runs — a workflow started in space 1 stays visible
+   * (and controllable) from space 2. Empty when no sibling space is busy. */
+  otherSpaceWorkflows: SpaceWorkflowSummary[];
   backgroundExecution: boolean;
 }
 
@@ -66,7 +103,7 @@ export interface RunnerSession {
   getSnapshot(): RunnerSessionSnapshot;
   subscribe(listener: () => void): () => void;
 
-  // ─── Canvas mutators ────────────────────────────────────────
+  // ─── Canvas mutators (target the active space) ─────────────
   setNodes(updater: Node[] | ((prev: Node[]) => Node[])): void;
   setEdges(updater: Edge[] | ((prev: Edge[]) => Edge[])): void;
   applyNodeChanges(changes: NodeChange[]): void;
@@ -100,29 +137,45 @@ export interface RunnerSession {
    * branch on the return value. The boolean is preserved only to avoid a
    * silent API change for any out-of-tree caller. */
   detach(): boolean;
-  /** Flush any pending auto-save immediately (used by detach + close). */
+  /** Flush any pending auto-save immediately for every dirty space (used by
+   * detach + close). */
   flushSave(): Promise<void>;
   dispose(): void;
+  /** True if any run is active across *any* space. Dashboard-facing. */
   hasActiveRuns(): boolean;
-  /** True if any currently-loaded node has `status: "error"`. */
+  /** True if any currently-loaded node (across every loaded space) has
+   * `status: "error"`. */
   hasErrorNodes(): boolean;
-  /** True if any currently-loaded node has `status: "waiting"` (chat pause). */
+  /** True if any currently-loaded node (across every loaded space) has
+   * `status: "waiting"` (chat pause). */
   hasWaitingNodes(): boolean;
 
   // ─── Runner ────────────────────────────────────────────────
+  // The plain `executeWorkflow`/`retryWorkflow`/`cancelWorkflow` operate on
+  // the active space. The `*InSpace` variants target an explicit space, used
+  // by the Workflows inspector to control a sibling space's run without
+  // forcing the user to switch to it first.
   executeWorkflow(triggerNodeId?: string): Promise<void>;
   handleChatSend(nodeId: string, text: string): Promise<void>;
   retryWorkflow(nodeId: string): Promise<void>;
+  retryWorkflowInSpace(spaceId: string, nodeId: string): Promise<void>;
   cancelWorkflow(nodeId?: string): void;
-  /** End every active workflow AND wipe `status`/`statusRunId`/`error` on
-   * every node in the active space. Single atomic reset — runs are cancelled
-   * first so their executors stop re-applying status, then the node sweep
-   * removes both their borders and any stuck borders from earlier runs.
-   * Surfaced as the "Clear all" button in the Workflows section. */
+  cancelWorkflowInSpace(spaceId: string, nodeId?: string): void;
+  /** End every active workflow in the **active space** AND wipe
+   * `status`/`statusRunId`/`error` on every node in that space. Workflows
+   * running in other spaces (background) are not affected. */
   clearAllStatuses(): void;
 
   // ─── Space data loader (called by useWorkspaceSpaces) ──────
-  loadSpaceData(spaceId: string): Promise<void>;
+  /** Load a space's data from disk into the per-space cache. Idempotent: if
+   * the space is already in memory (e.g. because a workflow is running in
+   * it) the cached state is preserved and disk is NOT re-read. The optional
+   * `force` flag overrides this for explicit refresh paths. */
+  loadSpaceData(spaceId: string, opts?: { force?: boolean }): Promise<void>;
+  /** Cancel any active runs in the given space, drop its in-memory slot,
+   * and discard any pending save. Called by `handleDeleteSpace` after the
+   * disk file has been removed. */
+  removeSpaceState(spaceId: string): void;
 }
 
 interface CreateSessionOptions {
@@ -144,14 +197,17 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   const { workspacePath, onActiveRunsChange, onAfterSave, onSelfDispose } = opts;
 
   // ─── Canonical state (held in plain closures, not React state) ─────
-  let nodes: Node[] = [];
-  let edges: Edge[] = [];
-  let viewport: Viewport = { x: 0, y: 0, zoom: 1 };
+  // Per-space slots — switching the active space just flips the pointer, so
+  // an in-flight workflow keeps writing into its own slot.
+  const spaceStates: Map<string, SpaceState> = new Map();
   let spaces: SpaceEntry[] = [];
   let activeSpaceId: string = "";
   let editingSpaceId: string | null = null;
   let isLoading: boolean = true;
-  let runningStartNodeIds: Map<string, number> = new Map();
+  // Per-space running start-node-id counts: `Map<spaceId, Map<startKey, count>>`.
+  // The snapshot exposes only the active space's inner map; `hasActiveRuns()`
+  // unions across every space for the dashboard.
+  const runningStartNodeIdsBySpace: Map<string, Map<string, number>> = new Map();
   let backgroundExecution: boolean = opts.backgroundExecution;
 
   // Live toast sink (set by the editor on attach) and the queue used while
@@ -191,18 +247,92 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   let snapshot: RunnerSessionSnapshot = makeSnapshot();
   let disposed = false;
 
+  // ─── Per-space state helpers ──────────────────────────────────────
+  function getOrCreateSpaceState(spaceId: string): SpaceState {
+    let s = spaceStates.get(spaceId);
+    if (!s) {
+      s = {
+        nodes: [],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        saveTimer: null,
+        dirty: false,
+      };
+      spaceStates.set(spaceId, s);
+    }
+    return s;
+  }
+
+  /** The "current" slot canvas mutators target. `init()` sets `activeSpaceId`
+   * from disk; tests (and any caller that drives the session before `init`)
+   * may write before any active space is chosen, so this lazily promotes the
+   * fallback to be the active id. Production code never hits the empty
+   * branch because `init()` always assigns first. */
+  function resolveActiveSpaceId(): string {
+    if (!activeSpaceId) activeSpaceId = FALLBACK_SPACE_ID;
+    return activeSpaceId;
+  }
+
+  function getActiveState(): SpaceState {
+    return getOrCreateSpaceState(resolveActiveSpaceId());
+  }
+
   function makeSnapshot(): RunnerSessionSnapshot {
+    // Use the raw active id (not resolveActiveSpaceId) so we don't
+    // side-effect during a snapshot read. If a write has already happened
+    // it will have promoted activeSpaceId to FALLBACK_SPACE_ID, so the
+    // slot lookup still matches what setNodes wrote into.
+    const id = activeSpaceId;
+    const active = id ? spaceStates.get(id) : undefined;
+    const runningForActive =
+      (id && runningStartNodeIdsBySpace.get(id)) || new Map<string, number>();
     return {
-      nodes,
-      edges,
-      viewport,
+      nodes: active?.nodes ?? [],
+      edges: active?.edges ?? [],
+      viewport: active?.viewport ?? { x: 0, y: 0, zoom: 1 },
       spaces,
       activeSpaceId,
       editingSpaceId,
       isLoading,
-      runningStartNodeIds,
+      runningStartNodeIds: runningForActive,
+      otherSpaceWorkflows: buildOtherSpaceWorkflows(),
       backgroundExecution,
     };
+  }
+
+  /** Build the cross-space workflow summary for every space EXCEPT the active
+   * one that currently has running/waiting/errored activity. Cheap — only
+   * runs on `notify()`, and skips clean spaces entirely. */
+  function buildOtherSpaceWorkflows(): SpaceWorkflowSummary[] {
+    const out: SpaceWorkflowSummary[] = [];
+    for (const [spaceId, st] of spaceStates) {
+      if (spaceId === activeSpaceId) continue;
+      const running =
+        runningStartNodeIdsBySpace.get(spaceId) ?? new Map<string, number>();
+      const rows = buildWorkflowRows(st.nodes, running);
+      if (
+        rows.activeRuns.length === 0 &&
+        rows.waitingNodes.length === 0 &&
+        rows.erroredNodes.length === 0
+      ) {
+        continue;
+      }
+      out.push({
+        spaceId,
+        spaceLabel: spaces.find((s) => s.id === spaceId)?.label || spaceId,
+        activeRuns: rows.activeRuns,
+        waitingNodes: rows.waitingNodes,
+        erroredNodes: rows.erroredNodes,
+      });
+    }
+    // Stable order by the space's configured order so the list doesn't
+    // jump around as background runs come and go.
+    out.sort((a, b) => {
+      const ao = spaces.find((s) => s.id === a.spaceId)?.order ?? 0;
+      const bo = spaces.find((s) => s.id === b.spaceId)?.order ?? 0;
+      return ao - bo;
+    });
+    return out;
   }
 
   function notify() {
@@ -215,28 +345,38 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   // ─── Run-state bookkeeping ─────────────────────────────────────────
   // The run loop itself (BFS traversal, status transitions, retry/cancel
   // controls, fade timers) lives in `src/engine/runLoop.ts`. The session
-  // observes activity through the snapshot-visible `runningStartNodeIds`
+  // observes activity through the per-space `runningStartNodeIdsBySpace`
   // map, which the loop bumps via `adjustRunningStartCount`.
 
   function hasActiveRuns(): boolean {
-    return runningStartNodeIds.size > 0;
+    for (const map of runningStartNodeIdsBySpace.values()) {
+      if (map.size > 0) return true;
+    }
+    return false;
   }
 
   function hasErrorNodes(): boolean {
-    return nodes.some((n) => n.data?.status === "error");
+    for (const s of spaceStates.values()) {
+      if (s.nodes.some((n) => n.data?.status === "error")) return true;
+    }
+    return false;
   }
 
   function hasWaitingNodes(): boolean {
-    return nodes.some((n) => n.data?.status === "waiting");
+    for (const s of spaceStates.values()) {
+      if (s.nodes.some((n) => n.data?.status === "waiting")) return true;
+    }
+    return false;
   }
 
   function notifyActiveRunsChange() {
     onActiveRunsChange?.();
   }
 
-  // Track error- and waiting-count transitions so the dashboard's red/yellow
-  // dot listeners fire when state first appears or is cleared. Reuses the
-  // active-runs callback — listeners re-read all three via context getters.
+  // Track error- and waiting-presence transitions so the dashboard's
+  // red/yellow dot listeners fire when state first appears or is cleared.
+  // Reuses the active-runs callback — listeners re-read all three via
+  // context getters.
   let hadErrors = false;
   let hadWaiting = false;
   function checkStatusTransition(): void {
@@ -249,32 +389,38 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     }
   }
 
-  // ─── Auto-save ────────────────────────────────────────────────────
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  // ─── Auto-save (per-space) ────────────────────────────────────────
+  // Initial-load gate: until `init()` resolves, every load/edit is silent.
+  // Each space's first scheduled save flips its `dirty` bit; on dispose we
+  // flush every dirty space.
   let isInitialLoad = true;
 
-  function scheduleSave() {
+  function scheduleSaveForSpace(spaceId: string) {
     if (isInitialLoad || disposed) return;
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      saveTimer = null;
-      void saveCurrentSpace();
+    const s = getOrCreateSpaceState(spaceId);
+    s.dirty = true;
+    if (s.saveTimer) clearTimeout(s.saveTimer);
+    s.saveTimer = setTimeout(() => {
+      s.saveTimer = null;
+      void saveSpace(spaceId);
     }, AUTOSAVE_DEBOUNCE_MS);
   }
 
-  async function saveCurrentSpace(): Promise<void> {
-    if (!activeSpaceId || isInitialLoad) return;
-    const currentLabel = spaces.find((s) => s.id === activeSpaceId)?.label || activeSpaceId;
+  async function saveSpace(spaceId: string): Promise<void> {
+    if (!spaceId || isInitialLoad) return;
+    const state = spaceStates.get(spaceId);
+    if (!state) return;
+    const label = spaces.find((s) => s.id === spaceId)?.label || spaceId;
     const spaceData: SpaceData = {
-      id: activeSpaceId,
-      label: currentLabel,
-      nodes: nodes.map((n) => ({
+      id: spaceId,
+      label,
+      nodes: state.nodes.map((n) => ({
         id: n.id,
         type: n.type || "unknown",
         position: n.position,
         data: n.data as Record<string, unknown>,
       })),
-      edges: edges.map((e) => ({
+      edges: state.edges.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
@@ -282,7 +428,7 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
         target_handle: e.targetHandle || undefined,
         edge_type: (e.data?.edgeType as string) || undefined,
       })),
-      viewport,
+      viewport: state.viewport,
     };
     try {
       await api.saveSpace(workspacePath, spaceData);
@@ -296,59 +442,95 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   }
 
   async function flushSave(): Promise<void> {
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
+    const toFlush: string[] = [];
+    for (const [spaceId, s] of spaceStates) {
+      if (s.saveTimer) {
+        clearTimeout(s.saveTimer);
+        s.saveTimer = null;
+      }
+      if (s.dirty) toFlush.push(spaceId);
     }
-    await saveCurrentSpace();
+    await Promise.all(toFlush.map((id) => saveSpace(id)));
   }
 
   // ─── State mutators (notify + schedule save) ──────────────────────
-  function setNodes(updater: Node[] | ((prev: Node[]) => Node[])): void {
-    nodes = typeof updater === "function" ? (updater as (p: Node[]) => Node[])(nodes) : updater;
+  function setNodesForSpace(
+    spaceId: string,
+    updater: Node[] | ((prev: Node[]) => Node[])
+  ): void {
+    const s = getOrCreateSpaceState(spaceId);
+    s.nodes =
+      typeof updater === "function" ? (updater as (p: Node[]) => Node[])(s.nodes) : updater;
+    // Always notify — even for a background space. A run loop ticking in a
+    // non-active space changes its node statuses, and the Workflows inspector
+    // surfaces those (waiting/errored rows) for every space. The active
+    // space's node/edge array refs are unchanged by a background write, so
+    // ReactFlow itself bails out of re-rendering; only the lightweight
+    // inspector tree re-derives from the new snapshot.
     notify();
-    scheduleSave();
+    scheduleSaveForSpace(spaceId);
     checkStatusTransition();
   }
 
-  function setEdges(updater: Edge[] | ((prev: Edge[]) => Edge[])): void {
-    edges = typeof updater === "function" ? (updater as (p: Edge[]) => Edge[])(edges) : updater;
+  function setEdgesForSpace(
+    spaceId: string,
+    updater: Edge[] | ((prev: Edge[]) => Edge[])
+  ): void {
+    const s = getOrCreateSpaceState(spaceId);
+    s.edges =
+      typeof updater === "function" ? (updater as (p: Edge[]) => Edge[])(s.edges) : updater;
     notify();
-    scheduleSave();
+    scheduleSaveForSpace(spaceId);
+  }
+
+  function updateNodeDataForSpace(
+    spaceId: string,
+    nodeId: string,
+    data: Record<string, unknown>
+  ): void {
+    setNodesForSpace(spaceId, (nds) =>
+      nds.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
+      )
+    );
+  }
+
+  function setNodes(updater: Node[] | ((prev: Node[]) => Node[])): void {
+    setNodesForSpace(resolveActiveSpaceId(), updater);
+  }
+
+  function setEdges(updater: Edge[] | ((prev: Edge[]) => Edge[])): void {
+    setEdgesForSpace(resolveActiveSpaceId(), updater);
   }
 
   function applyNodeChangesInternal(changes: NodeChange[]): void {
-    nodes = applyNodeChanges(changes, nodes);
+    const s = getActiveState();
+    s.nodes = applyNodeChanges(changes, s.nodes);
     notify();
-    scheduleSave();
+    scheduleSaveForSpace(resolveActiveSpaceId());
     checkStatusTransition();
   }
 
   function applyEdgeChangesInternal(changes: EdgeChange[]): void {
-    edges = applyEdgeChanges(changes, edges);
+    const s = getActiveState();
+    s.edges = applyEdgeChanges(changes, s.edges);
     notify();
-    scheduleSave();
+    scheduleSaveForSpace(resolveActiveSpaceId());
   }
 
   function setViewport(v: Viewport): void {
-    viewport = v;
+    const s = getActiveState();
+    s.viewport = v;
     // Viewport changes shouldn't bump the listener set (they don't affect
     // node/edge rendering) but they do dirty the persistence layer.
-    scheduleSave();
+    scheduleSaveForSpace(resolveActiveSpaceId());
   }
 
   function updateNodeData(nodeId: string, data: Record<string, unknown>): void {
     // Shallow-merge the incoming fields onto the LATEST live node.data so
     // partial updates (e.g. just `{ status, statusRunId }` from the run
-    // loop) don't clobber concurrent user edits to unrelated fields. Callers
-    // that still want to pass a full snapshot (executors, inspector edits)
-    // continue to behave as before, since every field in the snapshot just
-    // overlays onto whatever's current.
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
-      )
-    );
+    // loop) don't clobber concurrent user edits to unrelated fields.
+    updateNodeDataForSpace(resolveActiveSpaceId(), nodeId, data);
   }
 
   function setSpaces(updater: SpaceEntry[] | ((prev: SpaceEntry[]) => SpaceEntry[])): void {
@@ -377,13 +559,33 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   }
 
   // ─── Run state ────────────────────────────────────────────────────
-  function updateRunningStartNodeIds(
-    updater: (prev: Map<string, number>) => Map<string, number>
+  function adjustRunningStartCount(
+    spaceId: string,
+    startKey: string,
+    delta: number
   ): void {
-    const wasActive = runningStartNodeIds.size > 0;
-    runningStartNodeIds = updater(runningStartNodeIds);
+    const wasActive = hasActiveRuns();
+    let inner = runningStartNodeIdsBySpace.get(spaceId);
+    if (!inner) {
+      inner = new Map<string, number>();
+      runningStartNodeIdsBySpace.set(spaceId, inner);
+    }
+    // Replace the inner map with a fresh instance so consumers using `===`
+    // identity (e.g. memoized selectors) see a change.
+    const next = new Map(inner);
+    const count = (next.get(startKey) ?? 0) + delta;
+    if (count > 0) next.set(startKey, count);
+    else next.delete(startKey);
+    if (next.size === 0) {
+      runningStartNodeIdsBySpace.delete(spaceId);
+    } else {
+      runningStartNodeIdsBySpace.set(spaceId, next);
+    }
+    // Always notify so a run starting/ending in a background space updates
+    // the Workflows inspector's cross-space "Running" list, not just the
+    // active space's view.
     notify();
-    const isActive = runningStartNodeIds.size > 0;
+    const isActive = hasActiveRuns();
     if (wasActive !== isActive) {
       notifyActiveRunsChange();
       // Post-run cleanup: if runs just hit zero AND no editor is attached AND
@@ -405,49 +607,53 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     }
   }
 
-  // The run loop is created below, after `setNodes` / `updateNodeData` / the
-  // running-start-id delta callback are all defined. See the `runLoop` const.
-
-  // ─── Run loop (now lives in src/engine/runLoop.ts) ────────────────
-  // The session forwards execute/cancel/retry/clearAll into the loop. The
-  // loop pushes deltas into `runningStartNodeIds` via the callback below, so
-  // snapshot subscribers continue to see active-run transitions.
+  // ─── Run loop (lives in src/engine/runLoop.ts) ────────────────────
+  // The loop is now space-aware: every public method takes a `spaceId` so
+  // an in-flight run's writes route to the right slot even when the user
+  // has switched the foreground space.
   const runLoop = createRunLoop({
     workspacePath,
-    getNodes: () => nodes,
-    getEdges: () => edges,
-    setNodes,
-    updateNodeData,
+    getNodes: (spaceId: string) => getOrCreateSpaceState(spaceId).nodes,
+    getEdges: (spaceId: string) => getOrCreateSpaceState(spaceId).edges,
+    setNodes: setNodesForSpace,
+    updateNodeData: updateNodeDataForSpace,
     showToast,
-    adjustRunningStartCount: (startKey: string, delta: number) => {
-      updateRunningStartNodeIds((prev) => {
-        const next = new Map(prev);
-        const count = (next.get(startKey) ?? 0) + delta;
-        if (count > 0) next.set(startKey, count);
-        else next.delete(startKey);
-        return next;
-      });
-    },
+    adjustRunningStartCount,
   });
 
+  /** Capture the active spaceId at call-time, before any await, so a fast
+   * space switch by the user can't redirect this run to a different slot. */
   async function executeWorkflow(triggerNodeId?: string): Promise<void> {
-    await runLoop.executeWorkflow(triggerNodeId);
+    const spaceId = resolveActiveSpaceId();
+    await runLoop.executeWorkflow(spaceId, triggerNodeId);
   }
 
   async function handleChatSend(nodeId: string, text: string): Promise<void> {
-    await runLoop.handleChatSend(nodeId, text);
+    const spaceId = resolveActiveSpaceId();
+    await runLoop.handleChatSend(spaceId, nodeId, text);
   }
 
   async function retryWorkflow(nodeId: string): Promise<void> {
-    await runLoop.retryWorkflow(nodeId);
+    const spaceId = resolveActiveSpaceId();
+    await runLoop.retryWorkflow(spaceId, nodeId);
+  }
+
+  async function retryWorkflowInSpace(spaceId: string, nodeId: string): Promise<void> {
+    await runLoop.retryWorkflow(spaceId, nodeId);
   }
 
   function cancelWorkflow(nodeId?: string): void {
-    runLoop.cancelWorkflow(nodeId);
+    const spaceId = resolveActiveSpaceId();
+    runLoop.cancelWorkflow(spaceId, nodeId);
+  }
+
+  function cancelWorkflowInSpace(spaceId: string, nodeId?: string): void {
+    runLoop.cancelWorkflow(spaceId, nodeId);
   }
 
   function clearAllStatuses(): void {
-    runLoop.clearAllStatuses();
+    const spaceId = resolveActiveSpaceId();
+    runLoop.clearAllStatuses(spaceId);
   }
 
   // ─── Initial load (called once by the context when session is first created) ─
@@ -471,8 +677,24 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   }
 
   /** Public helper used by space-switch flows. Exposed via the session so the
-   * UI hooks don't need to know about the wire format. */
-  async function loadSpaceData(spaceId: string): Promise<void> {
+   * UI hooks don't need to know about the wire format. Idempotent on the
+   * in-memory cache: if the slot already exists (e.g. because a workflow
+   * has been running in it while the user was viewing another space), the
+   * cached state is preserved and disk is NOT re-read. */
+  async function loadSpaceData(
+    spaceId: string,
+    opts: { force?: boolean } = {}
+  ): Promise<void> {
+    const existing = spaceStates.get(spaceId);
+    if (existing && !opts.force) {
+      // Already in memory — re-publish a snapshot so the active-view swap
+      // shows whatever state the run loop has accumulated, then surface
+      // any persisted error/waiting state to the dashboard listeners.
+      if (spaceId === activeSpaceId) notify();
+      runLoop.clearOrphanRunIds(spaceId);
+      checkStatusTransition();
+      return;
+    }
     try {
       const data = await api.loadSpace(workspacePath, spaceId);
 
@@ -528,21 +750,24 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
         };
       });
 
-      // setNodes/setEdges here would schedule an auto-save during initial load;
-      // we guard scheduleSave via isInitialLoad, but mutating + notifying is
-      // still required so subscribers see the new arrays.
-      nodes = loadedNodes;
-      edges = loadedEdges;
+      const slot = getOrCreateSpaceState(spaceId);
+      slot.nodes = loadedNodes;
+      slot.edges = loadedEdges;
       if (data.viewport.zoom > 0) {
-        viewport = data.viewport;
+        slot.viewport = data.viewport;
       }
-      notify();
+      // Force-reload (opts.force) re-sets the dirty flag so a follow-up
+      // flushSave still writes; the no-force initial load leaves it false
+      // because we just hydrated from disk.
+      if (opts.force) slot.dirty = true;
+
+      if (spaceId === activeSpaceId) notify();
       // Any `statusRunId` we just loaded points at a run from a previous
       // session — none of those are in the run loop's (empty) activeRuns
       // map, so they're all orphans. Drop the linkage but keep status/error
       // so the user still sees what happened (e.g. "Interrupted by app
       // exit" from the Rust-side force-kill sweep).
-      runLoop.clearOrphanRunIds();
+      runLoop.clearOrphanRunIds(spaceId);
       // Surface any persisted error/waiting state to the dashboard's
       // red/yellow dot listeners.
       checkStatusTransition();
@@ -550,9 +775,6 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
       showToast(`Failed to load space: ${err}`, "error");
     }
   }
-
-  // Expose loadSpaceData via the session so the spaces hook can call it.
-  // (Added on the returned object below as `loadSpaceData`.)
 
   // ─── Lifecycle ────────────────────────────────────────────────────
   function attach(setToast: ShowToastFunc): void {
@@ -598,9 +820,11 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   function dispose(): void {
     if (disposed) return;
     disposed = true;
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
+    for (const s of spaceStates.values()) {
+      if (s.saveTimer) {
+        clearTimeout(s.saveTimer);
+        s.saveTimer = null;
+      }
     }
     runLoop.dispose();
     listeners.clear();
@@ -618,6 +842,22 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
   function setShowToast(fn: ShowToastFunc | null): void {
     liveShowToast = fn;
     if (fn) drainPendingToasts();
+  }
+
+  function removeSpaceState(spaceId: string): void {
+    // Cancel anything running in the doomed space first — we don't want a
+    // run loop continuing to write into a slot we're about to drop, or
+    // (worse) re-create the slot via getOrCreateSpaceState on its next write.
+    runLoop.cancelWorkflow(spaceId);
+    const s = spaceStates.get(spaceId);
+    if (s?.saveTimer) {
+      clearTimeout(s.saveTimer);
+      s.saveTimer = null;
+    }
+    spaceStates.delete(spaceId);
+    runningStartNodeIdsBySpace.delete(spaceId);
+    if (spaceId === activeSpaceId) notify();
+    checkStatusTransition();
   }
 
   // ─── Public session object ────────────────────────────────────────
@@ -652,10 +892,13 @@ export function createRunnerSession(opts: CreateSessionOptions): RunnerSession {
     executeWorkflow,
     handleChatSend,
     retryWorkflow,
+    retryWorkflowInSpace,
     cancelWorkflow,
+    cancelWorkflowInSpace,
     clearAllStatuses,
 
     loadSpaceData,
+    removeSpaceState,
   };
 
   return session;

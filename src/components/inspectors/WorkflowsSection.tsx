@@ -1,102 +1,96 @@
 import { useMemo } from "react";
 import type { Node } from "@xyflow/react";
-import { pluginRegistry } from "@/engine/pluginRegistry";
 import { getStatusColor } from "@/theme/colors";
+import {
+  buildWorkflowRows,
+  type ActiveRunRow,
+  type NodeRow,
+  type SpaceWorkflowSummary,
+} from "@/engine/workflowRows";
 import CollapsibleSection from "./CollapsibleSection";
 
 interface WorkflowsSectionProps {
   /** All nodes in the active space — used to resolve labels for active-run
    * start nodes and to surface errored/waiting nodes as their own rows. */
   nodes: Node[];
-  /** Map of comma-joined start-node-id key → count. The session's snapshot
-   * exposes this; the run loop populates it on `runWorkflow` start and
-   * decrements on cleanup. */
+  /** Map of comma-joined start-node-id key → count for the ACTIVE space. */
   runningStartNodeIds: Map<string, number>;
-  onRetryWorkflow: (nodeId: string) => void;
-  onCancelWorkflow: (nodeId?: string) => void;
+  /** The active space id — every active-space row's controls route here. */
+  activeSpaceId: string;
+  /** Running/waiting/errored rows for sibling spaces with activity. Spaces are
+   * organizational, so these render alongside the active space's runs with a
+   * space badge, and their controls route to their own space. */
+  otherSpaceWorkflows: SpaceWorkflowSummary[];
+  onRetryWorkflowInSpace: (spaceId: string, nodeId: string) => void;
+  onCancelWorkflowInSpace: (spaceId: string, nodeId?: string) => void;
   onClearAllStatuses: () => void;
 }
 
-interface ActiveRunRow {
-  startKey: string;
-  startNodeIds: string[];
-  label: string;
-  icon: string;
-}
+/** A row tagged with the space it belongs to. `spaceLabel` is only set for
+ * sibling spaces (the active space's rows render without a badge). */
+type RunItem = ActiveRunRow & { spaceId: string; spaceLabel?: string };
+type WaitItem = NodeRow & { spaceId: string; spaceLabel?: string };
+type ErrItem = NodeRow & { spaceId: string; spaceLabel?: string };
 
-interface NodeRow {
-  id: string;
-  label: string;
-  icon: string;
-  error?: string;
-}
-
-function labelFor(node: Node | undefined): string {
-  if (!node) return "(deleted node)";
-  const fromData = node.data?.label;
-  if (typeof fromData === "string" && fromData.trim()) return fromData;
-  const plugin = pluginRegistry.get(node.type || "");
-  return plugin?.meta.label || node.type || node.id;
-}
-
-function iconFor(node: Node | undefined): string {
-  if (!node) return "❔";
-  const plugin = pluginRegistry.get(node.type || "");
-  return plugin?.meta.icon || "▣";
+/** Small chip showing which sibling space a row lives in. */
+function SpaceBadge({ label }: { label: string }) {
+  return (
+    <span
+      className="text-[9px] uppercase tracking-wider font-bold text-text-muted bg-card border border-border-subtle rounded px-1 py-0.5 shrink-0 leading-none"
+      title={`Running in space ${label}`}
+    >
+      ⌗ {label}
+    </span>
+  );
 }
 
 export default function WorkflowsSection({
   nodes,
   runningStartNodeIds,
-  onRetryWorkflow,
-  onCancelWorkflow,
+  activeSpaceId,
+  otherSpaceWorkflows,
+  onRetryWorkflowInSpace,
+  onCancelWorkflowInSpace,
   onClearAllStatuses,
 }: WorkflowsSectionProps) {
-  // Build the three row groups from the latest nodes snapshot. All cheap;
-  // re-derive on every render since the parent already re-renders on the
-  // session's snapshot bumps (runningStartNodeIds + nodes both come from it).
-  const { activeRuns, waitingNodes, erroredNodes, anyClearable } = useMemo(() => {
-    const active: ActiveRunRow[] = [];
-    for (const [startKey] of runningStartNodeIds) {
-      const ids = startKey.split(",");
-      const firstNode = nodes.find((n) => n.id === ids[0]);
-      const label = ids
-        .map((id) => labelFor(nodes.find((n) => n.id === id)))
-        .join(" · ");
-      active.push({
-        startKey,
-        startNodeIds: ids,
-        label,
-        icon: iconFor(firstNode),
-      });
-    }
+  // Build the three row groups by unioning the active space's rows (no badge)
+  // with every sibling space's rows (badged). All cheap; re-derive on every
+  // render since the parent already re-renders on the session's snapshot
+  // bumps (which now fire for background-space activity too).
+  const { runningRows, waitingRows, erroredRows, anyClearable } = useMemo(() => {
+    const active = buildWorkflowRows(nodes, runningStartNodeIds);
 
-    const waiting: NodeRow[] = [];
-    const errored: NodeRow[] = [];
-    let anyStatus = false;
-    for (const n of nodes) {
-      const status = n.data?.status as string | undefined;
-      if (status || n.data?.statusRunId || n.data?.error) anyStatus = true;
-      if (status === "waiting") {
-        waiting.push({ id: n.id, label: labelFor(n), icon: iconFor(n) });
-      } else if (status === "error") {
-        errored.push({
-          id: n.id,
-          label: labelFor(n),
-          icon: iconFor(n),
-          error: typeof n.data?.error === "string" ? n.data.error : undefined,
-        });
-      }
-    }
+    const running: RunItem[] = [
+      ...active.activeRuns.map((r) => ({ ...r, spaceId: activeSpaceId })),
+      ...otherSpaceWorkflows.flatMap((s) =>
+        s.activeRuns.map((r) => ({ ...r, spaceId: s.spaceId, spaceLabel: s.spaceLabel }))
+      ),
+    ];
+    const waiting: WaitItem[] = [
+      ...active.waitingNodes.map((r) => ({ ...r, spaceId: activeSpaceId })),
+      ...otherSpaceWorkflows.flatMap((s) =>
+        s.waitingNodes.map((r) => ({ ...r, spaceId: s.spaceId, spaceLabel: s.spaceLabel }))
+      ),
+    ];
+    const errored: ErrItem[] = [
+      ...active.erroredNodes.map((r) => ({ ...r, spaceId: activeSpaceId })),
+      ...otherSpaceWorkflows.flatMap((s) =>
+        s.erroredNodes.map((r) => ({ ...r, spaceId: s.spaceId, spaceLabel: s.spaceLabel }))
+      ),
+    ];
+
     return {
-      activeRuns: active,
-      waitingNodes: waiting,
-      erroredNodes: errored,
-      anyClearable: anyStatus,
+      runningRows: running,
+      waitingRows: waiting,
+      erroredRows: errored,
+      // "Clear all" stays scoped to the active space (it's a reset for the
+      // canvas you're looking at); sibling-space rows are controlled
+      // individually via their own Stop/Retry/Cancel.
+      anyClearable: active.anyClearable,
     };
-  }, [nodes, runningStartNodeIds]);
+  }, [nodes, runningStartNodeIds, activeSpaceId, otherSpaceWorkflows]);
 
-  const totalCount = activeRuns.length + waitingNodes.length + erroredNodes.length;
+  const totalCount = runningRows.length + waitingRows.length + erroredRows.length;
 
   return (
     <CollapsibleSection
@@ -112,14 +106,14 @@ export default function WorkflowsSection({
       )}
 
       <div className="flex flex-col gap-2">
-        {activeRuns.length > 0 && (
+        {runningRows.length > 0 && (
           <>
             <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">
               Running
             </div>
-            {activeRuns.map((run) => (
+            {runningRows.map((run) => (
               <div
-                key={run.startKey}
+                key={`${run.spaceId}:${run.startKey}`}
                 className="flex items-center gap-2 bg-card/60 border border-border-subtle rounded-md px-2.5 py-2"
               >
                 <span
@@ -138,9 +132,10 @@ export default function WorkflowsSection({
                 >
                   {run.label}
                 </span>
+                {run.spaceLabel && <SpaceBadge label={run.spaceLabel} />}
                 <button
                   type="button"
-                  onClick={() => onCancelWorkflow(run.startNodeIds[0])}
+                  onClick={() => onCancelWorkflowInSpace(run.spaceId, run.startNodeIds[0])}
                   title="Stop this workflow"
                   className="text-[11px] font-semibold text-danger hover:text-danger-hover bg-danger/15 hover:bg-danger/30 border border-danger/40 hover:border-danger/60 rounded-md px-2 py-0.5 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
                 >
@@ -152,14 +147,14 @@ export default function WorkflowsSection({
           </>
         )}
 
-        {waitingNodes.length > 0 && (
+        {waitingRows.length > 0 && (
           <>
             <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">
               Waiting
             </div>
-            {waitingNodes.map((row) => (
+            {waitingRows.map((row) => (
               <div
-                key={row.id}
+                key={`${row.spaceId}:${row.id}`}
                 className="flex items-center gap-2 bg-card/60 border border-border-subtle rounded-md px-2.5 py-2"
               >
                 <span
@@ -175,12 +170,16 @@ export default function WorkflowsSection({
                 <span className="text-xs text-text-main flex-1 truncate" title={row.label}>
                   {row.label}
                 </span>
-                <span className="text-[10px] uppercase tracking-wider text-text-muted shrink-0">
-                  Awaiting input
-                </span>
+                {row.spaceLabel ? (
+                  <SpaceBadge label={row.spaceLabel} />
+                ) : (
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted shrink-0">
+                    Awaiting input
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={() => onCancelWorkflow(row.id)}
+                  onClick={() => onCancelWorkflowInSpace(row.spaceId, row.id)}
                   title="Abandon this paused workflow"
                   className="text-[11px] font-semibold text-text-muted hover:text-text-main bg-card hover:bg-card-hover border border-border-subtle hover:border-border-subtle rounded-md px-2 py-0.5 cursor-pointer transition-colors shrink-0"
                 >
@@ -191,14 +190,14 @@ export default function WorkflowsSection({
           </>
         )}
 
-        {erroredNodes.length > 0 && (
+        {erroredRows.length > 0 && (
           <>
             <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">
               Errored
             </div>
-            {erroredNodes.map((row) => (
+            {erroredRows.map((row) => (
               <div
-                key={row.id}
+                key={`${row.spaceId}:${row.id}`}
                 className="flex flex-col gap-1.5 bg-danger/5 border border-danger/30 rounded-md px-2.5 py-2"
               >
                 <div className="flex items-center gap-2">
@@ -215,9 +214,10 @@ export default function WorkflowsSection({
                   <span className="text-xs text-text-main flex-1 truncate" title={row.label}>
                     {row.label}
                   </span>
+                  {row.spaceLabel && <SpaceBadge label={row.spaceLabel} />}
                   <button
                     type="button"
-                    onClick={() => onRetryWorkflow(row.id)}
+                    onClick={() => onRetryWorkflowInSpace(row.spaceId, row.id)}
                     title="Retry the workflow from this node"
                     className="text-[11px] font-semibold text-danger hover:text-danger-hover bg-danger/15 hover:bg-danger/30 border border-danger/40 hover:border-danger/60 rounded-md px-2 py-0.5 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
                   >

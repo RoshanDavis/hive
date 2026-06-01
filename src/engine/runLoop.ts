@@ -6,9 +6,15 @@
  *
  * The loop owns its own internal state — `activeRuns`, `executedNodeIdsMap`,
  * `runCounter`, `fadeTimeouts` — and reads/writes session-visible state via
- * the {@link RunLoopDeps} callbacks. The session owns the snapshot-visible
- * `runningStartNodeIds` map and bumps it via `adjustRunningStartCount`, so
- * subscribers see active-run transitions through the existing snapshot path.
+ * the {@link RunLoopDeps} callbacks. The session owns the per-space
+ * `runningStartNodeIdsBySpace` map and bumps it via `adjustRunningStartCount`,
+ * so subscribers see active-run transitions through the existing snapshot path.
+ *
+ * Every public method (and every dep callback) takes a `spaceId`: the loop is
+ * space-aware so a workflow can keep running in space 1 while the user has
+ * switched the foreground to space 2. The spaceId is captured into the
+ * `RunControl` at run start; every read/write inside `runWorkflow` routes
+ * through it, never through "whatever space is active right now".
  *
  * See {@link RunLoop} for the public surface and `runnerSession.ts` for the
  * wiring.
@@ -28,6 +34,10 @@ import { LAST_INPUT_KEYS } from "./nodeData";
 const FADE_DELAY_MS = 1500;
 
 interface RunControl {
+  /** Which space this run belongs to — set at run start, never changes. All
+   * reads/writes from this run are scoped to this id even if the user
+   * switches the foreground to a different space. */
+  spaceId: string;
   startKey: string;
   cancelled: boolean;
   /** True while the BFS loop is still iterating; flipped false in `finally`. */
@@ -40,30 +50,45 @@ interface RunControl {
 
 export interface RunLoopDeps {
   workspacePath: string;
-  getNodes(): Node[];
-  getEdges(): Edge[];
-  setNodes(updater: Node[] | ((prev: Node[]) => Node[])): void;
-  updateNodeData(nodeId: string, data: Record<string, unknown>): void;
+  getNodes(spaceId: string): Node[];
+  getEdges(spaceId: string): Edge[];
+  setNodes(
+    spaceId: string,
+    updater: Node[] | ((prev: Node[]) => Node[])
+  ): void;
+  updateNodeData(
+    spaceId: string,
+    nodeId: string,
+    data: Record<string, unknown>
+  ): void;
   showToast(msg: string, type: "success" | "error" | "info"): void;
   /** Push a delta (positive on run start, negative on run release) to the
-   * snapshot-visible `runningStartNodeIds` map held by the session. */
-  adjustRunningStartCount(startKey: string, delta: number): void;
+   * per-space `runningStartNodeIdsBySpace` map held by the session. */
+  adjustRunningStartCount(
+    spaceId: string,
+    startKey: string,
+    delta: number
+  ): void;
 }
 
 export interface RunLoop {
-  executeWorkflow(triggerNodeId?: string): Promise<void>;
-  handleChatSend(nodeId: string, text: string): Promise<void>;
-  retryWorkflow(nodeId: string): Promise<void>;
-  /** Cancel one workflow scoped to a node's connected component, or all
-   * active runs if `nodeId` is omitted. */
-  cancelWorkflow(nodeId?: string): void;
-  /** End every active run AND wipe status/statusRunId/error on every node. */
-  clearAllStatuses(): void;
-  /** True if any run is still in its BFS loop (excludes runs in fade window). */
+  executeWorkflow(spaceId: string, triggerNodeId?: string): Promise<void>;
+  handleChatSend(spaceId: string, nodeId: string, text: string): Promise<void>;
+  retryWorkflow(spaceId: string, nodeId: string): Promise<void>;
+  /** Cancel one workflow scoped to a node's connected component within
+   * `spaceId`, or every active run in `spaceId` if `nodeId` is omitted. Runs
+   * in other spaces are untouched. */
+  cancelWorkflow(spaceId: string, nodeId?: string): void;
+  /** End every active run in `spaceId` AND wipe status/statusRunId/error on
+   * every node in that space. Runs in other spaces are untouched. */
+  clearAllStatuses(spaceId: string): void;
+  /** True if any run is still in its BFS loop in *any* space (excludes runs
+   * in fade window). Dashboard-facing union. */
   hasActiveRuns(): boolean;
   /** Drop linkage on any persisted statusRunId that no longer references a
-   * live run. Preserves status/error so the user still sees what happened. */
-  clearOrphanRunIds(): void;
+   * live run, scoped to one space. Preserves status/error so the user still
+   * sees what happened. Called after `loadSpaceData`. */
+  clearOrphanRunIds(spaceId: string): void;
   /** Shut down internal timers/state. Called when the session disposes. */
   dispose(): void;
 }
@@ -72,9 +97,16 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
   const { workspacePath, getNodes, getEdges, setNodes, updateNodeData, showToast } = deps;
 
   const activeRuns: Map<string, RunControl> = new Map();
+  /** Keyed by `${spaceId}::${startKey}` so retry-cache reuse is scoped to the
+   * run's space — a `chat-1` startKey in space 1 won't collide with the same
+   * id in space 2 if a user duplicates a layout. */
   const executedNodeIdsMap: Map<string, Set<string>> = new Map();
   const fadeTimeouts: Map<string, number> = new Map();
   let runCounter = 0;
+
+  function executedKey(spaceId: string, startKey: string): string {
+    return `${spaceId}::${startKey}`;
+  }
 
   function hasActiveRuns(): boolean {
     for (const r of activeRuns.values()) {
@@ -91,11 +123,11 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     const control = activeRuns.get(runId);
     if (!control || control.countReleased) return;
     control.countReleased = true;
-    deps.adjustRunningStartCount(control.startKey, -1);
+    deps.adjustRunningStartCount(control.spaceId, control.startKey, -1);
   }
 
-  function clearBordersForRuns(runIds: Set<string>): void {
-    setNodes((nds) =>
+  function clearBordersForRuns(spaceId: string, runIds: Set<string>): void {
+    setNodes(spaceId, (nds) =>
       nds.map((n) => {
         const rid = n.data.statusRunId as string | undefined;
         if (rid && runIds.has(rid)) {
@@ -109,8 +141,8 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     );
   }
 
-  function clearOrphanRunIds(): void {
-    setNodes((nds) =>
+  function clearOrphanRunIds(spaceId: string): void {
+    setNodes(spaceId, (nds) =>
       nds.map((n) => {
         const rid = n.data.statusRunId as string | undefined;
         if (rid && !activeRuns.has(rid)) {
@@ -122,10 +154,11 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
   }
 
   /** Aggressive sweep used by Retry: clear `status`/`statusRunId`/`error`
-   * on every node NOT currently part of an active run. Nodes still tied to
-   * an in-flight workflow (e.g. a concurrent run) are left alone. */
-  function clearOrphanStatusesAggressive(): void {
-    setNodes((nds) =>
+   * on every node in `spaceId` NOT currently part of an active run. Nodes
+   * still tied to an in-flight workflow (e.g. a concurrent run) are left
+   * alone. */
+  function clearOrphanStatusesAggressive(spaceId: string): void {
+    setNodes(spaceId, (nds) =>
       nds.map((n) => {
         const rid = n.data.statusRunId as string | undefined;
         if (rid && activeRuns.has(rid)) return n;
@@ -138,23 +171,25 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     );
   }
 
-  function clearAllStatuses(): void {
-    const allRunIds = Array.from(activeRuns.keys());
-    for (const rid of allRunIds) {
-      const r = activeRuns.get(rid);
-      if (!r) continue;
-      r.cancelled = true;
+  function clearAllStatuses(spaceId: string): void {
+    // Cancel only runs that belong to this space. Runs in other spaces
+    // (e.g. a background workflow the user navigated away from) continue.
+    const runIdsInSpace: string[] = [];
+    for (const [rid, control] of activeRuns) {
+      if (control.spaceId !== spaceId) continue;
+      runIdsInSpace.push(rid);
+      control.cancelled = true;
       releaseRunCount(rid);
       const t = fadeTimeouts.get(rid);
       if (t) {
         clearTimeout(t);
         fadeTimeouts.delete(rid);
       }
-      if (!r.inLoop) activeRuns.delete(rid);
+      if (!control.inLoop) activeRuns.delete(rid);
     }
 
     let touched = 0;
-    setNodes((nds) =>
+    setNodes(spaceId, (nds) =>
       nds.map((n) => {
         if (!n.data.status && !n.data.statusRunId && !n.data.error) return n;
         touched += 1;
@@ -165,14 +200,14 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
       })
     );
 
-    if (allRunIds.length > 0 && touched > 0) {
+    if (runIdsInSpace.length > 0 && touched > 0) {
       showToast(
-        `Cancelled ${allRunIds.length} workflow${allRunIds.length === 1 ? "" : "s"} and cleared ${touched} node${touched === 1 ? "" : "s"}`,
+        `Cancelled ${runIdsInSpace.length} workflow${runIdsInSpace.length === 1 ? "" : "s"} and cleared ${touched} node${touched === 1 ? "" : "s"}`,
         "info"
       );
-    } else if (allRunIds.length > 0) {
+    } else if (runIdsInSpace.length > 0) {
       showToast(
-        `Cancelled ${allRunIds.length} workflow${allRunIds.length === 1 ? "" : "s"}`,
+        `Cancelled ${runIdsInSpace.length} workflow${runIdsInSpace.length === 1 ? "" : "s"}`,
         "info"
       );
     } else if (touched > 0) {
@@ -180,19 +215,24 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     }
   }
 
-  async function runWorkflow(startNodeIds: string[], chatInput?: string): Promise<void> {
-    const nodes = getNodes();
-    const edges = getEdges();
+  async function runWorkflow(
+    spaceId: string,
+    startNodeIds: string[],
+    chatInput?: string
+  ): Promise<void> {
+    const nodes = getNodes(spaceId);
+    const edges = getEdges(spaceId);
     const startKey = startNodeIds.join(",");
     const runId = `${++runCounter}-${Date.now()}`;
     activeRuns.set(runId, {
+      spaceId,
       startKey,
       cancelled: false,
       inLoop: true,
       countReleased: false,
     });
 
-    deps.adjustRunningStartCount(startKey, 1);
+    deps.adjustRunningStartCount(spaceId, startKey, 1);
 
     if (!chatInput) {
       showToast("Workflow started", "info");
@@ -202,6 +242,8 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     console.log(
       "[RUNWORKFLOW] runId:",
       runId,
+      "spaceId:",
+      spaceId,
       "startNodeIds:",
       startNodeIds,
       "isResuming:",
@@ -296,14 +338,14 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
             // Live state gets the status delta only — same shape as
             // applyStatus uses below — so a concurrent inspector edit
             // to an unrelated field on the storage node isn't clobbered.
-            updateNodeData(currentNodes[storageIndex].id, {
+            updateNodeData(spaceId, currentNodes[storageIndex].id, {
               status: newStorageStatus,
               statusRunId: newStorageRunId,
             });
           }
         }
       }
-      updateNodeData(nodeId, data);
+      updateNodeData(spaceId, nodeId, data);
     };
 
     // Push a status transition to BOTH the run-local working copy (full
@@ -347,7 +389,7 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
                 statusRunId: newStorageRunId,
               },
             };
-            updateNodeData(currentNodes[storageIndex].id, {
+            updateNodeData(spaceId, currentNodes[storageIndex].id, {
               status: newStorageStatus,
               statusRunId: newStorageRunId,
             });
@@ -355,14 +397,14 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
         }
       }
 
-      updateNodeData(nodeId, liveDelta);
+      updateNodeData(spaceId, nodeId, liveDelta);
     };
 
     let haltedAtChat = false;
 
     try {
       // Mirror the init-status pass onto live state in one batched setNodes.
-      setNodes((nds) =>
+      setNodes(spaceId, (nds) =>
         nds.map((n) => {
           const newData = { ...n.data };
           if (isFreshRun) {
@@ -386,10 +428,11 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
         })
       );
 
-      if (!executedNodeIdsMap.has(startKey)) {
-        executedNodeIdsMap.set(startKey, new Set<string>());
+      const ekey = executedKey(spaceId, startKey);
+      if (!executedNodeIdsMap.has(ekey)) {
+        executedNodeIdsMap.set(ekey, new Set<string>());
       }
-      const executedNodeIds = executedNodeIdsMap.get(startKey)!;
+      const executedNodeIds = executedNodeIdsMap.get(ekey)!;
 
       if (hasTriggerStart) {
         executedNodeIds.clear();
@@ -540,7 +583,7 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
       releaseRunCount(runId);
 
       if (isCancelled(runId)) {
-        clearBordersForRuns(new Set([runId]));
+        clearBordersForRuns(spaceId, new Set([runId]));
         const t = fadeTimeouts.get(runId);
         if (t) {
           clearTimeout(t);
@@ -549,7 +592,7 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
         activeRuns.delete(runId);
       } else {
         const timeoutId = window.setTimeout(() => {
-          setNodes((nds) =>
+          setNodes(spaceId, (nds) =>
             nds.map((n) => {
               if (n.data.statusRunId !== runId) return n;
               const s = n.data.status;
@@ -568,13 +611,16 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     }
   }
 
-  function cancelWorkflow(nodeId?: string): void {
-    // No-node call: cancel everything. No in-tree caller today (Clear-all goes
-    // through clearAllStatuses), but kept for API stability.
+  function cancelWorkflow(spaceId: string, nodeId?: string): void {
+    // No-node call: cancel everything **in this space**. No in-tree caller
+    // today (Clear-all goes through clearAllStatuses), but kept for API
+    // stability. Runs in other spaces are not affected.
     if (!nodeId) {
-      if (activeRuns.size === 0) return;
-      const allRunIds = Array.from(activeRuns.keys());
-      for (const rid of allRunIds) {
+      const runIdsInSpace = Array.from(activeRuns.entries())
+        .filter(([, c]) => c.spaceId === spaceId)
+        .map(([rid]) => rid);
+      if (runIdsInSpace.length === 0) return;
+      for (const rid of runIdsInSpace) {
         const r = activeRuns.get(rid);
         if (!r) continue;
         r.cancelled = true;
@@ -586,25 +632,26 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
         }
         if (!r.inLoop) activeRuns.delete(rid);
       }
-      clearBordersForRuns(new Set(allRunIds));
+      clearBordersForRuns(spaceId, new Set(runIdsInSpace));
       showToast("Workflow cancelled", "info");
       return;
     }
 
-    const nodes = getNodes();
-    const edges = getEdges();
+    const nodes = getNodes(spaceId);
+    const edges = getEdges(spaceId);
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
 
-    // Scope to the node's connected component. Anything in a different
-    // component (a separate workflow) is left alone, so a Stop click on
-    // workflow B never reaches into a running workflow A. Storage edges
-    // are excluded from the component walk so shared storage nodes don't
-    // fuse two flows together.
+    // Scope to the node's connected component within `spaceId`. Anything in
+    // a different component (a separate workflow) is left alone, so a Stop
+    // click on workflow B never reaches into a running workflow A. Storage
+    // edges are excluded from the component walk so shared storage nodes
+    // don't fuse two flows together.
     const component = getConnectedComponent(nodeId, edges);
 
     const cancelledRunIds: string[] = [];
     for (const [rid, control] of activeRuns) {
+      if (control.spaceId !== spaceId) continue;
       const startIds = control.startKey.split(",");
       if (!startIds.some((id) => component.has(id))) continue;
       control.cancelled = true;
@@ -620,7 +667,7 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
 
     const cancelledRunIdSet = new Set(cancelledRunIds);
     let touched = 0;
-    setNodes((nds) =>
+    setNodes(spaceId, (nds) =>
       nds.map((n) => {
         if (!component.has(n.id)) return n;
         const rid = n.data?.statusRunId as string | undefined;
@@ -650,8 +697,11 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
     }
   }
 
-  async function executeWorkflow(triggerNodeId?: string): Promise<void> {
-    const nodes = getNodes();
+  async function executeWorkflow(
+    spaceId: string,
+    triggerNodeId?: string
+  ): Promise<void> {
+    const nodes = getNodes(spaceId);
     let triggerNodes = nodes.filter((n) => {
       const plugin = pluginRegistry.get(n.type || "");
       return plugin && !plugin.executor;
@@ -664,25 +714,29 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
       return;
     }
     const startNodeIds = triggerNodes.map((n) => n.id);
-    await runWorkflow(startNodeIds);
+    await runWorkflow(spaceId, startNodeIds);
   }
 
-  async function handleChatSend(nodeId: string, text: string): Promise<void> {
-    const chatNode = getNodes().find((n) => n.id === nodeId);
+  async function handleChatSend(
+    spaceId: string,
+    nodeId: string,
+    text: string
+  ): Promise<void> {
+    const chatNode = getNodes(spaceId).find((n) => n.id === nodeId);
     if (!chatNode) return;
-    await runWorkflow([nodeId], text);
+    await runWorkflow(spaceId, [nodeId], text);
   }
 
-  async function retryWorkflow(nodeId: string): Promise<void> {
-    const node = getNodes().find((n) => n.id === nodeId);
+  async function retryWorkflow(spaceId: string, nodeId: string): Promise<void> {
+    const node = getNodes(spaceId).find((n) => n.id === nodeId);
     if (!node) return;
     // Retry implies "fresh slate from this node" — clear leftover borders
     // from runs no longer active so sibling/upstream errors from a previous
     // failed run don't linger across the retry. Nodes still tied to a
     // genuinely active concurrent run are preserved.
-    clearOrphanStatusesAggressive();
+    clearOrphanStatusesAggressive(spaceId);
     showToast(`Retrying workflow from ${node.data?.label || node.type}...`, "info");
-    await runWorkflow([nodeId]);
+    await runWorkflow(spaceId, [nodeId]);
   }
 
   function dispose(): void {
