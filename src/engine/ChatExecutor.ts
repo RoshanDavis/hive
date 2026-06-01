@@ -17,6 +17,37 @@ export class ChatExecutor implements NodeExecutor {
         ? nodes.find((n) => n.id === storageEdge.target && n.type === "jsonStorage")
         : null;
 
+      // Outgoing edges from the chat's standard output handle (not the dedicated
+      // bottom storage handle) that target a JSON storage node. Connectivity
+      // rules lock these to write-only, so each one just receives an appended
+      // record per message — no read-back into chat history.
+      const outputStorageEdges = edges.filter(
+        (e) =>
+          e.source === chatNode.id &&
+          e.sourceHandle !== "storage" &&
+          nodes.find((n) => n.id === e.target)?.type === "jsonStorage"
+      );
+
+      const writeToOutputStorage = (source: string, content: string): void => {
+        for (const edge of outputStorageEdges) {
+          const { hasWrite } = resolveEdgePermissions(edge, "write-only");
+          if (!hasWrite) continue;
+          const target = nodes.find((n) => n.id === edge.target);
+          if (!target) continue;
+          const dbRecords = getStorageRecords(target.data);
+          const newRecord = {
+            id: Date.now().toString(),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            source,
+            content,
+          };
+          updateNodeData(target.id, {
+            ...target.data,
+            records: [...dbRecords, newRecord],
+          });
+        }
+      };
+
       if (chatInput !== undefined && chatInput !== null) {
         // ─── Case A: User sent a message (Input Mode) ───
         const { hasRead: hasReadPermission, hasWrite: hasWritePermission } =
@@ -58,6 +89,8 @@ export class ChatExecutor implements NodeExecutor {
           // No storage node, or no write permission - append to local state only
           updatedLocalMessages = [...updatedLocalMessages, { role: "user" as const, content: chatInput, sender: "You" }];
         }
+
+        writeToOutputStorage("User", chatInput);
 
         const envelope: NodeOutputEnvelope = {
           value: chatInput,
@@ -168,6 +201,8 @@ export class ChatExecutor implements NodeExecutor {
           // No storage node, or read-only connection
           updatedLocalMessages = [...updatedLocalMessages, { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel }];
         }
+
+        writeToOutputStorage(dbSource, resolvedMessage);
 
         const envelopeValue = isSystemMsg ? "" : resolvedMessage;
         const envelope: NodeOutputEnvelope = {

@@ -55,15 +55,14 @@ export default function JSONStorageInspector({
   };
 
   return (
-    <div className="flex flex-col gap-3 h-[calc(100vh-280px)] min-h-95">
+    <div className="flex flex-col gap-3">
       <CollapsibleSection
         title="Records"
         icon="💾"
         defaultOpen={true}
         badge={records.length}
-        grow
       >
-        <div className="flex-1 min-h-0 overflow-auto bg-primary border border-border-subtle rounded-md flex flex-col">
+        <div className="bg-primary border border-border-subtle rounded-md flex flex-col overflow-x-auto">
           {records.length > 0 ? (
             <table className="w-full text-left border-collapse text-xs">
               <thead>
