@@ -5,6 +5,7 @@ import "@/nodes/plugins"; // Side-effect import: registers all built-in node plu
 import { CustomNodesProvider } from "@/contexts/CustomNodesContext";
 import { BackgroundRunnersProvider } from "@/contexts/BackgroundRunnersContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+
 import "./App.css";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -22,6 +23,8 @@ interface ActiveWorkspace {
 // ─── App (Router) ────────────────────────────────────────────
 function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspace | null>(null);
+
+
 
   return (
     <ThemeProvider>
@@ -52,3 +55,4 @@ function App() {
 }
 
 export default App;
+

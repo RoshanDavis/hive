@@ -25,23 +25,27 @@
   --bg-sidebar: #0f0f0f;
   --bg-input: #1e1e1e;
   --bg-menu: #121212;
+  --bg-overlay: rgba(0, 0, 0, 0.75);
 
   /* Controls */
   --handle: #444444;
+  --toggle-knob: #ffffff;
 
   /* Accent */
   --accent: #d4e600;
   --accent-dim: #a3b300;
   --accent-glow: rgba(212, 230, 0, 0.15);
+  --accent-selection: #ffffff;
 
   /* Text */
-  --text-main: #f0f0f0;
+  --text-main: #e0e0e0;
   --text-secondary: #888888;
   --text-muted: #555555;
 
   /* Borders */
   --border-subtle: #2a2a2a;
   --border-card: #333333;
+  --border-hover: #404040;
 
   /* Status (semantic — workflow execution state) */
   --success: #22c55e;
@@ -49,15 +53,18 @@
   --error: #ef4444;
   --info: #38bdf8;
   --danger: #ff6b6b;
+  --danger-hover: #ff8a8a;
 
   /* Edges (canvas connections) — exposed so plugins can tint inline styles
      via var() without importing hex constants. */
   --edge-default: #d4e600;
   --edge-database: #38bdf8;
 
-  /* Content tints — author-of-content semantics (user vs notification). */
+  /* Content tints — author-of-content semantics. */
   --content-user: #34d399;
   --content-notification: #60a5fa;
+  --content-system: #818cf8;
+  --content-assistant: #c084fc;
 }
 
 /* Map the palette into Tailwind's color namespace. Names are kept
@@ -70,10 +77,12 @@
   --color-card-hover: var(--bg-card-hover);
   --color-sidebar: var(--bg-sidebar);
   --color-input: var(--bg-input);
+  --color-overlay: var(--bg-overlay);
 
   --color-accent: var(--accent);
   --color-accent-dim: var(--accent-dim);
   --color-accent-glow: var(--accent-glow);
+  --color-accent-selection: var(--accent-selection);
 
   --color-text-main: var(--text-main);
   --color-text-secondary: var(--text-secondary);
@@ -81,21 +90,42 @@
 
   --color-border-subtle: var(--border-subtle);
   --color-border-card: var(--border-card);
+  --color-border-hover: var(--border-hover);
 
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-error: var(--error);
   --color-info: var(--info);
   --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+
+  --color-toggle-knob: var(--toggle-knob);
 
   /* Tailwind utilities `bg-content-user`, `text-content-notification`, etc. */
   --color-content-user: var(--content-user);
   --color-content-notification: var(--content-notification);
+  --color-content-system: var(--content-system);
+  --color-content-assistant: var(--content-assistant);
 
-  /* Static design tokens — not themed. */
+  /* Shadow elevations — theme-driven. `--shadow-*` in @theme also registers
+     the matching Tailwind utility class (e.g. `shadow-card`); raw CSS in
+     ui-chrome.css / reactflow.css / toast.css consumes them as var().
+     `applyTheme()` overwrites these on document.documentElement at runtime
+     when the active theme changes. Mirror any change to hive-dark.ts
+     `shadows: { ... }` — the tokensMirror.test.ts drift guard fails CI on
+     mismatch. */
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-card-hover: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --shadow-palette-hover: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-concurrency-hover: 0 6px 16px rgba(0, 0, 0, 0.4);
+  --shadow-concurrency-add-hover: 0 6px 16px rgba(0, 0, 0, 0.2);
+  --shadow-menu: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-drag-ghost: 0 10px 25px rgba(0, 0, 0, 0.9);
+  --shadow-toast: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-toast-outer: 0 4px 12px rgba(0, 0, 0, 0.4);
 
+  /* Static design tokens — never themed. */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

@@ -60,7 +60,6 @@ const edgeTypes = {
 
 // ─── Inner component (needs ReactFlowProvider) ──────────────
 function WorkspaceEditorInner({
-  workspaceName: _workspaceName,
   workspacePath,
   backgroundExecution,
   onBack,
@@ -279,6 +278,7 @@ function WorkspaceEditorInner({
     onEdgeContextMenu,
     onPaneContextMenu,
     handleWrapperContextMenu,
+    deleteSingleNode,
   } = useWorkspaceContextMenus({
     nodes,
     selectedNode,
@@ -295,6 +295,17 @@ function WorkspaceEditorInner({
     showToast,
     wasRightClickDrag,
   });
+
+  // Inspector "Delete node" callback. Adapts `deleteSingleNode(node)` to take a
+  // node id, looking the node up at click time so we always operate on the
+  // freshest snapshot (the React Flow selection may lag a frame behind).
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (node) deleteSingleNode(node);
+    },
+    [nodes, deleteSingleNode]
+  );
 
   // ─── Add node from palette ─────────────────────────────────
   // Layer overrides on top of plugin.defaultData:
@@ -418,7 +429,6 @@ function WorkspaceEditorInner({
 
       {/* Right — Inspector Panel */}
       <InspectorPanel
-        workspaceName={_workspaceName}
         workspacePath={workspacePath}
         selectedNode={currentSelectedNode}
         onAddNode={handleAddNode}
@@ -436,6 +446,7 @@ function WorkspaceEditorInner({
         selectedEdge={selectedEdge}
         onUpdateEdgeData={handleUpdateEdgeData}
         onDeleteEdge={handleDeleteEdge}
+        onDeleteNode={handleDeleteNode}
         showToast={showToast}
       />
 
@@ -467,7 +478,7 @@ function WorkspaceEditorInner({
         return (
           <div
             id="drag-ghost-card"
-            className="fixed pointer-events-none z-99999 bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center gap-1.5 min-w-22.5 max-w-37.5 transition-transform duration-75 select-none"
+            className="fixed pointer-events-none z-99999 bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-drag-ghost flex flex-col items-center justify-center gap-1.5 min-w-22.5 max-w-37.5 transition-transform duration-75 select-none"
             style={{
               left: activeDragNode.clientX,
               top: activeDragNode.clientY,

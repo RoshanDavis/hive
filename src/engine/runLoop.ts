@@ -271,32 +271,35 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
 
         const nodePlugin = pluginRegistry.get(oldNode.type || "");
         if (nodePlugin?.canPauseWorkflow && data.status !== oldNode.data.status) {
-          const storageEdge = edges.find(
+          // Mirror status to every storage wired off the bottom handle so
+          // multi-storage setups all pulse the same border tint, not just
+          // the first connected one.
+          const storageEdgesForNode = edges.filter(
             (e) => e.source === nodeId && e.sourceHandle === "storage"
           );
-          const storageNode = storageEdge
-            ? currentNodes.find(
-                (n) => n.id === storageEdge.target && n.type === "jsonStorage"
-              )
-            : null;
-
-          if (storageNode) {
-            const newStorageStatus = data.status === "waiting" ? undefined : data.status;
-            const newStorageRunId =
-              newStorageStatus === undefined ? undefined : data.statusRunId;
-            const storageIndex = currentNodes.findIndex((n) => n.id === storageNode.id);
-            if (storageIndex !== -1) {
-              const mergedStorageData = {
+          const newStorageStatus = data.status === "waiting" ? undefined : data.status;
+          const newStorageRunId =
+            newStorageStatus === undefined ? undefined : data.statusRunId;
+          for (const storageEdge of storageEdgesForNode) {
+            const storageIndex = currentNodes.findIndex(
+              (n) => n.id === storageEdge.target && n.type === "jsonStorage"
+            );
+            if (storageIndex === -1) continue;
+            currentNodes[storageIndex] = {
+              ...currentNodes[storageIndex],
+              data: {
                 ...currentNodes[storageIndex].data,
                 status: newStorageStatus,
                 statusRunId: newStorageRunId,
-              };
-              currentNodes[storageIndex] = {
-                ...currentNodes[storageIndex],
-                data: mergedStorageData,
-              };
-              updateNodeData(storageNode.id, mergedStorageData);
-            }
+              },
+            };
+            // Live state gets the status delta only — same shape as
+            // applyStatus uses below — so a concurrent inspector edit
+            // to an unrelated field on the storage node isn't clobbered.
+            updateNodeData(currentNodes[storageIndex].id, {
+              status: newStorageStatus,
+              statusRunId: newStorageRunId,
+            });
           }
         }
       }
@@ -325,33 +328,29 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
 
         const nodePlugin = pluginRegistry.get(oldNode.type || "");
         if (nodePlugin?.canPauseWorkflow && status !== oldNode.data.status) {
-          const storageEdge = edges.find(
+          const storageEdgesForNode = edges.filter(
             (e) => e.source === nodeId && e.sourceHandle === "storage"
           );
-          const storageNode = storageEdge
-            ? currentNodes.find(
-                (n) => n.id === storageEdge.target && n.type === "jsonStorage"
-              )
-            : null;
-          if (storageNode) {
-            const newStorageStatus = status === "waiting" ? undefined : status;
-            const newStorageRunId =
-              newStorageStatus === undefined ? undefined : statusRunId;
-            const storageIndex = currentNodes.findIndex((n) => n.id === storageNode.id);
-            if (storageIndex !== -1) {
-              currentNodes[storageIndex] = {
-                ...currentNodes[storageIndex],
-                data: {
-                  ...currentNodes[storageIndex].data,
-                  status: newStorageStatus,
-                  statusRunId: newStorageRunId,
-                },
-              };
-              updateNodeData(storageNode.id, {
+          const newStorageStatus = status === "waiting" ? undefined : status;
+          const newStorageRunId =
+            newStorageStatus === undefined ? undefined : statusRunId;
+          for (const storageEdge of storageEdgesForNode) {
+            const storageIndex = currentNodes.findIndex(
+              (n) => n.id === storageEdge.target && n.type === "jsonStorage"
+            );
+            if (storageIndex === -1) continue;
+            currentNodes[storageIndex] = {
+              ...currentNodes[storageIndex],
+              data: {
+                ...currentNodes[storageIndex].data,
                 status: newStorageStatus,
                 statusRunId: newStorageRunId,
-              });
-            }
+              },
+            };
+            updateNodeData(currentNodes[storageIndex].id, {
+              status: newStorageStatus,
+              statusRunId: newStorageRunId,
+            });
           }
         }
       }

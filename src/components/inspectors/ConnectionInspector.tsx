@@ -5,9 +5,9 @@ import { getConnectionBehavior } from "@/engine/connectivity";
 import { getUpstreamNodeEnvelope } from "@/engine/utils";
 import DataConsole from "./shared/DataConsole";
 import DatabaseRecordFeed from "./shared/DatabaseRecordFeed";
-import { useTheme } from "@/contexts/ThemeContext";
+import CollapsibleSection from "./CollapsibleSection";
+import { actionButtonDangerClass } from "./actionButtonStyles";
 import { getChatMessages, getStorageRecords } from "@/engine/nodeData";
-import { formLabelClass } from "@/components/shared/FormField";
 
 // ─── Props ───────────────────────────────────────────────────
 interface ConnectionInspectorProps {
@@ -46,8 +46,6 @@ export default function ConnectionInspector({
     );
   }, [sourceNode, targetNode, selectedEdge]);
 
-  const theme = useTheme();
-
   if (!sourceNode || !targetNode) return null;
 
   const sourcePlugin = pluginRegistry.get(sourceNode.type || '');
@@ -85,7 +83,7 @@ export default function ConnectionInspector({
             <label className="text-[10px] font-bold text-text-secondary select-none">
               📖 Read ({storageNodeLabel} ➔ {logicNodeLabel})
             </label>
-            <DatabaseRecordFeed records={records} />
+            <DatabaseRecordFeed records={records} maxHeight="" />
           </div>
         )}
 
@@ -94,7 +92,7 @@ export default function ConnectionInspector({
             <label className="text-[10px] font-bold text-text-secondary select-none">
               ✍️ Write ({logicNodeLabel} ➔ {storageNodeLabel})
             </label>
-            <DataConsole content={writePayload} placeholder="No output data written yet." />
+            <DataConsole content={writePayload} placeholder="No output data written yet." maxHeight="" />
           </div>
         )}
       </div>
@@ -139,7 +137,7 @@ export default function ConnectionInspector({
             <label className="text-[10px] font-bold text-text-secondary select-none">
               💬 Exact Prompt Package Sent to LLM
             </label>
-            <DataConsole content={formattedJson} placeholder="No messages prepared yet." />
+            <DataConsole content={formattedJson} placeholder="No messages prepared yet." maxHeight="" />
           </div>
 
           {showBiDirectional && (
@@ -147,7 +145,7 @@ export default function ConnectionInspector({
               <label className="text-[10px] font-bold text-text-secondary select-none">
                 📥 Return Payload ({targetNodeLabel} ➔ {sourceNodeLabel})
               </label>
-              <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." />
+              <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." maxHeight="" />
             </div>
           )}
         </div>
@@ -161,7 +159,7 @@ export default function ConnectionInspector({
             <label className="text-[10px] font-bold text-text-secondary select-none">
               📤 Transmitted Payload ({sourceNodeLabel} ➔ {targetNodeLabel})
             </label>
-            <DataConsole content={sourceOutput} placeholder="No output payload transmitted yet." />
+            <DataConsole content={sourceOutput} placeholder="No output payload transmitted yet." maxHeight="" />
           </div>
 
           {showBiDirectional && (
@@ -169,7 +167,7 @@ export default function ConnectionInspector({
               <label className="text-[10px] font-bold text-text-secondary select-none">
                 📥 Return Payload ({targetNodeLabel} ➔ {sourceNodeLabel})
               </label>
-              <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." />
+              <DataConsole content={targetOutput} placeholder="No response payload transmitted yet." maxHeight="" />
             </div>
           )}
         </div>
@@ -180,121 +178,97 @@ export default function ConnectionInspector({
   return (
     <>
       {/* Header */}
-      <div className="p-4 border-b border-border-subtle bg-card/60 backdrop-blur-md flex flex-col gap-1.5 select-none">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold m-0 text-text-main flex items-center gap-2">
-            <span>🔗</span>
-            <span>Connection Inspector</span>
-          </h2>
-          {/* Dynamic status pill */}
-          {(() => {
-            let badgeLabel = "One-Way Flow";
-            let badgeColorClass = "text-accent bg-accent-glow/5 border-accent/20";
+      <div className="p-4 border-b border-border-subtle bg-card/60 backdrop-blur-md flex items-center justify-between gap-2 select-none">
+        <h2 className="text-sm font-semibold m-0 text-text-main flex items-center gap-2">
+          <span>🔗</span>
+          <span>Connection Inspector</span>
+        </h2>
+        {/* Dynamic status pill */}
+        {(() => {
+          let badgeLabel = "One-Way Flow";
+          let badgeColorClass = "text-accent bg-accent-glow/5 border-accent/20";
 
-            if (edgeType === "bi-directional") {
-              badgeLabel = "Bi-Directional Sync";
-              badgeColorClass = "text-accent bg-accent-glow/5 border-accent/20";
-            } else if (edgeType === "read-write") {
-              badgeLabel = "Read & Write Sync";
-              badgeColorClass = "text-info bg-info/5 border-info/20";
-            } else if (edgeType === "read-only") {
-              badgeLabel = "Read-Only Context";
-              badgeColorClass = "text-info bg-info/5 border-info/20";
-            } else if (edgeType === "write-only") {
-              badgeLabel = "Write-Only Output";
-              badgeColorClass = "text-info bg-info/5 border-info/20";
-            }
+          if (edgeType === "bi-directional") {
+            badgeLabel = "Bi-Directional Sync";
+            badgeColorClass = "text-accent bg-accent-glow/5 border-accent/20";
+          } else if (edgeType === "read-write") {
+            badgeLabel = "Read & Write Sync";
+            badgeColorClass = "text-info bg-info/5 border-info/20";
+          } else if (edgeType === "read-only") {
+            badgeLabel = "Read-Only Context";
+            badgeColorClass = "text-info bg-info/5 border-info/20";
+          } else if (edgeType === "write-only") {
+            badgeLabel = "Write-Only Output";
+            badgeColorClass = "text-info bg-info/5 border-info/20";
+          }
 
-            return (
-              <span className={`text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${badgeColorClass}`}>
-                {badgeLabel}
-              </span>
-            );
-          })()}
-        </div>
-        <span className="text-[10px] text-text-secondary leading-normal">
-          Inspect active data routing pipelines and configure connection behaviors.
-        </span>
+          return (
+            <span className={`text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${badgeColorClass}`}>
+              {badgeLabel}
+            </span>
+          );
+        })()}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-32 flex flex-col gap-3 scrollbar-thin">
         {/* 1. Source & Target Routing Pathway Visualizer */}
-        <div className="flex flex-col gap-2.5">
-          <label className={`${formLabelClass} select-none`}>Routing Pathway</label>
-
-          <div className="relative bg-[#0b0b0d]/70 border border-[#222] rounded-xl p-3.5 flex flex-col gap-3 overflow-hidden shadow-inner">
-            {/* Decorative grid backdrop */}
-            <div className="absolute inset-0 opacity-[0.015] pointer-events-none bg-[radial-gradient(#d4e600_1px,transparent_1px)] bg-size-[16px_16px]"></div>
-
-            <div className="flex items-center justify-between gap-3 z-10 relative">
+        <CollapsibleSection title="Routing Pathway" icon="🛰️" defaultOpen={true}>
+          <div className="relative bg-primary/70 border border-border-subtle rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden shadow-inner">
+            <div className="flex items-center justify-between gap-2">
               {/* Source Node Card */}
-              <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-[#16161a] border border-[#2c2c34] rounded-lg p-2 shadow-sm text-center">
-                <span className="text-lg select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
+              <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-card border border-border-card rounded-lg p-2.5 shadow-sm text-center">
+                <span className="text-xl select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
                   {sourcePlugin?.meta.icon || "⚪"}
                 </span>
-                <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(sourceNode.data?.label || sourcePlugin?.meta.label || sourceNode.type)}>
+                <span className="text-[11px] font-bold text-text-main truncate w-full" title={String(sourceNode.data?.label || sourcePlugin?.meta.label || sourceNode.type)}>
                   {String(sourceNode.data?.label || sourcePlugin?.meta.label || sourceNode.type)}
                 </span>
-                <span className="text-[8px] uppercase font-mono tracking-wider text-[#52525b] mt-0.5 px-1 py-px bg-[#1e1e24] rounded border border-[#2e2e38]/30">
+                <span className="text-[8px] uppercase font-mono tracking-wider text-text-muted mt-0.5 px-1 py-px bg-input rounded border border-border-subtle/30">
                   {sourceNode.type}
                 </span>
               </div>
 
-              {/* Animated Flow Connector */}
-              <div className="flex flex-col items-center justify-center shrink-0 w-10 select-none relative">
-                <span className={`text-base leading-none filter drop-shadow-[0_0_4px_rgba(212,230,0,0.4)] ${isDatabase ? "text-info" : "text-accent"} ${isReverse ? "rotate-180" : ""}`}>➔</span>
-                <div className="w-8 h-0.5 bg-[#222] mt-1 relative overflow-hidden rounded-full border-t border-[#333]">
-                  <div
-                    className="absolute top-0 h-full w-2.5 rounded-full animate-[flowDash_1.6s_linear_infinite]"
-                    style={{
-                      background: isDatabase
-                        ? `linear-gradient(90deg, transparent, ${theme.edges.database}, transparent)`
-                        : `linear-gradient(90deg, transparent, ${theme.accents.primary}, transparent)`,
-                      animationDirection: isReverse ? "reverse" : "normal"
-                    }}
-                  ></div>
-                </div>
+              {/* Static Flow Arrow */}
+              <div className="flex items-center justify-center shrink-0 w-7 select-none">
+                <span className={`text-lg leading-none filter drop-shadow-[0_0_4px_var(--accent-glow)] ${isDatabase ? "text-info" : "text-accent"} ${isReverse ? "rotate-180" : ""}`}>➔</span>
               </div>
 
               {/* Target Node Card */}
-              <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-[#16161a] border border-[#2c2c34] rounded-lg p-2 shadow-sm text-center">
-                <span className="text-lg select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
+              <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-card border border-border-card rounded-lg p-2.5 shadow-sm text-center">
+                <span className="text-xl select-none mb-1 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">
                   {targetPlugin?.meta.icon || "⚪"}
                 </span>
-                <span className="text-[11px] font-bold text-[#f4f4f5] truncate w-full" title={String(targetNode.data?.label || targetPlugin?.meta.label || targetNode.type)}>
+                <span className="text-[11px] font-bold text-text-main truncate w-full" title={String(targetNode.data?.label || targetPlugin?.meta.label || targetNode.type)}>
                   {String(targetNode.data?.label || targetPlugin?.meta.label || targetNode.type)}
                 </span>
-                <span className="text-[8px] uppercase font-mono tracking-wider text-[#52525b] mt-0.5 px-1 py-px bg-[#1e1e24] rounded border border-[#2e2e38]/30">
+                <span className="text-[8px] uppercase font-mono tracking-wider text-text-muted mt-0.5 px-1 py-px bg-input rounded border border-border-subtle/30">
                   {targetNode.type}
                 </span>
               </div>
             </div>
 
             {/* Routing Details Footer */}
-            <div className="flex justify-between items-center text-[8px] font-mono text-text-muted border-t border-[#1b1b1f] pt-2 mt-1 z-10 select-none">
+            <div className="flex justify-between items-center text-[8px] font-mono text-text-muted border-t border-border-subtle pt-2 mt-1 z-10 select-none">
               <span className="truncate max-w-[45%]">ID: {selectedEdge.source}</span>
               <span className="truncate max-w-[45%] text-right">ID: {selectedEdge.target}</span>
             </div>
           </div>
-        </div>
+        </CollapsibleSection>
 
-        {/* 2. Data Flow Debugger */}
-        <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
-          <div className={`${formLabelClass} flex items-center gap-1.5 select-none`}>
-            <span>🔍</span>
-            <span>Live Connection Data</span>
-          </div>
-          {contentNodes}
-        </div>
-
-        {/* 3. Edge Type Customization */}
-        <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
-          <label className={`${formLabelClass} select-none`}>
-            {["database", "database-read", "database-write"].includes(connectionBehavior.allowedOption)
+        {/* 2. Edge Type Customization (moved above Live Connection Data) */}
+        <CollapsibleSection
+          title={
+            ["database", "database-read", "database-write"].includes(connectionBehavior.allowedOption)
               ? "Database Permissions"
-              : "Connection Type"}
-          </label>
-
+              : "Connection Type"
+          }
+          icon={
+            ["database", "database-read", "database-write"].includes(connectionBehavior.allowedOption)
+              ? "🗝️"
+              : "⚡"
+          }
+          defaultOpen={true}
+        >
           <div className="flex flex-col gap-2">
             {["database", "database-read", "database-write"].includes(connectionBehavior.allowedOption) ? (
               [
@@ -345,7 +319,7 @@ export default function ConnectionInspector({
                           <span className={`font-semibold ${isSelected ? "text-info" : "text-text-main"}`}>
                             {t.label}
                           </span>
-                          <span className={`text-[10px] font-mono select-none ${isSelected ? "text-info" : "text-[#52525b]"}`}>
+                          <span className={`text-[10px] font-mono select-none ${isSelected ? "text-info" : "text-text-muted"}`}>
                             {isSelected ? "● ACTIVE" : "○ SELECT"}
                           </span>
                         </div>
@@ -399,7 +373,7 @@ export default function ConnectionInspector({
                           <span className={`font-semibold ${isSelected ? "text-accent" : "text-text-main"}`}>
                             {t.label}
                           </span>
-                          <span className={`text-[10px] font-mono select-none ${isSelected ? "text-accent" : "text-[#52525b]"}`}>
+                          <span className={`text-[10px] font-mono select-none ${isSelected ? "text-accent" : "text-text-muted"}`}>
                             {isSelected ? "● ACTIVE" : "○ SELECT"}
                           </span>
                         </div>
@@ -413,24 +387,34 @@ export default function ConnectionInspector({
             )}
           </div>
           {connectionBehavior.allowedOption !== "both" && (
-            <div className="text-[9px] text-[#52525b] italic px-1 flex items-center gap-1 select-none">
+            <div className="text-[9px] text-text-muted italic px-1 flex items-center gap-1 select-none mt-2">
               <span>ℹ️</span>
               <span>Pathway constraint determined by connected nodes.</span>
             </div>
           )}
-        </div>
+        </CollapsibleSection>
 
-        {/* 4. Delete Connection */}
-        <div className="mt-auto border-t border-border-subtle pt-4">
+        {/* 3. Live Connection Data (moved after Edge Type, edge-to-edge) */}
+        <CollapsibleSection
+          title="Live Connection Data"
+          icon="🔍"
+          defaultOpen={true}
+          flush={true}
+        >
+          <div className="px-3.5 pb-3.5">{contentNodes}</div>
+        </CollapsibleSection>
+
+        {/* 4. Actions */}
+        <CollapsibleSection title="Actions" icon="⚙️" defaultOpen={false}>
           <button
             type="button"
             onClick={() => onDeleteEdge?.(selectedEdge.id)}
-            className="w-full bg-[#1c0e0e]/40 hover:bg-error/15 border border-error/20 hover:border-error/40 text-[#fca5a5] hover:text-[#f87171] rounded-lg py-2.5 px-4 text-xs font-semibold tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer duration-200 active:scale-[0.98]"
+            className={actionButtonDangerClass}
           >
             <span>🗑️</span>
-            <span>Delete Connection</span>
+            <span>Delete connection</span>
           </button>
-        </div>
+        </CollapsibleSection>
       </div>
     </>
   );

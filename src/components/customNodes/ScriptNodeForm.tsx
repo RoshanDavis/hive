@@ -74,7 +74,7 @@ export default function ScriptNodeForm({
           type="button"
           onClick={openScriptInEditor}
           disabled={opening}
-          className="self-start text-[11px] text-text-muted hover:text-accent border border-border-subtle hover:border-accent-dim rounded-md px-2.5 py-1.5 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1 disabled:opacity-50"
+          className="self-start text-[11px] text-text-muted hover:text-text-main border border-border-subtle hover:border-border-card rounded-md px-2.5 py-1.5 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1 disabled:opacity-50"
         >
           <span>📝</span>
           <span>{opening ? "Opening…" : "Open script in editor"}</span>
@@ -209,7 +209,7 @@ export default function ScriptNodeForm({
             <button
               type="button"
               onClick={() => setNetwork((n) => ({ ...n, allow: [...n.allow, ""] }))}
-              className="self-start text-[11px] text-text-muted hover:text-accent border border-dashed border-border-subtle hover:border-accent-dim rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
+              className="self-start text-[11px] text-text-muted hover:text-text-main border border-dashed border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
             >
               ＋ Add host
             </button>
@@ -330,7 +330,7 @@ export default function ScriptNodeForm({
           onClick={() =>
             setConfigSchema((s) => [...s, { key: "", label: "", type: "string" }])
           }
-          className="self-start text-[11px] text-text-muted hover:text-accent border border-dashed border-border-subtle hover:border-accent-dim rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
+          className="self-start text-[11px] text-text-muted hover:text-text-main border border-dashed border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
         >
           ＋ Add field
         </button>
@@ -404,7 +404,7 @@ export default function ScriptNodeForm({
           onClick={() =>
             setHandles((hs) => [...hs, { type: "target", position: "left" }])
           }
-          className="self-start text-[11px] text-text-muted hover:text-accent border border-dashed border-border-subtle hover:border-accent-dim rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
+          className="self-start text-[11px] text-text-muted hover:text-text-main border border-dashed border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
         >
           ＋ Add handle
         </button>

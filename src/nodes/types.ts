@@ -10,7 +10,6 @@ export interface TriggerNodeData {
 export interface NotifyNodeData {
   label: string;
   message: string;
-  output: string;
   [key: string]: unknown;
 }
 
@@ -51,6 +50,14 @@ export interface JSONStorageRecord {
   source: string;
   content: string;
   envelope?: NodeOutputEnvelope;
+  /** ISO timestamp written at record creation. Used for cross-day ordering
+   * when records are merged across multiple storage nodes. Optional for
+   * backward compatibility — legacy records fall back to numeric `id`. */
+  createdAt?: string;
+  /** Shared id for records emitted by a single chat fan-out turn. Used by
+   * the merged-read path to collapse known-duplicate writes without
+   * false-collapsing manually-edited records that happen to match. */
+  writeBatchId?: string;
 }
 
 export interface JSONStorageNodeData {

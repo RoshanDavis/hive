@@ -150,7 +150,7 @@ export default function AddCredentialMiniForm({
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-md px-2 py-1.5 text-[10.5px] text-red-300">
+        <div className="bg-danger/10 border border-danger/30 rounded-md px-2 py-1.5 text-[10.5px] text-danger">
           {error}
         </div>
       )}

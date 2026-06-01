@@ -36,7 +36,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--color-border-card);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-toast);
     min-width: 250px;
     max-width: 380px;
     animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -46,17 +46,17 @@
   /* Toast success shares the positive emerald used for user content. */
   .toast.success {
     border-color: var(--content-user);
-    box-shadow: 0 8px 32px color-mix(in srgb, var(--content-user) 15%, transparent), 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--content-user) 15%, transparent), var(--shadow-toast-outer);
   }
 
   .toast.error {
     border-color: var(--danger);
-    box-shadow: 0 8px 32px color-mix(in srgb, var(--danger) 15%, transparent), 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--danger) 15%, transparent), var(--shadow-toast-outer);
   }
 
   .toast.info {
     border-color: var(--color-accent);
-    box-shadow: 0 8px 32px var(--accent-glow), 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px var(--accent-glow), var(--shadow-toast-outer);
   }
 
   .toast-icon {

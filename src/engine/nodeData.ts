@@ -1,3 +1,4 @@
+import type { Edge, Node } from "@xyflow/react";
 import type { ChatMessage, JSONStorageRecord } from "@/nodes/types";
 import type { NodeOutputEnvelope } from "./types";
 
@@ -25,6 +26,112 @@ export function getChatMessages(data: NodeData): ChatMessage[] {
 export function getStorageRecords(data: NodeData): JSONStorageRecord[] {
   const records = data?.records;
   return Array.isArray(records) ? (records as JSONStorageRecord[]) : [];
+}
+
+// ─── Chat ↔ multi-storage merged view ────────────────────────
+//
+// A Chat node may be wired to many JSON-storage nodes; per-edge permissions
+// decide which ones it reads from and writes to. The helpers below give the
+// executor and inspector one shared definition of "the chat's record stream"
+// so they can never disagree on which records belong to the conversation.
+
+/** Map a stored record back to a chat message. The record's `source` is the
+ * label of whoever emitted it ("User", "You", "System", an assistant name, …);
+ * the chat distinguishes the User/System roles by that label and treats
+ * everything else as assistant. */
+export function recordToChatMessage(rec: JSONStorageRecord): ChatMessage {
+  const src = (rec.source || "").toLowerCase();
+  let role: ChatMessage["role"] = "assistant";
+  if (src === "user" || src === "you") role = "user";
+  else if (src === "system") role = "system";
+  return { role, content: rec.content || "", sender: rec.source };
+}
+
+/** Edge between a chat and a storage node, decorated with parsed permissions. */
+export interface ChatStorageEdge {
+  edge: Edge;
+  target: Node;
+  hasRead: boolean;
+  hasWrite: boolean;
+}
+
+/** Resolve every outgoing edge from `chatNodeId` whose target is a jsonStorage
+ * node. The decorated permissions on each edge let the executor/inspector
+ * decide which ones participate in reads vs writes without re-parsing edge
+ * data twice. Bottom storage handle defaults to `read-write`; non-storage
+ * handles default to `write-only` (matching connectivity.ts). */
+export function getChatStorageEdges(
+  chatNodeId: string,
+  nodes: Node[],
+  edges: Edge[]
+): ChatStorageEdge[] {
+  const result: ChatStorageEdge[] = [];
+  // Sort by edge id so fan-out order is deterministic across runs — partial
+  // failures on cancellation hit the same suffix every time.
+  const outgoing = edges
+    .filter((e) => e.source === chatNodeId)
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id));
+  for (const e of outgoing) {
+    const target = nodes.find((n) => n.id === e.target);
+    if (!target || target.type !== "jsonStorage") continue;
+    const defaultType = e.sourceHandle === "storage" ? "read-write" : "write-only";
+    const raw = e.data?.edgeType as string | undefined;
+    const edgeType =
+      raw === "read-only" || raw === "write-only" || raw === "read-write"
+        ? raw
+        : defaultType;
+    result.push({
+      edge: e,
+      target,
+      hasRead: edgeType === "read-only" || edgeType === "read-write",
+      hasWrite: edgeType === "write-only" || edgeType === "read-write",
+    });
+  }
+  return result;
+}
+
+/** Merge records from every read-enabled chat→storage edge into a single
+ * timeline. Ordering: ascending by `createdAt` (ISO, if present), falling
+ * back to numeric `id` (Date.now() string) for legacy records. Deduplication:
+ * records carrying the same `writeBatchId` collapse to the first one (these
+ * come from a single chat fan-out turn); records without a batch id are
+ * always kept distinct, even if their fields match — divergence between
+ * storages is information, not noise. */
+export function getMergedChatRecords(
+  chatNodeId: string,
+  nodes: Node[],
+  edges: Edge[]
+): JSONStorageRecord[] {
+  const storageEdges = getChatStorageEdges(chatNodeId, nodes, edges);
+  const all: JSONStorageRecord[] = [];
+  for (const se of storageEdges) {
+    if (!se.hasRead) continue;
+    all.push(...getStorageRecords(se.target.data));
+  }
+
+  all.sort((a, b) => {
+    const aKey = a.createdAt ?? a.id;
+    const bKey = b.createdAt ?? b.id;
+    // ISO timestamps and numeric id strings both sort correctly via
+    // localeCompare for their respective formats (lexical for ISO, numeric
+    // length matches for same-era ids). Mixed comparison falls back to
+    // string order which is a stable best-effort.
+    if (a.createdAt && b.createdAt) return aKey.localeCompare(bKey);
+    if (!a.createdAt && !b.createdAt) return Number(aKey) - Number(bKey);
+    return aKey.localeCompare(bKey);
+  });
+
+  const seenBatches = new Set<string>();
+  const merged: JSONStorageRecord[] = [];
+  for (const rec of all) {
+    if (rec.writeBatchId) {
+      if (seenBatches.has(rec.writeBatchId)) continue;
+      seenBatches.add(rec.writeBatchId);
+    }
+    merged.push(rec);
+  }
+  return merged;
 }
 
 // ─── Output envelope ─────────────────────────────────────────

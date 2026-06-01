@@ -11,4 +11,10 @@ export interface InspectorProps {
   nodes?: Node[];
   edges?: Edge[];
   workspacePath: string;
+  /** Open the Save-as-custom modal for this node. Provided by InspectorPanel;
+   * undefined when the panel isn't configured to surface the action. */
+  onSaveAsCustom?: () => void;
+  /** Delete this node (with incident edges + storage/chat cleanup). Provided
+   * by InspectorPanel via WorkspaceEditor; undefined when no handler is wired. */
+  onDeleteNode?: () => void;
 }

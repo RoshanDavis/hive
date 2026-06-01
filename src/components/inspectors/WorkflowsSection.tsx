@@ -142,7 +142,7 @@ export default function WorkflowsSection({
                   type="button"
                   onClick={() => onCancelWorkflow(run.startNodeIds[0])}
                   title="Stop this workflow"
-                  className="text-[11px] font-semibold text-red-200 hover:text-white bg-red-500/15 hover:bg-red-500/30 border border-red-500/40 hover:border-red-500/60 rounded-md px-2 py-0.5 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
+                  className="text-[11px] font-semibold text-danger hover:text-danger-hover bg-danger/15 hover:bg-danger/30 border border-danger/40 hover:border-danger/60 rounded-md px-2 py-0.5 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
                 >
                   <span>⏹</span>
                   <span>Stop</span>
@@ -199,7 +199,7 @@ export default function WorkflowsSection({
             {erroredNodes.map((row) => (
               <div
                 key={row.id}
-                className="flex flex-col gap-1.5 bg-red-500/5 border border-red-500/30 rounded-md px-2.5 py-2"
+                className="flex flex-col gap-1.5 bg-danger/5 border border-danger/30 rounded-md px-2.5 py-2"
               >
                 <div className="flex items-center gap-2">
                   <span
@@ -219,7 +219,7 @@ export default function WorkflowsSection({
                     type="button"
                     onClick={() => onRetryWorkflow(row.id)}
                     title="Retry the workflow from this node"
-                    className="text-[11px] font-semibold text-red-200 hover:text-white bg-red-500/15 hover:bg-red-500/30 border border-red-500/40 hover:border-red-500/60 rounded-md px-2 py-0.5 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
+                    className="text-[11px] font-semibold text-danger hover:text-danger-hover bg-danger/15 hover:bg-danger/30 border border-danger/40 hover:border-danger/60 rounded-md px-2 py-0.5 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
                   >
                     <span>🔄</span>
                     <span>Retry</span>
@@ -243,7 +243,7 @@ export default function WorkflowsSection({
             type="button"
             onClick={onClearAllStatuses}
             title="End every active workflow and clear all node status borders in one action. Use to fully reset the workspace after a force-kill, a stuck retry, or anything else that left things in flight."
-            className="mt-2 flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-text-secondary hover:text-text-main bg-card hover:bg-card-hover border border-border-subtle hover:border-accent-dim rounded-md px-2.5 py-1.5 cursor-pointer transition-colors"
+            className="mt-2 flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-text-secondary hover:text-text-main bg-card hover:bg-card-hover border border-border-subtle hover:border-border-card rounded-md px-2.5 py-1.5 cursor-pointer transition-colors"
           >
             <span>🧹</span>
             <span>Clear all</span>

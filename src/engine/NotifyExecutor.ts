@@ -69,23 +69,21 @@ export class NotifyExecutor implements NodeExecutor {
           });
         }
 
-        // 1. Resolve notification body: message field (defaults to "{input.value}")
+        // Resolve notification body: message field (defaults to "{input.value}")
         const customMessage = String(node.data?.message !== undefined ? node.data.message : "{input.value}");
         const finalNotificationBody = evaluateTemplate(customMessage, resolvedEnvelope);
 
-        // 2. Resolve output template field (defaults to "{input.value}")
-        const outputTemplate = String(node.data?.output !== undefined ? node.data.output : "{input.value}");
-        const finalOutputBody = evaluateTemplate(outputTemplate, resolvedEnvelope);
-
         const label = String(node.data?.label || "Hive");
 
-        // Store standard JSON envelope and evaluated output body in node state
+        // Notify is a pass-through: downstream gets the upstream envelope verbatim,
+        // with notification metadata layered onto `metadata` for observability.
         const envelope: NodeOutputEnvelope = {
-          value: finalOutputBody,
+          ...resolvedEnvelope,
           metadata: {
-            title: label,
-            body: finalNotificationBody,
-            timestamp: new Date().toISOString(),
+            ...(resolvedEnvelope.metadata ?? {}),
+            notifiedTitle: label,
+            notifiedBody: finalNotificationBody,
+            notifiedAt: new Date().toISOString(),
           },
         };
         updateNodeData(node.id, setOutputEnvelope(node.data, envelope));

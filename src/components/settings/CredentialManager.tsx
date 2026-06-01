@@ -127,7 +127,7 @@ export default function CredentialManager({
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="flex items-center gap-1.5 text-sm font-bold text-text-main hover:text-accent transition-colors bg-transparent border-none cursor-pointer p-0 select-none outline-none"
+          className="flex items-center gap-1.5 text-sm font-bold text-text-main hover:text-text-secondary transition-colors bg-transparent border-none cursor-pointer p-0 select-none outline-none"
         >
           <span>{open ? "▼" : "▶"} Credentials</span>
         </button>

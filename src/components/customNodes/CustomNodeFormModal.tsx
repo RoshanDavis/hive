@@ -424,7 +424,7 @@ export default function CustomNodeFormModal({
                 type="button"
                 onClick={handlePromote}
                 disabled={saving}
-                className="text-[11px] text-text-muted hover:text-accent border-none bg-transparent cursor-pointer underline disabled:opacity-50"
+                className="text-[11px] text-text-muted hover:text-text-main border-none bg-transparent cursor-pointer underline disabled:opacity-50"
                 title="Move this custom node to global scope (all workspaces)"
               >
                 Promote to global 🌐
