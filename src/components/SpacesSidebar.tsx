@@ -179,7 +179,7 @@ export default function SpacesSidebar({
             const compactBoxClass = `w-10 h-10 rounded-md flex items-center justify-center font-bold transition-all border ${
               activeSpaceId === space.id
                 ? "text-primary bg-accent border-accent shadow-[0_0_12px_rgba(212,230,0,0.3)] hover:bg-accent-dim"
-                : "text-[#a5a5a5] border-white/20 bg-transparent hover:text-text-main hover:bg-card"
+                : "text-text-secondary border-border-subtle bg-transparent hover:text-text-main hover:bg-card"
             }`;
 
             // In edit mode use a plain container so the rename <input> is never a
@@ -230,7 +230,7 @@ export default function SpacesSidebar({
             const rowClass = `w-full px-3 py-2 flex items-center gap-3 rounded-lg text-sm font-medium transition-all border text-left min-w-0 ${
               activeSpaceId === space.id
                 ? "text-accent bg-accent-glow/10 border-accent shadow-[0_0_12px_rgba(212,230,0,0.08)]"
-                : "text-[#a5a5a5] border-white/20 bg-transparent hover:text-text-main hover:bg-card/50"
+                : "text-text-secondary border-border-subtle bg-transparent hover:text-text-main hover:bg-card/50"
             }`;
 
             const avatar = (
@@ -238,7 +238,7 @@ export default function SpacesSidebar({
                 className={`w-7 h-7 rounded-md flex items-center justify-center font-black uppercase shrink-0 border transition-all ${avatarFontClass} ${
                   activeSpaceId === space.id
                     ? "bg-accent text-primary border-accent"
-                    : "bg-primary/30 text-[#b5b5b5] border-border-subtle"
+                    : "bg-primary/30 text-text-secondary border-border-subtle"
                 }`}
               >
                 {displayLabel}
@@ -288,7 +288,7 @@ export default function SpacesSidebar({
       {/* Add space */}
       {isCompact ? (
         <button
-          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-dashed border-white/20 bg-transparent text-xl font-normal text-text-muted hover:text-accent hover:border-accent/50 hover:bg-accent-glow/5"
+          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-dashed border-border-subtle bg-transparent text-xl font-normal text-text-muted hover:text-text-main hover:border-border-card hover:bg-card/30"
           onClick={onAddSpace}
           title="Add new space"
           id="add-space-btn"
@@ -297,7 +297,7 @@ export default function SpacesSidebar({
         </button>
       ) : (
         <button
-          className="w-full px-3 py-2 flex items-center justify-center gap-2 rounded-lg cursor-pointer transition-all border border-dashed border-white/20 text-xs font-semibold bg-transparent text-text-muted hover:text-accent hover:border-accent/50 hover:bg-accent-glow/5"
+          className="w-full px-3 py-2 flex items-center justify-center gap-2 rounded-lg cursor-pointer transition-all border border-dashed border-border-subtle text-xs font-semibold bg-transparent text-text-muted hover:text-text-main hover:border-border-card hover:bg-card/30"
           onClick={onAddSpace}
           title="Add new space"
           id="add-space-btn"
@@ -313,7 +313,7 @@ export default function SpacesSidebar({
       {/* Settings Button */}
       {isCompact ? (
         <button
-          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-border-subtle bg-transparent text-lg text-text-secondary hover:text-accent hover:border-accent-dim hover:bg-card select-none"
+          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-border-subtle bg-transparent text-lg text-text-secondary hover:text-text-main hover:border-border-card hover:bg-card select-none"
           onClick={onOpenSettings}
           title="Workspace Settings"
           id="sidebar-settings-btn"
@@ -322,7 +322,7 @@ export default function SpacesSidebar({
         </button>
       ) : (
         <button
-          className="w-full px-3 py-2 flex items-center gap-3 rounded-lg text-xs font-semibold cursor-pointer transition-all border border-border-subtle bg-transparent text-left text-text-secondary hover:text-accent hover:border-accent-dim hover:bg-card select-none"
+          className="w-full px-3 py-2 flex items-center gap-3 rounded-lg text-xs font-semibold cursor-pointer transition-all border border-border-subtle bg-transparent text-left text-text-secondary hover:text-text-main hover:border-border-card hover:bg-card select-none"
           onClick={onOpenSettings}
           title="Workspace Settings"
           id="sidebar-settings-btn"

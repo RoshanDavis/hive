@@ -98,13 +98,13 @@ export default function CredentialGrantList({ granted, onChange, workspacePath }
       ))}
 
       {dangling.length > 0 && (
-        <div className="flex flex-col gap-1 bg-amber-500/10 border border-amber-500/30 rounded-md p-2">
-          <span className="text-[10px] uppercase tracking-widest font-bold text-amber-400">
+        <div className="flex flex-col gap-1 bg-warning/10 border border-warning/30 rounded-md p-2">
+          <span className="text-[10px] uppercase tracking-widest font-bold text-warning">
             ⚠️ Granted but unavailable here
           </span>
           {dangling.map((id) => (
             <div key={id} className="flex items-center gap-2">
-              <span className="flex-1 text-[10px] font-mono text-amber-300/90 truncate">{id}</span>
+              <span className="flex-1 text-[10px] font-mono text-warning/90 truncate">{id}</span>
               <button
                 type="button"
                 onClick={() => revoke(id)}
@@ -165,7 +165,7 @@ export default function CredentialGrantList({ granted, onChange, workspacePath }
           <button
             type="button"
             onClick={() => setAddNewOpen(true)}
-            className="self-start text-[11px] text-text-muted hover:text-accent border border-dashed border-border-subtle hover:border-accent-dim rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
+            className="self-start text-[11px] text-text-muted hover:text-text-main border border-dashed border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
           >
             ＋ Add new credential
           </button>

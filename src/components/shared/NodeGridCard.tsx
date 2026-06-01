@@ -44,7 +44,7 @@ export default function NodeGridCard({
       <button
         type="button"
         onClick={onClick}
-        className="bg-card rounded-xl p-4 border border-border-card shadow-card flex flex-col items-center justify-center w-full h-full cursor-pointer transition-all duration-250 hover:bg-card-hover hover:-translate-y-1 hover:shadow-card-hover hover:border-white"
+        className="bg-card rounded-xl p-4 border border-border-card shadow-card flex flex-col items-center justify-center w-full h-full cursor-pointer transition-all duration-250 hover:bg-card-hover hover:-translate-y-1 hover:shadow-card-hover hover:border-border-card"
         title={title}
       >
         <span

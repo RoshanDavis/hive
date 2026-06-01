@@ -57,7 +57,7 @@
   background-color: var(--color-input) !important;
   opacity: 1 !important;
   border: 2px solid var(--accent) !important;
-  color: #ffffff !important;
+  color: var(--color-text-main) !important;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.9) !important;
   transform: scale(1.02) !important;
 }

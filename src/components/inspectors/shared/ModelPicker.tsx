@@ -106,21 +106,21 @@ export default function ModelPicker({
       </select>
 
       {loadError && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2 text-[11px] text-red-300 flex items-start gap-2">
+        <div className="bg-danger/10 border border-danger/30 rounded-md px-3 py-2 text-[11px] text-danger flex items-start gap-2">
           <span>⚠️</span>
           <span className="flex-1">Failed to load models: {loadError}</span>
         </div>
       )}
 
       {showMissingBanner && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2 text-[11px] text-red-300 flex items-center gap-2">
+        <div className="bg-danger/10 border border-danger/30 rounded-md px-3 py-2 text-[11px] text-danger flex items-center gap-2">
           <span>⚠️</span>
           <span className="flex-1">
             Model "<span className="font-mono">{selectedModel}</span>" not in any list — pick a
             replacement above or add it below.
           </span>
           <button
-            className="text-red-200 hover:text-white underline cursor-pointer border-none bg-transparent text-[11px]"
+            className="text-danger hover:text-danger-hover underline cursor-pointer border-none bg-transparent text-[11px]"
             onClick={() => onSelect("")}
           >
             Clear
@@ -232,7 +232,7 @@ function AddModelMiniForm({ providerKey, workspacePath, onCancel, onAdded }: Add
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-md px-2 py-1.5 text-[10.5px] text-red-300">
+        <div className="bg-danger/10 border border-danger/30 rounded-md px-2 py-1.5 text-[10.5px] text-danger">
           {error}
         </div>
       )}

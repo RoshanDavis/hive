@@ -51,7 +51,7 @@ export default function CredentialRow({
   showToast,
 }: CredentialRowProps) {
   return (
-    <div className="bg-secondary/30 border border-border-subtle hover:border-accent-dim/20 rounded-lg px-3 py-2.5 flex flex-col gap-2 transition-colors">
+    <div className="bg-secondary/30 border border-border-subtle hover:border-border-card rounded-lg px-3 py-2.5 flex flex-col gap-2 transition-colors">
       <div className="flex items-center gap-3">
         <span className="text-base">{schema?.icon ?? "🔑"}</span>
         <div className="flex flex-col gap-0.5 flex-1 min-w-0">

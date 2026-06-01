@@ -169,7 +169,7 @@ export default function InspectorPanel({
                 <button
                   onClick={() => setShowSaveCustom(true)}
                   title="Save this node's configuration as a reusable custom node"
-                  className="shrink-0 text-[11px] text-text-muted hover:text-accent border border-border-subtle hover:border-accent-dim rounded-md px-2 py-1 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1"
+                  className="shrink-0 text-[11px] text-text-muted hover:text-text-main border border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1"
                 >
                   <span>＋</span>
                   <span>Save as custom</span>
@@ -190,7 +190,7 @@ export default function InspectorPanel({
             {canStopFromSelected && onCancelWorkflow && (
               <button
                 onClick={() => onCancelWorkflow(selectedNode.id)}
-                className="w-full bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-2 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm"
+                className="w-full bg-danger/15 hover:bg-danger/25 border border-danger/40 hover:border-danger/60 text-danger hover:text-danger-hover rounded-md py-2 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 select-none shadow-sm"
               >
                 <span>⏹</span>
                 <span>Stop Workflow</span>
@@ -199,11 +199,11 @@ export default function InspectorPanel({
 
             {/* Error Message & Retry Action Banner */}
             {selectedNode.data?.status === "error" && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3.5 flex flex-col gap-3 relative backdrop-blur-md">
+              <div className="bg-danger/10 border border-danger/30 rounded-lg p-3.5 flex flex-col gap-3 relative backdrop-blur-md">
                 <div className="flex items-start gap-2.5">
                   <span className="text-lg leading-none select-none">⚠️</span>
                   <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                    <span className="text-xs uppercase tracking-widest text-red-400 font-bold">Node Execution Failed</span>
+                    <span className="text-xs uppercase tracking-widest text-danger font-bold">Node Execution Failed</span>
                     <p className="text-[11px] text-text-secondary leading-relaxed wrap-break-word mt-1 mb-0 whitespace-pre-wrap">
                       {String(selectedNode.data?.error || "An unknown execution error occurred.")}
                     </p>
@@ -214,7 +214,7 @@ export default function InspectorPanel({
                     <button
                       onClick={() => onRetryWorkflow(selectedNode.id)}
                       disabled={isRunning}
-                      className="flex-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 hover:border-red-500/60 text-red-200 hover:text-white rounded-md py-1.5 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed select-none shadow-sm"
+                      className="flex-1 bg-danger/20 hover:bg-danger/30 border border-danger/40 hover:border-danger/60 text-danger hover:text-danger-hover rounded-md py-1.5 px-3 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed select-none shadow-sm"
                     >
                       <span>🔄</span>
                       <span>Retry</span>

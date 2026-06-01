@@ -75,7 +75,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#050505]/75 backdrop-blur-md animate-[fadeIn_0.2s_ease-out]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-overlay backdrop-blur-md animate-[fadeIn_0.2s_ease-out]">
       <div className="absolute inset-0 cursor-default" onClick={onClose} />
 
       <div className="settings-modal-container max-w-4xl w-[92vw] h-[85vh] flex flex-col">
@@ -117,7 +117,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
               <button
                 type="button"
                 onClick={() => setShowConcurrencyPools(!showConcurrencyPools)}
-                className="flex items-center gap-1.5 text-sm font-bold text-text-main hover:text-accent transition-colors bg-transparent border-none cursor-pointer p-0 select-none outline-none"
+                className="flex items-center gap-1.5 text-sm font-bold text-text-main hover:text-text-secondary transition-colors bg-transparent border-none cursor-pointer p-0 select-none outline-none"
               >
                 <span>{showConcurrencyPools ? "▼" : "▶"} Execution Concurrency Pools</span>
               </button>
@@ -128,7 +128,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
               <div className="flex flex-col gap-4 animate-[fadeIn_0.15s_ease-out]">
                 
                 {/* Row 1: Local Model Pool */}
-                <div className="flex flex-col gap-4 p-4 bg-secondary/30 rounded-xl border border-border-subtle hover:border-accent-dim/20 transition-colors">
+                <div className="flex flex-col gap-4 p-4 bg-secondary/30 rounded-xl border border-border-subtle hover:border-border-card transition-colors">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex flex-col gap-1 max-w-md">
                       <div className="flex items-center gap-2">
@@ -171,7 +171,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                       <button
                         type="button"
                         onClick={() => setShowPatterns(!showPatterns)}
-                        className="flex items-center gap-1.5 text-[10.5px] font-bold text-accent hover:text-accent-dim transition-colors bg-transparent border-none cursor-pointer p-0 self-start select-none outline-none"
+                        className="flex items-center gap-1.5 text-[10.5px] font-bold text-text-secondary hover:text-text-main transition-colors bg-transparent border-none cursor-pointer p-0 self-start select-none outline-none"
                       >
                         <span>{showPatterns ? "▼" : "▶"} Configure Local Endpoint Rules (Glob Wildcards)</span>
                       </button>
@@ -196,7 +196,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                             <button
                               type="button"
                               onClick={() => handleAddPattern()}
-                              className="px-3 py-1.5 bg-accent hover:bg-[#b0bf00] text-primary font-bold text-[10px] rounded-md transition-colors cursor-pointer border-none"
+                              className="px-3 py-1.5 bg-accent hover:bg-accent-dim text-primary font-bold text-[10px] rounded-md transition-colors cursor-pointer border-none"
                             >
                               + Add
                             </button>
@@ -210,13 +210,13 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                               patterns.map((pat) => (
                                 <div
                                   key={pat}
-                                  className="flex items-center gap-1 bg-[#252525] border border-border-card rounded-md px-1.5 py-0.5 text-[10px] font-bold text-text-secondary hover:text-text-main hover:border-accent-dim/30 transition-all select-none"
+                                  className="flex items-center gap-1 bg-input border border-border-card rounded-md px-1.5 py-0.5 text-[10px] font-bold text-text-secondary hover:text-text-main hover:border-border-hover transition-all select-none"
                                 >
                                   <span className="font-mono text-[9px] text-accent/90">{pat}</span>
                                   <button
                                     type="button"
                                     onClick={() => handleRemovePattern(pat)}
-                                    className="text-text-muted hover:text-red-400 bg-transparent border-none text-[8px] cursor-pointer pl-0.5"
+                                    className="text-text-muted hover:text-danger bg-transparent border-none text-[8px] cursor-pointer pl-0.5"
                                   >
                                     ✕
                                   </button>
@@ -235,7 +235,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                 </div>
 
                 {/* Row 2: Cloud Model Pool */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-secondary/30 rounded-xl border border-border-subtle hover:border-accent-dim/20 transition-colors">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-secondary/30 rounded-xl border border-border-subtle hover:border-border-card transition-colors">
                   <div className="flex flex-col gap-1 max-w-md">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-text-main">Cloud Model Pool</span>
@@ -272,7 +272,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                 </div>
 
                 {/* Row 3: General Tasks */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-secondary/30 rounded-xl border border-border-subtle hover:border-accent-dim/20 transition-colors">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-secondary/30 rounded-xl border border-border-subtle hover:border-border-card transition-colors">
                   <div className="flex flex-col gap-1 max-w-md">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-text-main">General Tasks</span>
@@ -324,7 +324,7 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
           </button>
           <button
             onClick={handleSave}
-            className="px-5 py-2 bg-accent hover:bg-[#b0bf00] active:scale-[0.98] text-primary font-bold text-xs rounded-lg transition-all shadow-[0_4px_12px_rgba(212,230,0,0.15)] cursor-pointer select-none"
+            className="px-5 py-2 bg-accent hover:bg-accent-dim active:scale-[0.98] text-primary font-bold text-xs rounded-lg transition-all shadow-[0_4px_12px_var(--accent-glow)] cursor-pointer select-none"
           >
             Save Changes
           </button>

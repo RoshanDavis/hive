@@ -20,10 +20,11 @@ export const hiveDark: Theme = {
     sidebar: "#0f0f0f",
     input: "#1e1e1e",
     menu: "#121212",
+    overlay: "rgba(0, 0, 0, 0.75)",
   },
 
   text: {
-    main: "#f0f0f0",
+    main: "#e0e0e0",
     secondary: "#888888",
     muted: "#555555",
   },
@@ -31,12 +32,14 @@ export const hiveDark: Theme = {
   borders: {
     subtle: "#2a2a2a",
     card: "#333333",
+    hover: "#404040",
   },
 
   accents: {
     primary: "#d4e600",
     primaryDim: "#a3b300",
     primaryGlow: "rgba(212, 230, 0, 0.15)",
+    selection: "#ffffff",
   },
 
   status: {
@@ -45,6 +48,7 @@ export const hiveDark: Theme = {
     error: "#ef4444",
     info: "#38bdf8",
     danger: "#ff6b6b",
+    dangerHover: "#ff8a8a",
     idle: "#52525b",
   },
 
@@ -64,10 +68,13 @@ export const hiveDark: Theme = {
 
   controls: {
     handle: "#444444",
+    toggleKnob: "#ffffff",
   },
 
   content: {
     user: "#34d399",
     notification: "#60a5fa",
+    system: "#818cf8",
+    assistant: "#c084fc",
   },
 };

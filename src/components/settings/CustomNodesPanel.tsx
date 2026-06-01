@@ -76,7 +76,7 @@ export default function CustomNodesPanel({ showToast }: Props) {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1.5 text-sm font-bold text-text-main hover:text-accent transition-colors bg-transparent border-none cursor-pointer p-0 select-none outline-none"
+          className="flex items-center gap-1.5 text-sm font-bold text-text-main hover:text-text-secondary transition-colors bg-transparent border-none cursor-pointer p-0 select-none outline-none"
         >
           <span>{open ? "▼" : "▶"} Custom Nodes</span>
         </button>

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-05-31** (commit `0b50083`, refactor pass Phases 1–5). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 0b50083..HEAD -- src/ src-tauri/`.
+> **📌 Living document — current design, not a contract.** Describes the *intended* design as of **2026-06-01** (commit `5c74022`, plus the `ui/inspectors` theming hygiene pass: semantic slot expansion + tokens-mirror drift guard). The code is the source of truth: **if this doc and the code disagree, trust the code and fix the doc.** Detect drift by diffing the paths under [Key files](#key-files) since that commit, e.g. `git log --oneline 5c74022..HEAD -- src/ src-tauri/`.
 
 This is the entry point for understanding Hive's internals. It maps the systems and links to the per-system design docs. For working conventions ("how do I add a node type?") see [CLAUDE.md](../CLAUDE.md); these docs explain *how the systems work and why*.
 
@@ -86,6 +86,7 @@ Hive has no hardcoded node types. A `NodePlugin` ([src/engine/plugin.ts](../src/
 | Node defaults (global + workspace) | [node-defaults.md](node-defaults.md) | `src/services/nodeDefaultsService.ts` |
 | Custom nodes + script sandbox | [custom-nodes-design.md](custom-nodes-design.md) | `src/services/customNode*`, `src-tauri/crates/sandbox/` |
 | Concurrency governor | (in [node-engine.md](node-engine.md#concurrency-governor)) | `src/services/concurrency.ts` |
+| Theming (Theme schema, applyTheme, tokens-mirror drift guard) | (in [CLAUDE.md → Theming](../CLAUDE.md#theming-theme-type-applytheme-themeprovider)) | `src/theme/`, `src/styles/tokens.css`, `src/theme/__tests__/tokensMirror.test.ts` |
 
 ## Built-in node types
 

@@ -177,10 +177,10 @@ export default function LLMInspector({
             className={`w-10 h-5.5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
               isLimited ? "bg-accent" : "bg-border-subtle"
             }`}
-            style={{ border: isLimited ? "none" : "1px solid #3a3a3a" }}
+            style={{ border: isLimited ? "none" : "1px solid var(--border-subtle)" }}
           >
             <div
-              className={`w-4.5 h-4.5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+              className={`w-4.5 h-4.5 rounded-full bg-toggle-knob shadow-md transform transition-transform duration-200 ${
                 isLimited ? "translate-x-4.5" : "translate-x-0"
               }`}
             />

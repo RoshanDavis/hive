@@ -150,7 +150,7 @@ export default function ScriptNodeInspector({
           onClick={handleOpen}
           disabled={opening}
           title="Create script.js if missing, then open it in your default editor"
-          className="text-[11px] text-text-muted hover:text-accent border border-border-subtle hover:border-accent-dim rounded-md px-2 py-1 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1 disabled:opacity-50"
+          className="text-[11px] text-text-muted hover:text-text-main border border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1 disabled:opacity-50"
         >
           <span>📝</span>
           <span>{opening ? "Opening…" : "Open script in editor"}</span>
@@ -158,16 +158,16 @@ export default function ScriptNodeInspector({
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2 text-[11px] text-red-300">
+        <div className="bg-danger/10 border border-danger/30 rounded-md px-3 py-2 text-[11px] text-danger">
           {error}
         </div>
       )}
 
       {danglingCreds.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex flex-col gap-1.5">
+        <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
             <span className="text-base leading-none">⚠️</span>
-            <span className="text-[11px] uppercase tracking-widest font-bold text-amber-400">
+            <span className="text-[11px] uppercase tracking-widest font-bold text-warning">
               Missing credential grant{danglingCreds.length > 1 ? "s" : ""}
             </span>
           </div>
@@ -182,7 +182,7 @@ export default function ScriptNodeInspector({
             {danglingCreds.map((c) => (
               <span
                 key={c}
-                className="text-[10px] font-mono text-amber-300/90 bg-input border border-border-subtle rounded px-1.5 py-0.5"
+                className="text-[10px] font-mono text-warning/90 bg-input border border-border-subtle rounded px-1.5 py-0.5"
               >
                 {c}
               </span>

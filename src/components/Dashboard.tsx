@@ -48,7 +48,7 @@ function WorkspaceCard({
     : null;
   return (
     <div
-      className="bg-card rounded-xl p-5 border border-border-card shadow-card flex flex-col cursor-pointer transition-all duration-250 hover:bg-card-hover hover:-translate-y-1 hover:shadow-card-hover hover:border-accent-dim relative group"
+      className="bg-card rounded-xl p-5 border border-border-card shadow-card flex flex-col cursor-pointer transition-all duration-250 hover:bg-card-hover hover:-translate-y-1 hover:shadow-card-hover hover:border-border-card relative group"
       id={`workspace-${ws.name}`}
       title={ws.path}
       onClick={onOpen}
@@ -107,7 +107,7 @@ function WorkspaceCard({
           }`}
         >
           <span
-            className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-200 ${
+            className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-toggle-knob transition-transform duration-200 ${
               ws.background_execution ? "translate-x-4" : "translate-x-0"
             }`}
           />
@@ -259,7 +259,7 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
 
         {/* Settings button */}
         <button
-          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-border-subtle bg-transparent text-lg text-text-secondary hover:text-accent hover:border-accent-dim hover:bg-card select-none"
+          className="w-10 h-10 rounded-md flex items-center justify-center cursor-pointer transition-all border border-border-subtle bg-transparent text-lg text-text-secondary hover:text-text-main hover:border-border-card hover:bg-card select-none"
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
           id="dashboard-settings-btn"
@@ -333,13 +333,13 @@ export default function Dashboard({ onOpenWorkspace }: DashboardProps) {
 
                   {/* Add Button — always last in grid */}
                   <div
-                    className="bg-transparent border-2 border-dashed border-border-card rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all duration-250 hover:border-accent hover:bg-accent-glow hover:text-accent group min-h-35"
+                    className="bg-transparent border-2 border-dashed border-border-card rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all duration-250 hover:border-border-card hover:bg-card-hover hover:text-text-main group min-h-35"
                     id="add-workspace-btn"
                     onClick={handleAddWorkspace}
                     title="Add workspace"
                   >
-                    <span className="text-3xl text-text-secondary group-hover:text-accent transition-colors mb-1">＋</span>
-                    <span className="text-xs text-text-secondary group-hover:text-accent font-medium transition-colors">Add Workspace</span>
+                    <span className="text-3xl text-text-secondary group-hover:text-text-main transition-colors mb-1">＋</span>
+                    <span className="text-xs text-text-secondary group-hover:text-text-main font-medium transition-colors">Add Workspace</span>
                   </div>
                 </div>
               ) : (

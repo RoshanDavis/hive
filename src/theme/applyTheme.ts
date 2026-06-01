@@ -22,6 +22,7 @@ export function applyTheme(theme: Theme, root: HTMLElement = document.documentEl
   s.setProperty("--bg-sidebar", theme.surfaces.sidebar);
   s.setProperty("--bg-input", theme.surfaces.input);
   s.setProperty("--bg-menu", theme.surfaces.menu);
+  s.setProperty("--bg-overlay", theme.surfaces.overlay);
 
   // Text
   s.setProperty("--text-main", theme.text.main);
@@ -31,11 +32,13 @@ export function applyTheme(theme: Theme, root: HTMLElement = document.documentEl
   // Borders
   s.setProperty("--border-subtle", theme.borders.subtle);
   s.setProperty("--border-card", theme.borders.card);
+  s.setProperty("--border-hover", theme.borders.hover);
 
   // Accents
   s.setProperty("--accent", theme.accents.primary);
   s.setProperty("--accent-dim", theme.accents.primaryDim);
   s.setProperty("--accent-glow", theme.accents.primaryGlow);
+  s.setProperty("--accent-selection", theme.accents.selection);
 
   // Status (semantic)
   s.setProperty("--success", theme.status.success);
@@ -43,9 +46,11 @@ export function applyTheme(theme: Theme, root: HTMLElement = document.documentEl
   s.setProperty("--error", theme.status.error);
   s.setProperty("--info", theme.status.info);
   s.setProperty("--danger", theme.status.danger);
+  s.setProperty("--danger-hover", theme.status.dangerHover);
 
   // Controls
   s.setProperty("--handle", theme.controls.handle);
+  s.setProperty("--toggle-knob", theme.controls.toggleKnob);
 
   // Edge colors exposed as CSS variables so node plugins can use them in
   // inline styles (e.g. storage-handle background tint) without importing
@@ -54,11 +59,13 @@ export function applyTheme(theme: Theme, root: HTMLElement = document.documentEl
   s.setProperty("--edge-default", theme.edges.default);
   s.setProperty("--edge-database", theme.edges.database);
 
-  // Semantic content tints (user-authored vs notification-authored). Used
-  // by the chat feed, the chat-variant toast, and the concurrency-pool
-  // badges in SettingsModal.
+  // Semantic content tints (author-of-content). Used by the chat feed,
+  // the chat-variant toast, the database record feed (DatabaseRecordFeed),
+  // and the concurrency-pool badges in SettingsModal.
   s.setProperty("--content-user", theme.content.user);
   s.setProperty("--content-notification", theme.content.notification);
+  s.setProperty("--content-system", theme.content.system);
+  s.setProperty("--content-assistant", theme.content.assistant);
 
   root.dataset.theme = theme.id;
 }

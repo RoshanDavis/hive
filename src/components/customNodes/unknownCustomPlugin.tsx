@@ -4,11 +4,11 @@ import type { NodePlugin } from "@/engine/plugin";
 /** Inspector shown for a custom node whose definition is missing from disk. */
 function UnknownCustomInspector({ node }: { node: Node }) {
   return (
-    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3.5 flex flex-col gap-2 backdrop-blur-md">
+    <div className="bg-danger/10 border border-danger/30 rounded-lg p-3.5 flex flex-col gap-2 backdrop-blur-md">
       <div className="flex items-start gap-2.5">
         <span className="text-lg leading-none select-none">❓</span>
         <div className="flex flex-col gap-1 min-w-0 flex-1">
-          <span className="text-xs uppercase tracking-widest text-red-400 font-bold">
+          <span className="text-xs uppercase tracking-widest text-danger font-bold">
             Custom node definition missing
           </span>
           <p className="text-[11px] text-text-secondary leading-relaxed wrap-break-word m-0">

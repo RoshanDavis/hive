@@ -24,12 +24,12 @@ export default function DataConsole({ content, placeholder = "No data transmitte
   }
 
   return (
-    <div className="bg-[#0b0b0d]/70 border border-[#222] rounded-lg p-3 font-mono text-[11px] leading-relaxed text-[#e4e4e7] overflow-x-auto relative group max-h-35 overflow-y-auto pr-10 scrollbar-thin select-text">
+    <div className="bg-primary/70 border border-border-subtle rounded-lg p-3 font-mono text-[11px] leading-relaxed text-text-main overflow-x-auto relative group max-h-35 overflow-y-auto pr-10 scrollbar-thin select-text">
       {hasData && !isEmpty && (
         <button
           type="button"
           onClick={handleCopy}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 hover:bg-[#1e1e24] text-[#a1a1aa] hover:text-white text-[9px] px-1.5 py-0.5 rounded border border-[#2e2e38]/30 transition-all select-none cursor-pointer duration-150"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 hover:bg-card-hover text-text-muted hover:text-text-main text-[9px] px-1.5 py-0.5 rounded border border-border-subtle/30 transition-all select-none cursor-pointer duration-150"
         >
           {copied ? "✓ Copied" : "📋 Copy"}
         </button>

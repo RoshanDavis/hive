@@ -26,6 +26,8 @@ export interface ThemeSurfaces {
   sidebar: string;
   input: string;
   menu: string;
+  /** Modal scrim / dimming layer. */
+  overlay: string;
 }
 
 export interface ThemeText {
@@ -37,6 +39,9 @@ export interface ThemeText {
 export interface ThemeBorders {
   subtle: string;
   card: string;
+  /** Hover variant — between subtle and card, used to lift strokes on hover
+   *  without abusing text or accent colors. */
+  hover: string;
 }
 
 export interface ThemeAccents {
@@ -46,6 +51,8 @@ export interface ThemeAccents {
   primaryDim: string;
   /** rgba/alpha variant used for soft glow backgrounds. */
   primaryGlow: string;
+  /** Color of the ring around a selected node on the canvas. */
+  selection: string;
 }
 
 export interface ThemeStatus {
@@ -55,6 +62,8 @@ export interface ThemeStatus {
   info: string;
   /** Used by destructive action buttons (Delete). */
   danger: string;
+  /** Hover variant of danger — destructive button hover state. */
+  dangerHover: string;
   /** Neutral / no-status idle state (MiniMap fallback, etc.). */
   idle: string;
 }
@@ -78,6 +87,9 @@ export interface ThemeCanvas {
 export interface ThemeControls {
   /** Default React Flow handle color. */
   handle: string;
+  /** Movable knob on toggle switches (Dashboard background-execution toggle,
+   *  LLMInspector chat-history toggle). */
+  toggleKnob: string;
 }
 
 /**
@@ -91,6 +103,10 @@ export interface ThemeContent {
   user: string;
   /** Notification-authored content: notify records in the feed. */
   notification: string;
+  /** System-authored content: system records in the feed. */
+  system: string;
+  /** Assistant/model-authored content: LLM/Ollama records in the feed. */
+  assistant: string;
 }
 
 export interface Theme {
