@@ -157,6 +157,26 @@ export default function ScriptNodeInspector({
           <span>{opening ? "Opening…" : "Open script in editor"}</span>
         </button>
 
+        <button
+          type="button"
+          onClick={() => onRun && onRun(node.id)}
+          disabled={isRunning}
+          className={`w-full border border-accent text-accent rounded-md py-2 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+            isRunning
+              ? "bg-accent text-primary shadow-[0_0_12px_rgba(212,230,0,0.3)]"
+              : "bg-card hover:bg-accent hover:text-primary hover:shadow-[0_0_12px_rgba(212,230,0,0.3)]"
+          }`}
+        >
+          {isRunning ? (
+            <>
+              <span className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              Running…
+            </>
+          ) : (
+            <>▶ Run from this node</>
+          )}
+        </button>
+
         {error && (
           <div className="bg-danger/10 border border-danger/30 rounded-md px-3 py-2 text-[11px] text-danger">
             {error}
@@ -206,25 +226,6 @@ export default function ScriptNodeInspector({
           </div>
         </CollapsibleSection>
       )}
-
-      <button
-        className={`w-full border border-accent text-accent rounded-md py-2.5 text-sm font-semibold cursor-pointer transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-          isRunning
-            ? "bg-accent text-primary shadow-[0_0_12px_rgba(212,230,0,0.3)]"
-            : "bg-card hover:bg-accent hover:text-primary hover:shadow-[0_0_12px_rgba(212,230,0,0.3)]"
-        }`}
-        onClick={() => onRun && onRun(node.id)}
-        disabled={isRunning}
-      >
-        {isRunning ? (
-          <>
-            <span className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            Running…
-          </>
-        ) : (
-          <>▶ Run from this node</>
-        )}
-      </button>
 
       <CollapsibleSection
         title="Output"

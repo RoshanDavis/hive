@@ -7,14 +7,15 @@ interface DatabaseRecord {
 
 interface DatabaseRecordFeedProps {
   records: DatabaseRecord[];
-  /** Tailwind max-height class for the scroll surface. Default `"max-h-40"`.
-   * Pass `""` to remove the cap (caller is responsible for outer scroll). */
+  /** Tailwind max-height class for the scroll surface. Defaults to `""` —
+   * the feed grows with content and the parent inspector body handles
+   * overflow. Pass `"max-h-X"` to clamp. */
   maxHeight?: string;
 }
 
 export default function DatabaseRecordFeed({
   records,
-  maxHeight = "max-h-40",
+  maxHeight = "",
 }: DatabaseRecordFeedProps) {
   if (!records || records.length === 0) {
     return (

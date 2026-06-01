@@ -3,14 +3,16 @@ import { useState } from "react";
 interface DataConsoleProps {
   content: string | null | undefined;
   placeholder?: string;
-  /** Tailwind max-height class for the scroll surface. Default `"max-h-35"`. */
+  /** Tailwind max-height class for the scroll surface. Defaults to `""` —
+   * the console grows with content and the parent inspector body handles
+   * overflow. Pass an explicit `"max-h-X"` to clamp. */
   maxHeight?: string;
 }
 
 export default function DataConsole({
   content,
   placeholder = "No data transmitted yet.",
-  maxHeight = "max-h-35",
+  maxHeight = "",
 }: DataConsoleProps) {
   const [copied, setCopied] = useState(false);
 

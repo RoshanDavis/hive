@@ -22,14 +22,10 @@ export default function InspectorActions({
   onSaveAsCustom,
   onDeleteNode,
 }: InspectorActionsProps) {
-  const hasExtras = children !== undefined && children !== null && children !== false;
   return (
     <CollapsibleSection title="Actions" icon="⚙️" defaultOpen={defaultOpen}>
       <div className="flex flex-col gap-2">
-        {hasExtras && children}
-        {hasExtras && (onSaveAsCustom || onDeleteNode) && (
-          <div className="border-t border-border-subtle/60 mt-1 pt-2" />
-        )}
+        {children}
         {onSaveAsCustom && (
           <button
             type="button"
