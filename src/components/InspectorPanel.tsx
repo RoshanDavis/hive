@@ -4,6 +4,7 @@ import { type NodeDefinition } from "@/nodes/types";
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import { getConnectedComponent } from "@/engine/graphTraversal";
 import { ConnectionInspector, WorkspaceInspector } from "@/components/inspectors";
+import CollapsibleSection from "@/components/inspectors/CollapsibleSection";
 import { storage } from "@/services/storage";
 import CustomNodeFormModal, {
   stripRuntimeFields,
@@ -29,6 +30,7 @@ interface InspectorPanelProps {
   selectedEdge: Edge | null;
   onUpdateEdgeData?: (edgeId: string, edgeType: string) => void;
   onDeleteEdge?: (edgeId: string) => void;
+  onDeleteNode?: (nodeId: string) => void;
   showToast: (msg: string, kind: "success" | "error" | "info") => void;
 }
 
@@ -50,12 +52,13 @@ export default function InspectorPanel({
   selectedEdge,
   onUpdateEdgeData,
   onDeleteEdge,
+  onDeleteNode,
   showToast,
 }: InspectorPanelProps) {
   const [width, setWidth] = useState(() => storage.getInspectorWidth(320));
   const [isResizing, setIsResizing] = useState(false);
-  const [showSaveCustom, setShowSaveCustom] = useState(false);
   const [showCreateCustom, setShowCreateCustom] = useState(false);
+  const [showSaveCustom, setShowSaveCustom] = useState(false);
 
   // Per-selected-node running state. A run's `startKey` is the comma-joined
   // ids of its start nodes (see `runWorkflow` in runnerSession.ts), so this
@@ -157,29 +160,16 @@ export default function InspectorPanel({
       {selectedNode ? (
         <>
           <div className="p-4 border-b border-border-subtle bg-card flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2 min-w-0">
-                {pluginRegistry.getIcon(selectedNode.type || '')}
-                {" "}
-                <span className="truncate">
-                  {pluginRegistry.get(selectedNode.type || '')?.meta.label || selectedNode.type}
-                </span>
-              </h2>
-              {!isCustomType(selectedNode.type) && (
-                <button
-                  onClick={() => setShowSaveCustom(true)}
-                  title="Save this node's configuration as a reusable custom node"
-                  className="shrink-0 text-[11px] text-text-muted hover:text-text-main border border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-card hover:bg-card-hover transition-colors flex items-center gap-1"
-                >
-                  <span>＋</span>
-                  <span>Save as custom</span>
-                </button>
-              )}
-            </div>
-            <span className="text-[10px] uppercase tracking-widest font-bold text-accent bg-accent-glow self-start px-2 py-0.5 rounded-sm">{selectedNode.type}</span>
+            <h2 className="text-base font-semibold m-0 text-text-main flex items-center gap-2 min-w-0">
+              {pluginRegistry.getIcon(selectedNode.type || '')}
+              {" "}
+              <span className="truncate">
+                {pluginRegistry.get(selectedNode.type || '')?.meta.label || selectedNode.type}
+              </span>
+            </h2>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 pb-32 flex flex-col gap-3">
 
             {/* Per-node Stop. Visible whenever there's anything to stop — any
                 active run anywhere, or this node carries a stuck status
@@ -231,27 +221,55 @@ export default function InspectorPanel({
               </div>
             )}
 
-            {/* Common fields */}
-            <div className="flex flex-col gap-2">
-              <label className={formLabelClass}>Label</label>
-              <input
-                className={formInputClass}
-                type="text"
-                value={String(selectedNode.data?.label || "")}
-                onChange={(e) =>
-                  onUpdateNodeData(selectedNode.id, {
-                    ...selectedNode.data,
-                    label: e.target.value,
-                  })
-                }
-              />
-            </div>
+            {/* Label */}
+            <CollapsibleSection title="Label" icon="🏷️" defaultOpen={true}>
+              <div className="flex gap-3 items-end">
+                <div className="flex flex-col gap-2 shrink-0">
+                  <label className={formLabelClass}>Icon</label>
+                  <input
+                    type="text"
+                    value={String(selectedNode.data?.icon || "")}
+                    placeholder={pluginRegistry.getIcon(selectedNode.type || '')}
+                    title="Leave blank to use the default icon for this node type"
+                    maxLength={2}
+                    /* Inline classes (not formInputClass) — formInputClass carries
+                     * w-full, which Tailwind's compiled CSS orders after w-12
+                     * alphabetically, so adding "w-12" wouldn't win. */
+                    className="w-11 bg-input border border-border-subtle rounded-md px-1 py-2 text-base text-text-main text-center transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_var(--accent-glow)] outline-hidden"
+                    onChange={(e) =>
+                      onUpdateNodeData(selectedNode.id, {
+                        ...selectedNode.data,
+                        icon: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-2 flex-1 min-w-0">
+                  <label className={formLabelClass}>Display name</label>
+                  <input
+                    className={formInputClass}
+                    type="text"
+                    value={String(selectedNode.data?.label || "")}
+                    onChange={(e) =>
+                      onUpdateNodeData(selectedNode.id, {
+                        ...selectedNode.data,
+                        label: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
 
             {/* Dynamic Component Rendering based on Registry */}
             {(() => {
               const plugin = pluginRegistry.get(selectedNode.type || '');
               const Inspector = plugin?.inspector;
               if (Inspector) {
+                // Only built-ins and preset customs can be saved as a new custom node.
+                // Script customs already are their own plugin shape — re-snapshotting
+                // them as a preset of themselves wouldn't be useful.
+                const canSaveAsCustom = !isCustomType(selectedNode.type);
                 return (
                   <Inspector
                     node={selectedNode}
@@ -264,20 +282,32 @@ export default function InspectorPanel({
                     nodes={nodes}
                     edges={edges}
                     workspacePath={workspacePath}
+                    onSaveAsCustom={canSaveAsCustom ? () => setShowSaveCustom(true) : undefined}
+                    onDeleteNode={onDeleteNode ? () => onDeleteNode(selectedNode.id) : undefined}
                   />
                 );
               }
               return null;
             })()}
 
-            {/* Position info */}
-            <div className="border-t border-border-subtle pt-4 flex flex-col gap-2">
-              <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted mb-1">Position</div>
-              <div className="flex gap-4 text-sm text-text-main font-mono">
-                <span>X: {Math.round(selectedNode.position?.x || 0)}</span>
-                <span>Y: {Math.round(selectedNode.position?.y || 0)}</span>
+            {/* Node Info */}
+            <CollapsibleSection title="Node Info" icon="🔍" defaultOpen={false}>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-text-muted">ID</span>
+                  <span className="text-xs text-text-main font-mono break-all select-text">
+                    {selectedNode.id}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-text-muted">Position</span>
+                  <div className="flex gap-4 text-xs text-text-main font-mono">
+                    <span>X: {Math.round(selectedNode.position?.x || 0)}</span>
+                    <span>Y: {Math.round(selectedNode.position?.y || 0)}</span>
+                  </div>
+                </div>
               </div>
-            </div>
+            </CollapsibleSection>
           </div>
         </>
       ) : selectedEdge ? (

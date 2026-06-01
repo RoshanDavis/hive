@@ -3,9 +3,15 @@ import { useState } from "react";
 interface DataConsoleProps {
   content: string | null | undefined;
   placeholder?: string;
+  /** Tailwind max-height class for the scroll surface. Default `"max-h-35"`. */
+  maxHeight?: string;
 }
 
-export default function DataConsole({ content, placeholder = "No data transmitted yet." }: DataConsoleProps) {
+export default function DataConsole({
+  content,
+  placeholder = "No data transmitted yet.",
+  maxHeight = "max-h-35",
+}: DataConsoleProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -24,7 +30,7 @@ export default function DataConsole({ content, placeholder = "No data transmitte
   }
 
   return (
-    <div className="bg-primary/70 border border-border-subtle rounded-lg p-3 font-mono text-[11px] leading-relaxed text-text-main overflow-x-auto relative group max-h-35 overflow-y-auto pr-10 scrollbar-thin select-text">
+    <div className={`bg-primary/70 border border-border-subtle rounded-lg p-3 font-mono text-[11px] leading-relaxed text-text-main overflow-x-auto relative group ${maxHeight} overflow-y-auto pr-10 scrollbar-thin select-text`}>
       {hasData && !isEmpty && (
         <button
           type="button"

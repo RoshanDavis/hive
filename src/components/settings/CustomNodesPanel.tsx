@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCustomNodes } from "@/contexts/CustomNodesContext";
 import NodeGridCard from "@/components/shared/NodeGridCard";
 import DashedAddCard from "@/components/shared/DashedAddCard";
@@ -12,10 +12,17 @@ interface Props {
 }
 
 export default function CustomNodesPanel({ showToast }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CustomNodeFormInitial | null>(null);
-  const { globalDefs, workspaceDefs, deleteCustomNode } = useCustomNodes();
+  const { globalDefs, workspaceDefs, deleteCustomNode, refresh } = useCustomNodes();
+
+  // Re-read disk on panel mount so adds that happened while Settings was
+  // closed (e.g. via the workspace inspector's "+" custom card) show up
+  // without requiring an app reload.
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const openEdit = (def: CustomNodeDefinition, scope: CustomNodeScope) => {
     const common = {

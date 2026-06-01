@@ -7,9 +7,15 @@ interface DatabaseRecord {
 
 interface DatabaseRecordFeedProps {
   records: DatabaseRecord[];
+  /** Tailwind max-height class for the scroll surface. Default `"max-h-40"`.
+   * Pass `""` to remove the cap (caller is responsible for outer scroll). */
+  maxHeight?: string;
 }
 
-export default function DatabaseRecordFeed({ records }: DatabaseRecordFeedProps) {
+export default function DatabaseRecordFeed({
+  records,
+  maxHeight = "max-h-40",
+}: DatabaseRecordFeedProps) {
   if (!records || records.length === 0) {
     return (
       <div className="bg-primary/70 border border-border-subtle rounded-lg p-3 text-center text-[11px] text-text-secondary/60 italic select-none">
@@ -18,8 +24,10 @@ export default function DatabaseRecordFeed({ records }: DatabaseRecordFeedProps)
     );
   }
 
+  const scrollClass = maxHeight ? `${maxHeight} overflow-y-auto` : "";
+
   return (
-    <div className="bg-primary/70 border border-border-subtle rounded-lg p-3 max-h-40 overflow-y-auto font-mono text-[11px] leading-relaxed text-text-main scrollbar-thin select-text flex flex-col gap-1">
+    <div className={`bg-primary/70 border border-border-subtle rounded-lg p-3 ${scrollClass} font-mono text-[11px] leading-relaxed text-text-main scrollbar-thin select-text flex flex-col gap-1`}>
       {records.map((rec, idx) => {
         const time = rec.timestamp || "--:--:--";
         const source = rec.source || "Unknown";

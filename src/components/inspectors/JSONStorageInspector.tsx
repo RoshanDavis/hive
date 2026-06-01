@@ -1,4 +1,6 @@
 import type { InspectorProps } from "./types";
+import CollapsibleSection from "./CollapsibleSection";
+import InspectorActions from "./InspectorActions";
 
 interface JSONStorageRecord {
   id: string;
@@ -11,6 +13,8 @@ export default function JSONStorageInspector({
   node,
   onUpdate,
   isRunning,
+  onSaveAsCustom,
+  onDeleteNode,
 }: InspectorProps) {
   const records = (node.data?.records as JSONStorageRecord[]) || [];
 
@@ -51,69 +55,74 @@ export default function JSONStorageInspector({
   };
 
   return (
-    <div className="border-t border-border-subtle pt-4 flex flex-col gap-4 h-[calc(100vh-280px)] min-h-95">
-      <div className="flex justify-between items-center mb-1">
-        <div className="text-[11px] uppercase tracking-widest font-bold text-text-muted">JSON Storage File</div>
-        <div className="text-[11px] font-bold text-accent bg-accent-glow px-2 py-0.5 rounded-sm">
-          {records.length} records
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto bg-primary border border-border-subtle rounded-md flex flex-col mb-2">
-        {records.length > 0 ? (
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-card border-b border-border-subtle text-text-secondary font-semibold uppercase tracking-wider">
-                <th className="p-3 w-20">Time</th>
-                <th className="p-3 w-22.5">Source</th>
-                <th className="p-3">Content</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((rec) => (
-                <tr key={rec.id} className="border-b border-border-subtle hover:bg-card-hover transition-colors text-text-main">
-                  <td className="p-3 text-text-secondary whitespace-nowrap">{rec.timestamp}</td>
-                  <td className="p-3 whitespace-nowrap">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                      rec.source.toLowerCase() === "user" || rec.source.toLowerCase() === "you"
-                        ? "bg-accent-glow text-accent border border-accent-dim/30"
-                        : "bg-input text-text-secondary border border-border-subtle"
-                    }`}>
-                      {rec.source}
-                    </span>
-                  </td>
-                  <td className="p-3 font-mono leading-relaxed whitespace-pre-wrap break-all">{rec.content}</td>
+    <div className="flex flex-col gap-3 h-[calc(100vh-280px)] min-h-95">
+      <CollapsibleSection
+        title="Records"
+        icon="💾"
+        defaultOpen={true}
+        badge={records.length}
+        grow
+      >
+        <div className="flex-1 min-h-0 overflow-auto bg-primary border border-border-subtle rounded-md flex flex-col">
+          {records.length > 0 ? (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-card border-b border-border-subtle text-text-secondary font-semibold uppercase tracking-wider">
+                  <th className="p-3 w-20">Time</th>
+                  <th className="p-3 w-22.5">Source</th>
+                  <th className="p-3">Content</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2 py-8 text-center px-4">
-            <span className="text-3xl opacity-50">💾</span>
-            <span className="text-xs font-medium">Storage is empty</span>
-            <span className="text-[10px] text-text-muted leading-relaxed max-w-50">
-              Connect the Chat node's bottom handle to this JSON Storage node to log conversation histories.
-            </span>
-          </div>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {records.map((rec) => (
+                  <tr key={rec.id} className="border-b border-border-subtle hover:bg-card-hover transition-colors text-text-main">
+                    <td className="p-3 text-text-secondary whitespace-nowrap">{rec.timestamp}</td>
+                    <td className="p-3 whitespace-nowrap">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                        rec.source.toLowerCase() === "user" || rec.source.toLowerCase() === "you"
+                          ? "bg-accent-glow text-accent border border-accent-dim/30"
+                          : "bg-input text-text-secondary border border-border-subtle"
+                      }`}>
+                        {rec.source}
+                      </span>
+                    </td>
+                    <td className="p-3 font-mono leading-relaxed whitespace-pre-wrap break-all">{rec.content}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2 py-8 text-center px-4">
+              <span className="text-3xl opacity-50">💾</span>
+              <span className="text-xs font-medium">Storage is empty</span>
+              <span className="text-[10px] text-text-muted leading-relaxed max-w-50">
+                Connect the Chat node's bottom handle to this JSON Storage node to log conversation histories.
+              </span>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
 
-      <div className="flex gap-2">
-        <button
-          className="flex-1 bg-card border border-border-subtle hover:bg-card-hover text-text-main rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={handleExportCSV}
-          disabled={records.length === 0}
-        >
-          📥 Export CSV
-        </button>
-        <button
-          className="flex-1 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-danger hover:text-danger hover:bg-danger/10 rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={handleClear}
-          disabled={records.length === 0 || isRunning}
-        >
-          🧹 Clear Data
-        </button>
-      </div>
+      <CollapsibleSection title="Data" icon="📊" defaultOpen={true}>
+        <div className="flex gap-2">
+          <button
+            className="flex-1 bg-card border border-border-subtle hover:bg-card-hover text-text-main rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleExportCSV}
+            disabled={records.length === 0}
+          >
+            📥 Export CSV
+          </button>
+          <button
+            className="flex-1 bg-transparent border border-dashed border-border-subtle text-text-secondary hover:border-danger hover:text-danger hover:bg-danger/10 rounded-md py-2.5 text-xs font-semibold cursor-pointer transition-all flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleClear}
+            disabled={records.length === 0 || isRunning}
+          >
+            🧹 Clear Data
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <InspectorActions onSaveAsCustom={onSaveAsCustom} onDeleteNode={onDeleteNode} />
     </div>
   );
 }

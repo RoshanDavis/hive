@@ -278,6 +278,7 @@ function WorkspaceEditorInner({
     onEdgeContextMenu,
     onPaneContextMenu,
     handleWrapperContextMenu,
+    deleteSingleNode,
   } = useWorkspaceContextMenus({
     nodes,
     selectedNode,
@@ -294,6 +295,17 @@ function WorkspaceEditorInner({
     showToast,
     wasRightClickDrag,
   });
+
+  // Inspector "Delete node" callback. Adapts `deleteSingleNode(node)` to take a
+  // node id, looking the node up at click time so we always operate on the
+  // freshest snapshot (the React Flow selection may lag a frame behind).
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (node) deleteSingleNode(node);
+    },
+    [nodes, deleteSingleNode]
+  );
 
   // ─── Add node from palette ─────────────────────────────────
   // Layer overrides on top of plugin.defaultData:
@@ -434,6 +446,7 @@ function WorkspaceEditorInner({
         selectedEdge={selectedEdge}
         onUpdateEdgeData={handleUpdateEdgeData}
         onDeleteEdge={handleDeleteEdge}
+        onDeleteNode={handleDeleteNode}
         showToast={showToast}
       />
 

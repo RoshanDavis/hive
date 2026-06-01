@@ -11,7 +11,11 @@ const positionMap: Record<string, Position> = {
 
 export default function GenericNodeShell({ type, data, selected }: NodeProps) {
   const plugin = pluginRegistry.get(type);
-  const icon = plugin?.meta.icon ?? "📦";
+  // Per-node override (set via the inspector's Label > Icon field) wins over
+  // the plugin's meta icon. Empty string treated as unset so clearing the
+  // field restores the default.
+  const overrideIcon = typeof data.icon === "string" ? data.icon.trim() : "";
+  const icon = overrideIcon || plugin?.meta.icon || "📦";
 
   const statusClass = selected
     ? ""

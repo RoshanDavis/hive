@@ -10,7 +10,7 @@ const NotifyPlugin: NodePlugin = {
     description: "Sends an OS notification",
     category: "output",
   },
-  defaultData: { label: "Notify", message: "{input.value}", output: "{input.value}" },
+  defaultData: { label: "Notify", message: "{input.value}" },
   inspector: NotifyInspector,
   executor: new NotifyExecutor(),
   // Default handles (target-left, source-right)
