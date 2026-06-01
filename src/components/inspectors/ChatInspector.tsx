@@ -2,7 +2,12 @@ import { useState } from "react";
 import type { InspectorProps } from "./types";
 import CollapsibleSection from "./CollapsibleSection";
 import InspectorActions from "./InspectorActions";
-import { getChatMessages, getStorageRecords } from "@/engine/nodeData";
+import {
+  getChatMessages,
+  getChatStorageEdges,
+  getMergedChatRecords,
+  recordToChatMessage,
+} from "@/engine/nodeData";
 import { formInputClass } from "@/components/shared/FormField";
 
 export default function ChatInspector({
@@ -19,31 +24,18 @@ export default function ChatInspector({
 
   const isThisChatRunning = !!runningStartNodeIds?.has(node.id);
 
-  // Find the JSON storage node connected to this Chat's bottom storage handle.
-  const storageEdge = edges?.find(
-    (e) => e.source === node.id && e.sourceHandle === "storage"
-  );
-  const connectedStorageNode = storageEdge
-    ? nodes?.find((n) => n.id === storageEdge.target && n.type === "jsonStorage")
-    : null;
+  // All chat → jsonStorage edges with parsed permissions. Read-enabled
+  // edges contribute records to the merged conversation view; write-enabled
+  // edges receive new records on send and get cleared by Clear History.
+  const storageEdges = getChatStorageEdges(node.id, nodes ?? [], edges ?? []);
+  const readEdges = storageEdges.filter((se) => se.hasRead);
+  const writeEdges = storageEdges.filter((se) => se.hasWrite);
+  const readOnlyEdges = storageEdges.filter((se) => se.hasRead && !se.hasWrite);
 
-  const storageEdgeType = (storageEdge?.data?.edgeType as string) || "read-write";
-  const hasReadPermission = storageEdgeType === "read-only" || storageEdgeType === "read-write";
-  const hasWritePermission = storageEdgeType === "write-only" || storageEdgeType === "read-write";
-
-  const dbRecords = getStorageRecords(connectedStorageNode?.data);
-  const displayMessages = (connectedStorageNode && hasReadPermission)
-    ? dbRecords.map((rec) => {
-        const src = (rec.source || "").toLowerCase();
-        let role: "user" | "assistant" | "system" = "assistant";
-        if (src === "user" || src === "you") {
-          role = "user";
-        } else if (src === "system") {
-          role = "system";
-        }
-        return { role, content: rec.content || "", sender: rec.source };
-      })
-    : getChatMessages(node.data);
+  const displayMessages =
+    readEdges.length > 0
+      ? getMergedChatRecords(node.id, nodes ?? [], edges ?? []).map(recordToChatMessage)
+      : getChatMessages(node.data);
 
   const handleSend = () => {
     if (chatInput.trim() && onChatSend) {
@@ -52,7 +44,11 @@ export default function ChatInspector({
     }
   };
 
-  const canClearHistory = !(connectedStorageNode && !hasWritePermission);
+  // Clearing is blocked only when every connected storage is read-only — we
+  // can't wipe a source of truth the chat can only observe. (A chat with no
+  // connected storage still clears its own local messages.)
+  const canClearHistory =
+    storageEdges.length === 0 || writeEdges.length > 0;
 
   const handleClearHistory = () => {
     if (!canClearHistory) return;
@@ -60,13 +56,18 @@ export default function ChatInspector({
       ...node.data,
       messages: [],
     });
-    if (connectedStorageNode && hasWritePermission) {
-      onUpdate(connectedStorageNode.id, {
-        ...connectedStorageNode.data,
+    for (const se of writeEdges) {
+      onUpdate(se.target.id, {
+        ...se.target.data,
         records: [],
       });
     }
   };
+
+  const clearPreviewLabels =
+    writeEdges.length >= 2
+      ? writeEdges.map((se) => String(se.target.data?.label || "JSON Storage"))
+      : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -120,11 +121,19 @@ export default function ChatInspector({
             >
               {isThisChatRunning ? "Sending..." : "Send"}
             </button>
+            {clearPreviewLabels && (
+              <div className="text-[10.5px] text-text-muted leading-snug px-1">
+                Clear will wipe: {clearPreviewLabels.join(", ")}
+                {readOnlyEdges.length > 0
+                  ? ` (read-only sources kept)`
+                  : ""}
+              </div>
+            )}
             <button
               className="w-full rounded-md py-2.5 text-sm font-semibold transition-all flex justify-center items-center gap-2 bg-transparent border border-dashed border-border-subtle text-text-secondary enabled:cursor-pointer enabled:hover:border-danger enabled:hover:text-danger enabled:hover:bg-danger/10 enabled:hover:shadow-none disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={handleClearHistory}
               disabled={!canClearHistory}
-              title={canClearHistory ? undefined : "Linked storage is read-only — history can't be cleared from here"}
+              title={canClearHistory ? undefined : "All linked storages are read-only — history can't be cleared from here"}
             >
               Clear History
             </button>

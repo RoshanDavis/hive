@@ -1,96 +1,95 @@
 import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeExecutor, NodeOutputEnvelope } from "./types";
-import { getUpstreamNodeData, getUpstreamNodes, resolveEdgePermissions } from "./utils";
-import { getChatMessages, getLastInput, getStorageRecords, setOutputEnvelope } from "./nodeData";
-import type { ChatMessage } from "@/nodes/types";
+import { getUpstreamNodeData, getUpstreamNodes } from "./utils";
+import {
+  getChatMessages,
+  getChatStorageEdges,
+  getLastInput,
+  getMergedChatRecords,
+  getStorageRecords,
+  recordToChatMessage,
+  setOutputEnvelope,
+} from "./nodeData";
+import type { ChatMessage, JSONStorageRecord } from "@/nodes/types";
 
 export class ChatExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<void> {
     const { node: chatNode, nodes, edges, updateNodeData, chatInput, visited } = context;
     await concurrencyGovernor.enqueue("general", async () => {
+      // All chat → jsonStorage edges, decorated with parsed permissions and
+      // sorted deterministically. Bottom storage handle defaults to
+      // read-write; non-storage handles are locked write-only by
+      // connectivity rules. Per-edge permissions in the inspector are the
+      // single lever the user has — there's no privileged "primary" storage.
+      const storageEdges = getChatStorageEdges(chatNode.id, nodes, edges);
+      const anyReadEnabled = storageEdges.some((se) => se.hasRead);
 
-      // Find connected JSON storage node specifically connected to the Chat node's bottom "storage" handle
-      const storageEdge = edges.find(
-        (e) => e.source === chatNode.id && e.sourceHandle === "storage"
-      );
-      const storageNode = storageEdge
-        ? nodes.find((n) => n.id === storageEdge.target && n.type === "jsonStorage")
-        : null;
+      // One batch id per chat turn. Every record written by this fan-out
+      // carries it, so the merged-read collapses them on the way back into
+      // the conversation view (without false-collapsing records the user
+      // edited manually in a storage inspector).
+      const writeBatchId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-      // Outgoing edges from the chat's standard output handle (not the dedicated
-      // bottom storage handle) that target a JSON storage node. Connectivity
-      // rules lock these to write-only, so each one just receives an appended
-      // record per message — no read-back into chat history.
-      const outputStorageEdges = edges.filter(
-        (e) =>
-          e.source === chatNode.id &&
-          e.sourceHandle !== "storage" &&
-          nodes.find((n) => n.id === e.target)?.type === "jsonStorage"
-      );
-
-      const writeToOutputStorage = (source: string, content: string): void => {
-        for (const edge of outputStorageEdges) {
-          const { hasWrite } = resolveEdgePermissions(edge, "write-only");
-          if (!hasWrite) continue;
-          const target = nodes.find((n) => n.id === edge.target);
-          if (!target) continue;
-          const dbRecords = getStorageRecords(target.data);
-          const newRecord = {
-            id: Date.now().toString(),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      // Fan-out write helper. Walks every storage edge with write permission
+      // and appends the same record. Non-atomic by design — a cancel
+      // mid-loop leaves some storages updated and others not, consistent
+      // with how the rest of the engine treats `updateNodeData` side
+      // effects. Edges are pre-sorted so partial-failure order is
+      // reproducible.
+      const fanOutWrite = (source: string, content: string): void => {
+        const nowIso = new Date().toISOString();
+        const idBase = Date.now().toString();
+        const written = new Set<string>();
+        let writeIndex = 0;
+        for (const se of storageEdges) {
+          if (!se.hasWrite) continue;
+          // Dedupe by target: if a chat has two edges to the same storage
+          // (e.g. bottom handle + right handle), one record per storage.
+          if (written.has(se.target.id)) continue;
+          written.add(se.target.id);
+          // Re-find the target from `nodes` so we see the previous write in
+          // this fan-out (updateNodeData mutates currentNodes in-place).
+          const fresh = nodes.find((n) => n.id === se.target.id) ?? se.target;
+          const dbRecords = getStorageRecords(fresh.data);
+          const newRecord: JSONStorageRecord = {
+            id: `${idBase}-${writeIndex++}`,
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
             source,
             content,
+            createdAt: nowIso,
+            writeBatchId,
           };
-          updateNodeData(target.id, {
-            ...target.data,
+          updateNodeData(fresh.id, {
+            ...fresh.data,
             records: [...dbRecords, newRecord],
           });
         }
       };
 
+      // After a fan-out write, rebuild the chat's local message list from
+      // the merged view of all read-enabled storages. Used when at least
+      // one edge has read permission; otherwise the chat keeps its own
+      // independent message list.
+      const syncFromMergedRead = (): ChatMessage[] =>
+        getMergedChatRecords(chatNode.id, nodes, edges).map(recordToChatMessage);
+
       if (chatInput !== undefined && chatInput !== null) {
         // ─── Case A: User sent a message (Input Mode) ───
-        const { hasRead: hasReadPermission, hasWrite: hasWritePermission } =
-          resolveEdgePermissions(storageEdge);
+        fanOutWrite("User", chatInput);
 
-        let updatedLocalMessages: ChatMessage[] = getChatMessages(chatNode.data);
-
-        if (storageNode && hasWritePermission) {
-          const dbRecords = getStorageRecords(storageNode.data);
-          const newRecord = {
-            id: Date.now().toString(),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            source: "User",
-            content: chatInput
-          };
-          const storageRecords = [...dbRecords, newRecord];
-          updateNodeData(storageNode.id, {
-            ...storageNode.data,
-            records: storageRecords
-          });
-
-          if (hasReadPermission) {
-            // Sync ChatNode messages to full history
-            updatedLocalMessages = storageRecords.map((rec) => {
-              const src = (rec.source || "").toLowerCase();
-              let role: "user" | "assistant" | "system" = "assistant";
-              if (src === "user" || src === "you") {
-                role = "user";
-              } else if (src === "system") {
-                role = "system";
-              }
-              return { role, content: rec.content || "", sender: rec.source };
-            });
-          } else {
-            // Write-only: just append to local messages independently
-            updatedLocalMessages = [...updatedLocalMessages, { role: "user" as const, content: chatInput, sender: "You" }];
-          }
+        let updatedLocalMessages: ChatMessage[];
+        if (anyReadEnabled) {
+          updatedLocalMessages = syncFromMergedRead();
         } else {
-          // No storage node, or no write permission - append to local state only
-          updatedLocalMessages = [...updatedLocalMessages, { role: "user" as const, content: chatInput, sender: "You" }];
+          updatedLocalMessages = [
+            ...getChatMessages(chatNode.data),
+            { role: "user" as const, content: chatInput, sender: "You" },
+          ];
         }
-
-        writeToOutputStorage("User", chatInput);
 
         const envelope: NodeOutputEnvelope = {
           value: chatInput,
@@ -116,7 +115,7 @@ export class ChatExecutor implements NodeExecutor {
         let senderLabel = "Agent";
 
         // Bi-directional + storage-handle filter: walks both directions on
-        // bi-dir edges but skips dedicated storage handles so the Chat ⇄
+        // bi-dir edges but skips dedicated storage handles so a Chat ⇄
         // jsonStorage edge isn't mistaken for an input source.
         const upstreamNodes = getUpstreamNodes(chatNode.id, edges, nodes, {
           visited,
@@ -125,7 +124,6 @@ export class ChatExecutor implements NodeExecutor {
         });
         const hasUpstream = upstreamNodes.length > 0;
 
-        // Check if we are retrying and already have a saved lastInputText
         const cachedText = getLastInput<string>(chatNode.data, "lastInputText");
         if (cachedText !== undefined) {
           resolvedMessage = String(cachedText);
@@ -140,69 +138,36 @@ export class ChatExecutor implements NodeExecutor {
             }
           }
 
-          // Save resolved input to chatNode.data.lastInputText so we can reuse it on retry
           updateNodeData(chatNode.id, {
             ...chatNode.data,
             lastInputText: resolvedMessage,
-            lastInputSender: senderLabel
+            lastInputSender: senderLabel,
           });
         }
 
         if (!resolvedMessage) {
           if (hasUpstream) {
-            // If there are upstream edges but no data is resolved (like a Trigger node connection),
-            // treat it as a system message that the workflow has reached the Chat node.
             resolvedMessage = "Workflow reached Chat. Awaiting message...";
           } else {
-            // If triggered downstream but no upstream data could be resolved and no upstream edges, do nothing.
             return;
           }
         }
 
-        const { hasRead: hasReadPermission, hasWrite: hasWritePermission } =
-          resolveEdgePermissions(storageEdge);
-
-        let updatedLocalMessages: ChatMessage[] = getChatMessages(chatNode.data);
         const isSystemMsg = resolvedMessage === "Workflow reached Chat. Awaiting message...";
-        const role = isSystemMsg ? ("system" as const) : ("assistant" as const);
         const dbSource = isSystemMsg ? "System" : senderLabel;
+        const role: ChatMessage["role"] = isSystemMsg ? "system" : "assistant";
 
-        if (storageNode && hasWritePermission) {
-          const dbRecords = getStorageRecords(storageNode.data);
-          const assistantRecord = {
-            id: Date.now().toString(),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            source: dbSource,
-            content: resolvedMessage
-          };
-          const storageRecords = [...dbRecords, assistantRecord];
-          updateNodeData(storageNode.id, {
-            ...storageNode.data,
-            records: storageRecords
-          });
+        fanOutWrite(dbSource, resolvedMessage);
 
-          if (hasReadPermission) {
-            // Sync ChatNode messages to full history
-            updatedLocalMessages = storageRecords.map((rec) => {
-              const src = (rec.source || "").toLowerCase();
-              let r: "user" | "assistant" | "system" = "assistant";
-              if (src === "user" || src === "you") {
-                r = "user";
-              } else if (src === "system") {
-                r = "system";
-              }
-              return { role: r, content: rec.content || "", sender: rec.source };
-            });
-          } else {
-            // Write-only: just append to local messages independently
-            updatedLocalMessages = [...updatedLocalMessages, { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel }];
-          }
+        let updatedLocalMessages: ChatMessage[];
+        if (anyReadEnabled) {
+          updatedLocalMessages = syncFromMergedRead();
         } else {
-          // No storage node, or read-only connection
-          updatedLocalMessages = [...updatedLocalMessages, { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel }];
+          updatedLocalMessages = [
+            ...getChatMessages(chatNode.data),
+            { role, content: resolvedMessage, sender: isSystemMsg ? undefined : senderLabel },
+          ];
         }
-
-        writeToOutputStorage(dbSource, resolvedMessage);
 
         const envelopeValue = isSystemMsg ? "" : resolvedMessage;
         const envelope: NodeOutputEnvelope = {
