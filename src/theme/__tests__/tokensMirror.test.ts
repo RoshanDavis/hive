@@ -67,29 +67,70 @@ const MIRROR_MAP: Array<[varName: string, themeValue: string]> = [
   ["content-notification", hiveDark.content.notification],
   ["content-system", hiveDark.content.system],
   ["content-assistant", hiveDark.content.assistant],
+
+  // Shadows (declared in the @theme block so Tailwind also emits utility
+  // classes; the parser below reads both :root and @theme into one map).
+  ["shadow-card", hiveDark.shadows.card],
+  ["shadow-card-hover", hiveDark.shadows.cardHover],
+  ["shadow-palette-hover", hiveDark.shadows.paletteHover],
+  ["shadow-concurrency-hover", hiveDark.shadows.concurrencyHover],
+  ["shadow-concurrency-add-hover", hiveDark.shadows.concurrencyAddHover],
+  ["shadow-menu", hiveDark.shadows.menu],
+  ["shadow-modal", hiveDark.shadows.modal],
+  ["shadow-drag-ghost", hiveDark.shadows.dragGhost],
+  ["shadow-toast", hiveDark.shadows.toast],
+  ["shadow-toast-outer", hiveDark.shadows.toastOuter],
 ];
 
 /**
- * Extract the `:root { … }` block from tokens.css and parse its `--foo: value;`
- * declarations into a Map. We intentionally only read the first `:root` block
- * (the one at the top of the file). The `@theme` block below it is Tailwind's
- * concern and not part of the mirror contract.
+ * Custom-property names that intentionally live in tokens.css but are NOT
+ * theme-driven (not in any Theme TS object). Excluded from both the "must
+ * match" check and the "no extras" check. Keep this list tight — anything
+ * static like radius and font stack belongs here; everything else should be
+ * promoted to the Theme schema.
+ */
+const STATIC_TOKENS = new Set([
+  "radius-sm",
+  "radius-md",
+  "radius-lg",
+  "font-inter",
+]);
+
+/**
+ * Read every `--name: value;` declaration that appears inside either a
+ * top-level `:root { … }` block or a Tailwind v4 `@theme { … }` block in
+ * tokens.css, and return them as a single map. Tailwind v4 emits `@theme`
+ * declarations into the compiled `:root`, so semantically they share the
+ * same cascade; for drift-checking purposes we treat them as one source.
+ *
+ * Excludes declarations whose name is in `STATIC_TOKENS`.
  */
 function loadTokensRoot(): Map<string, string> {
   const path = resolve(__dirname, "../../styles/tokens.css");
-  const css = readFileSync(path, "utf8");
-
-  const rootMatch = css.match(/:root\s*\{([\s\S]*?)\}/);
-  if (!rootMatch) {
-    throw new Error("Could not find :root block in tokens.css");
-  }
+  const rawCss = readFileSync(path, "utf8");
+  // Strip CSS comments first — comments may legitimately contain `}` (e.g.
+  // documentation references like `shadows: { ... }`), which would otherwise
+  // terminate the non-greedy block match below.
+  const css = rawCss.replace(/\/\*[\s\S]*?\*\//g, "");
 
   const declarations = new Map<string, string>();
   // Match `--name: value;` allowing the value to contain commas / parens / spaces.
   const declRegex = /--([a-z0-9-]+)\s*:\s*([^;]+);/gi;
-  let match;
-  while ((match = declRegex.exec(rootMatch[1])) !== null) {
-    declarations.set(match[1].trim(), match[2].trim());
+
+  for (const blockRegex of [/:root\s*\{([\s\S]*?)\}/, /@theme\s*\{([\s\S]*?)\}/]) {
+    const blockMatch = css.match(blockRegex);
+    if (!blockMatch) continue;
+    let match;
+    declRegex.lastIndex = 0;
+    while ((match = declRegex.exec(blockMatch[1])) !== null) {
+      const name = match[1].trim();
+      if (STATIC_TOKENS.has(name)) continue;
+      // Skip --color-* re-exports — those are Tailwind utility aliases, not
+      // theme sources. They reference :root vars via var() and don't carry
+      // independent values worth drift-checking.
+      if (name.startsWith("color-")) continue;
+      declarations.set(name, match[2].trim());
+    }
   }
   return declarations;
 }

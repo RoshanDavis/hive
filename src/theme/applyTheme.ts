@@ -67,5 +67,19 @@ export function applyTheme(theme: Theme, root: HTMLElement = document.documentEl
   s.setProperty("--content-system", theme.content.system);
   s.setProperty("--content-assistant", theme.content.assistant);
 
+  // Shadow elevations. Tailwind utilities `shadow-card` / `shadow-card-hover`
+  // are mapped via the `@theme` block in `tokens.css`; the rest are consumed
+  // by raw CSS via `var(--shadow-foo)`.
+  s.setProperty("--shadow-card", theme.shadows.card);
+  s.setProperty("--shadow-card-hover", theme.shadows.cardHover);
+  s.setProperty("--shadow-palette-hover", theme.shadows.paletteHover);
+  s.setProperty("--shadow-concurrency-hover", theme.shadows.concurrencyHover);
+  s.setProperty("--shadow-concurrency-add-hover", theme.shadows.concurrencyAddHover);
+  s.setProperty("--shadow-menu", theme.shadows.menu);
+  s.setProperty("--shadow-modal", theme.shadows.modal);
+  s.setProperty("--shadow-drag-ghost", theme.shadows.dragGhost);
+  s.setProperty("--shadow-toast", theme.shadows.toast);
+  s.setProperty("--shadow-toast-outer", theme.shadows.toastOuter);
+
   root.dataset.theme = theme.id;
 }

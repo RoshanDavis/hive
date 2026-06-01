@@ -8,7 +8,7 @@
   border: 1px solid var(--color-border-card) !important;
   border-radius: var(--radius-sm);
   padding: 6px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-menu);
   min-width: 160px;
 }
 
@@ -94,7 +94,7 @@
   background-color: var(--color-card-hover);
   border-color: var(--color-border-card);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-palette-hover);
 }
 
 /* ─── Settings Modal ─── */
@@ -102,7 +102,7 @@
   background-color: var(--color-card);
   border: 1px solid var(--color-border-card);
   border-radius: var(--radius-md);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: var(--shadow-modal);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -136,7 +136,7 @@
 .concurrency-card:hover {
   background-color: color-mix(in srgb, var(--bg-sidebar) 60%, transparent);
   border-color: var(--color-border-card);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-concurrency-hover);
 }
 
 .concurrency-card-remove {
@@ -208,7 +208,7 @@
 .concurrency-add-card:hover {
   border-color: var(--color-border-card);
   background-color: var(--color-card-hover);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-concurrency-add-hover);
 }
 
 @keyframes scaleUp {

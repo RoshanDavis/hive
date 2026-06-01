@@ -465,7 +465,7 @@ function WorkspaceEditorInner({
         return (
           <div
             id="drag-ghost-card"
-            className="fixed pointer-events-none z-99999 bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center gap-1.5 min-w-22.5 max-w-37.5 transition-transform duration-75 select-none"
+            className="fixed pointer-events-none z-99999 bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-drag-ghost flex flex-col items-center justify-center gap-1.5 min-w-22.5 max-w-37.5 transition-transform duration-75 select-none"
             style={{
               left: activeDragNode.clientX,
               top: activeDragNode.clientY,

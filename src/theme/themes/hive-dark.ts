@@ -77,4 +77,17 @@ export const hiveDark: Theme = {
     system: "#818cf8",
     assistant: "#c084fc",
   },
+
+  shadows: {
+    card: "0 2px 8px rgba(0, 0, 0, 0.4)",
+    cardHover: "0 4px 20px rgba(0, 0, 0, 0.6)",
+    paletteHover: "0 4px 12px rgba(0, 0, 0, 0.5)",
+    concurrencyHover: "0 6px 16px rgba(0, 0, 0, 0.4)",
+    concurrencyAddHover: "0 6px 16px rgba(0, 0, 0, 0.2)",
+    menu: "0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+    modal: "0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03)",
+    dragGhost: "0 10px 25px rgba(0, 0, 0, 0.9)",
+    toast: "0 8px 32px rgba(0, 0, 0, 0.5)",
+    toastOuter: "0 4px 12px rgba(0, 0, 0, 0.4)",
+  },
 };

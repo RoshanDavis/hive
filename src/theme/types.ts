@@ -98,6 +98,37 @@ export interface ThemeControls {
  * `status` (which is workflow execution state) and from the dropped per-node
  * identity colors.
  */
+/**
+ * Drop-shadow elevations. Every named slot is a full CSS `box-shadow` value
+ * (one or more layers) so a future light theme can swap the entire shadow —
+ * not just its color — to match its visual weight. Depth + tint live together
+ * here because changing one without the other looks wrong.
+ */
+export interface ThemeShadows {
+  /** Resting card elevation. Also reused as the static base layer underneath
+   *  status pulse glows in `reactflow.css`. */
+  card: string;
+  /** Dashboard workspace card lifted state. */
+  cardHover: string;
+  /** Palette card / NodeGridCard hover lift. */
+  paletteHover: string;
+  /** Settings concurrency-card hover. */
+  concurrencyHover: string;
+  /** Settings concurrency-add (dashed) card hover — intentionally softer. */
+  concurrencyAddHover: string;
+  /** Context menu / dropdown drop, with inset top highlight. */
+  menu: string;
+  /** Settings modal container — deepest, with inset 1px border. */
+  modal: string;
+  /** React Flow drag ghost — strongest, used while dragging a palette card. */
+  dragGhost: string;
+  /** Base toast shadow (non-variant). */
+  toast: string;
+  /** Outer drop layer used by variant toasts (success/error/info) on top of
+   *  their color-mix tinted halo. */
+  toastOuter: string;
+}
+
 export interface ThemeContent {
   /** "User"-authored content: chat user messages, chat-variant toast. */
   user: string;
@@ -124,4 +155,5 @@ export interface Theme {
   canvas: ThemeCanvas;
   controls: ThemeControls;
   content: ThemeContent;
+  shadows: ThemeShadows;
 }

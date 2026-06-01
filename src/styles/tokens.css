@@ -107,10 +107,25 @@
   --color-content-system: var(--content-system);
   --color-content-assistant: var(--content-assistant);
 
-  /* Static design tokens — not themed. */
+  /* Shadow elevations — theme-driven. `--shadow-*` in @theme also registers
+     the matching Tailwind utility class (e.g. `shadow-card`); raw CSS in
+     ui-chrome.css / reactflow.css / toast.css consumes them as var().
+     `applyTheme()` overwrites these on document.documentElement at runtime
+     when the active theme changes. Mirror any change to hive-dark.ts
+     `shadows: { ... }` — the tokensMirror.test.ts drift guard fails CI on
+     mismatch. */
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-card-hover: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --shadow-palette-hover: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-concurrency-hover: 0 6px 16px rgba(0, 0, 0, 0.4);
+  --shadow-concurrency-add-hover: 0 6px 16px rgba(0, 0, 0, 0.2);
+  --shadow-menu: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-drag-ghost: 0 10px 25px rgba(0, 0, 0, 0.9);
+  --shadow-toast: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-toast-outer: 0 4px 12px rgba(0, 0, 0, 0.4);
 
+  /* Static design tokens — never themed. */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

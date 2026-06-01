@@ -149,7 +149,7 @@ export default function ChatInspector({
             return (
               <div
                 key={idx}
-                className="self-center bg-black/35 border border-border-subtle/60 px-3 py-1 rounded text-[11px] text-text-secondary italic max-w-[85%] text-center my-1 select-none shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]"
+                className="self-center bg-primary/50 border border-border-subtle/60 px-3 py-1 rounded text-[11px] text-text-secondary italic max-w-[85%] text-center my-1 select-none shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]"
               >
                 {msg.content}
               </div>
