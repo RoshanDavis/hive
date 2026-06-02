@@ -249,6 +249,20 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
                     obj.insert("messages".to_string(), serde_json::json!([]));
                 }
             }
+        } else if node.node_type == "agent" {
+            // Reattach the agent's internal storage-slot records from disk. Only
+            // when a storage slot is present (it's an object); a null slot stays
+            // null. Missing/unparseable file degrades to an empty array.
+            if let Some(obj) = node.data.as_object_mut() {
+                if let Some(storage) = obj.get_mut("storage").and_then(|s| s.as_object_mut()) {
+                    let db_file = space_storage_dir.join(format!("{}.json", node.id));
+                    let records = fs::read_to_string(&db_file)
+                        .ok()
+                        .and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok())
+                        .unwrap_or_else(|| serde_json::json!([]));
+                    storage.insert("records".to_string(), records);
+                }
+            }
         }
     }
 
@@ -284,6 +298,19 @@ pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), St
             if let Some(obj) = node.data.as_object_mut() {
                 // Strip large messages history from workspace json files
                 obj.remove("messages");
+            }
+        } else if node.node_type == "agent" {
+            // Decouple the agent's internal storage-slot records to their own
+            // file (mirrors jsonStorage) so the space JSON stays small. The
+            // records live nested at data.storage.records.
+            if let Some(obj) = node.data.as_object_mut() {
+                if let Some(storage) = obj.get_mut("storage").and_then(|s| s.as_object_mut()) {
+                    if let Some(records) = storage.get("records") {
+                        let db_file = space_storage_dir.join(format!("{}.json", node.id));
+                        write_json(&db_file, records)?;
+                    }
+                    storage.remove("records");
+                }
             }
         }
 

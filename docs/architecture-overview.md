@@ -85,6 +85,7 @@ Hive has no hardcoded node types. A `NodePlugin` ([src/engine/plugin.ts](../src/
 | Workspace persistence (`.hive/`) | [workspace-persistence.md](workspace-persistence.md) | `src-tauri/src/commands/workspace.rs`, `utils.rs`, `src/hooks/useWorkspaceSpaces.ts` |
 | Node defaults (global + workspace) | [node-defaults.md](node-defaults.md) | `src/services/nodeDefaultsService.ts` |
 | Custom nodes + script sandbox | [custom-nodes-design.md](custom-nodes-design.md) | `src/services/customNode*`, `src-tauri/crates/sandbox/` |
+| Agent node (composite container: LLM + storage + tools slots) | [agent-node.md](agent-node.md) | `src/nodes/AgentNode*`, `src/engine/AgentExecutor.ts`, `src/engine/llmInference.ts` |
 | Concurrency governor | (in [node-engine.md](node-engine.md#concurrency-governor)) | `src/services/concurrency.ts` |
 | Theming (Theme schema, applyTheme, tokens-mirror drift guard) | (in [CLAUDE.md → Theming](../CLAUDE.md#theming-theme-type-applytheme-themeprovider)) | `src/theme/`, `src/styles/tokens.css`, `src/theme/__tests__/tokensMirror.test.ts` |
 

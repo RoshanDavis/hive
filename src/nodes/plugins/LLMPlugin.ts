@@ -2,6 +2,7 @@ import type { NodePlugin } from "@/engine/plugin";
 import { LLMExecutor } from "@/engine/LLMExecutor";
 import { LLMInspector } from "@/components/inspectors";
 import LLMDefaultsEditor from "@/components/defaults/LLMDefaultsEditor";
+import { LLM_DEFAULT_DATA } from "@/nodes/llmDefaults";
 
 const LLMPlugin: NodePlugin = {
   type: "llm",
@@ -11,16 +12,7 @@ const LLMPlugin: NodePlugin = {
     description: "Generic LLM inference node",
     category: "processing",
   },
-  defaultData: {
-    label: "LLM",
-    provider: "Ollama",
-    modelName: "",
-    systemPrompt: "You are a helpful AI assistant.",
-    temperature: 0.7,
-    maxTokens: 2048,
-    baseURL: "http://localhost:11434",
-    chatHistoryLimit: 0,
-  },
+  defaultData: { ...LLM_DEFAULT_DATA },
   inspector: LLMInspector,
   defaultsEditor: LLMDefaultsEditor,
   executor: new LLMExecutor(),

@@ -30,6 +30,14 @@ const CONNECTION_RULES: NodeConnectionRule[] = [
     allowedOption: "both", // User can toggle between one-way and bi-directional flow
     defaultFlow: "bi-directional",
   },
+  {
+    // The Agent is a drop-in conversational unit, like the LLM node: a Chat can
+    // drive it and receive its reply over the same edge.
+    sourceType: "chat",
+    targetType: "agent",
+    allowedOption: "both",
+    defaultFlow: "bi-directional",
+  },
   // Add future multi-way conversational/processing nodes here
 ];
 

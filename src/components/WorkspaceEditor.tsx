@@ -24,6 +24,8 @@ import { useToast } from "@/hooks/useToast";
 import "@/nodes/plugins"; // Side-effect import: registers all node plugins
 import { pluginRegistry } from "@/engine/pluginRegistry";
 import GenericNodeShell from "@/nodes/GenericNodeShell";
+import { AgentNodeView } from "@/nodes/AgentNodeView";
+import type { AgentNodeData } from "@/nodes/types";
 import CustomConnectionEdge from "@/components/CustomConnectionEdge";
 import { getStatusColor } from "@/theme/colors";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -190,6 +192,8 @@ function WorkspaceEditorInner({
     handleDragEndNode,
     handleDragOver,
     handleDrop,
+    handleNodeDragStart,
+    handleNodeDragStop,
   } = useWorkspaceDragDrop({
     setNodes,
     showToast,
@@ -378,6 +382,8 @@ function WorkspaceEditorInner({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeDragStart={handleNodeDragStart}
+          onNodeDragStop={handleNodeDragStop}
           onSelectionChange={onSelectionChange}
           onPaneClick={onPaneClick}
           onNodeContextMenu={onNodeContextMenu}
@@ -482,15 +488,29 @@ function WorkspaceEditorInner({
       {activeDragNode && activeDragNode.clientX > 0 && activeDragNode.clientY > 0 && (() => {
         const plugin = pluginRegistry.get(activeDragNode.type);
         if (!plugin) return null;
+
+        const ghostPos: React.CSSProperties = {
+          left: activeDragNode.clientX,
+          top: activeDragNode.clientY,
+          transform: "translate(-50%, -50%) scale(1.05)",
+        };
+
+        // The Agent drags as its full design (WYSIWYG). Both branches keep
+        // id="drag-ghost-card" so handleDrop measures the real size and centers
+        // the node under the cursor.
+        if (activeDragNode.type === "agent") {
+          return (
+            <div id="drag-ghost-card" className="fixed pointer-events-none z-99999 select-none" style={ghostPos}>
+              <AgentNodeView data={plugin.defaultData as unknown as AgentNodeData} />
+            </div>
+          );
+        }
+
         return (
           <div
             id="drag-ghost-card"
             className="fixed pointer-events-none z-99999 bg-card border border-accent-dim rounded-lg px-3 py-2.5 shadow-drag-ghost flex flex-col items-center justify-center gap-1.5 min-w-22.5 max-w-37.5 transition-transform duration-75 select-none"
-            style={{
-              left: activeDragNode.clientX,
-              top: activeDragNode.clientY,
-              transform: "translate(-50%, -50%) scale(1.05)",
-            }}
+            style={ghostPos}
           >
             <span className="text-2xl select-none">{plugin.meta.icon}</span>
             <span className="font-semibold text-text-main text-xs select-none w-full text-center whitespace-nowrap overflow-hidden text-ellipsis">{plugin.meta.label}</span>

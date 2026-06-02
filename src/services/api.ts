@@ -49,6 +49,21 @@ export interface NodeDefaultsConfig {
   models: Record<string, ModelEntry[]>;
 }
 
+/** A selectable tool / MCP server / skill the Agent's Tools slot can reference.
+ * Runtime invocation is deferred; this is selection metadata only. */
+export interface ToolDef {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface ToolsConfig {
+  version: number;
+  native: ToolDef[];
+  mcp: ToolDef[];
+  skills: ToolDef[];
+}
+
 // ─── API Client Service Layer ────────────────────────────────
 export const api = {
   // Workspaces Management
@@ -130,6 +145,23 @@ export const api = {
 
   async saveWorkspaceNodeDefaults(workspacePath: string, config: NodeDefaultsConfig): Promise<void> {
     return invoke<void>("save_workspace_node_defaults", { workspacePath, config });
+  },
+
+  // Tools registry (global + workspace)
+  async loadGlobalTools(): Promise<ToolsConfig> {
+    return invoke<ToolsConfig>("load_global_tools");
+  },
+
+  async saveGlobalTools(config: ToolsConfig): Promise<void> {
+    return invoke<void>("save_global_tools", { config });
+  },
+
+  async loadWorkspaceTools(workspacePath: string): Promise<ToolsConfig> {
+    return invoke<ToolsConfig>("load_workspace_tools", { workspacePath });
+  },
+
+  async saveWorkspaceTools(workspacePath: string, config: ToolsConfig): Promise<void> {
+    return invoke<void>("save_workspace_tools", { workspacePath, config });
   },
 
   // Custom nodes (global + workspace)

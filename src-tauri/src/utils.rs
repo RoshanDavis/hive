@@ -86,6 +86,17 @@ pub fn node_defaults_app_file(app: &tauri::AppHandle) -> Result<PathBuf, String>
     Ok(app_data.join("node-defaults.json"))
 }
 
+// ─── Tools registry file (global, at app_data_dir) ───────────
+
+pub fn tools_app_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    fs::create_dir_all(&app_data).map_err(|e| format!("Failed to create app data dir: {}", e))?;
+    Ok(app_data.join("tools.json"))
+}
+
 // ─── Custom-node directory (global, at app_data_dir) ──────────
 
 pub fn custom_nodes_app_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {

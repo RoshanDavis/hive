@@ -5,6 +5,8 @@ export { default as OllamaInspector } from "./LLMInspector";
 export { default as ChatInspector } from "./ChatInspector";
 export { default as OutputInspector } from "./OutputInspector";
 export { default as JSONStorageInspector } from "./JSONStorageInspector";
+export { default as AgentInspector } from "./AgentInspector";
+export { default as ToolsInspector } from "./ToolsInspector";
 export { default as ScriptNodeInspector } from "./ScriptNodeInspector";
 export { default as ConnectionInspector } from "./ConnectionInspector";
 export { default as CollapsibleSection } from "./CollapsibleSection";

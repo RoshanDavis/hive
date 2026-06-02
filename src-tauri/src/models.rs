@@ -89,6 +89,40 @@ impl Default for NodeDefaultsConfig {
     }
 }
 
+// ─── Tools registry (global at app_data_dir, per-workspace at .hive) ─────────
+// User-defined native tools / MCP servers / skills the Agent's Tools slot can
+// reference. Runtime invocation is deferred; this is selection metadata only.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDef {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolsConfig {
+    pub version: u32,
+    #[serde(default)]
+    pub native: Vec<ToolDef>,
+    #[serde(default)]
+    pub mcp: Vec<ToolDef>,
+    #[serde(default)]
+    pub skills: Vec<ToolDef>,
+}
+
+impl Default for ToolsConfig {
+    fn default() -> Self {
+        ToolsConfig {
+            version: 1,
+            native: Vec::new(),
+            mcp: Vec::new(),
+            skills: Vec::new(),
+        }
+    }
+}
+
 // ─── Custom nodes (global at app_data_dir, per-workspace at .hive) ───────────
 // Folder-per-node: <base>/custom-nodes/<id>/node.json. The common fields are typed;
 // kind-specific fields (baseType/presetData, and future script fields) round-trip

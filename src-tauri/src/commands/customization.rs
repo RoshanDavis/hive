@@ -10,8 +10,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::commands::credentials::resolve_credential_values;
-use crate::models::{CustomNodeDefinition, NodeDefaultsConfig};
-use crate::utils::{custom_nodes_app_dir, hive_dir, node_defaults_app_file, write_atomic, write_json};
+use crate::models::{CustomNodeDefinition, NodeDefaultsConfig, ToolsConfig};
+use crate::utils::{
+    custom_nodes_app_dir, hive_dir, node_defaults_app_file, tools_app_file, write_atomic, write_json,
+};
 
 // ─── Node defaults IPC ────────────────────────────────────────
 
@@ -63,6 +65,44 @@ pub fn save_workspace_node_defaults(
 ) -> Result<(), String> {
     let path = hive_dir(&workspace_path).join("node-defaults.json");
     write_node_defaults_file(&path, &config)
+}
+
+// ─── Tools registry IPC ───────────────────────────────────────
+
+fn read_tools_file(path: &Path) -> Result<ToolsConfig, String> {
+    if !path.exists() {
+        return Ok(ToolsConfig::default());
+    }
+    let data = fs::read_to_string(path).map_err(|e| format!("Failed to read tools: {}", e))?;
+    serde_json::from_str(&data).map_err(|e| format!("Failed to parse tools: {}", e))
+}
+
+fn write_tools_file(path: &Path, config: &ToolsConfig) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+    write_json(path, config)
+}
+
+#[tauri::command]
+pub fn load_global_tools(app: tauri::AppHandle) -> Result<ToolsConfig, String> {
+    read_tools_file(&tools_app_file(&app)?)
+}
+
+#[tauri::command]
+pub fn save_global_tools(app: tauri::AppHandle, config: ToolsConfig) -> Result<(), String> {
+    write_tools_file(&tools_app_file(&app)?, &config)
+}
+
+#[tauri::command]
+pub fn load_workspace_tools(workspace_path: String) -> Result<ToolsConfig, String> {
+    read_tools_file(&hive_dir(&workspace_path).join("tools.json"))
+}
+
+#[tauri::command]
+pub fn save_workspace_tools(workspace_path: String, config: ToolsConfig) -> Result<(), String> {
+    write_tools_file(&hive_dir(&workspace_path).join("tools.json"), &config)
 }
 
 // ─── Custom nodes IPC ─────────────────────────────────────────
