@@ -29,6 +29,9 @@ pub fn run() {
             // llm
             commands::llm::ollama_chat,
             commands::llm::llm_chat,
+            commands::llm::llm_chat_tools,
+            // tools (native Agent tool execution)
+            commands::tools::run_native_tool,
             // credentials
             commands::credentials::credential_list,
             commands::credentials::credential_add,

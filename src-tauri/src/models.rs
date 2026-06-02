@@ -99,6 +99,13 @@ pub struct ToolDef {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// JSON Schema for the tool's parameters (object schema), passed to the model
+    /// so it knows the call signature. Optional for back-compat with id+label defs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<serde_json::Value>,
+    /// Emoji/icon shown on the tool card in the picker. Optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -216,4 +223,57 @@ pub struct OllamaRequest {
 #[derive(Deserialize)]
 pub struct OllamaResponse {
     pub message: Option<OllamaMessage>,
+}
+
+// ─── Agentic chat (tool-calling) ─────────────────────────────
+// Provider-neutral message + tool shapes used by `llm_chat_tools`. The TS agent
+// loop maintains the conversation in this shape; `dispatch_chat` translates it to
+// each provider's wire format and parses the response back. `arguments` is a JSON
+// *string* (normalized across providers — OpenAI emits a string, Anthropic/Ollama
+// emit an object which we serialize here), so the renderer parses it once.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    /// The model's function-call arguments as a JSON string.
+    pub arguments: String,
+}
+
+/// One turn in the agent conversation. `role` is system | user | assistant | tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentChatMessage {
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// Present on an assistant turn that requested tool calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    /// Present on a tool-result message (role == "tool").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    /// Tool name, on a tool-result message (informational).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// A function/tool schema offered to the model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSchema {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// JSON Schema describing the tool's parameters (an object schema).
+    pub parameters: serde_json::Value,
+}
+
+/// One model turn parsed back into provider-neutral form.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentChatResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
 }

@@ -50,11 +50,15 @@ export interface NodeDefaultsConfig {
 }
 
 /** A selectable tool / MCP server / skill the Agent's Tools slot can reference.
- * Runtime invocation is deferred; this is selection metadata only. */
+ * `parameters` is the JSON Schema for the tool's call signature, passed to the
+ * model when the tool is offered (absent for selection-only entries). */
 export interface ToolDef {
   id: string;
   label: string;
   description?: string;
+  parameters?: Record<string, unknown>;
+  /** Emoji/icon shown on the tool card. Falls back to a per-category icon. */
+  icon?: string;
 }
 
 export interface ToolsConfig {
@@ -62,6 +66,44 @@ export interface ToolsConfig {
   native: ToolDef[];
   mcp: ToolDef[];
   skills: ToolDef[];
+}
+
+// ─── Agentic chat (tool-calling) ─────────────────────────────
+// Wire shapes for `llm_chat_tools`. Field names are snake_case to match the Rust
+// serde structs (nested payloads aren't subject to Tauri's top-level key casing).
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  /** The model's function-call arguments as a JSON string. */
+  arguments: string;
+}
+
+/** One turn in the agent conversation. */
+export interface AgentChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  /** Present on an assistant turn that requested tool calls. */
+  tool_calls?: ToolCall[];
+  /** Present on a tool-result message (role === "tool"). */
+  tool_call_id?: string;
+  /** Tool name, on a tool-result message. */
+  name?: string;
+}
+
+/** A function/tool schema offered to the model. */
+export interface ToolSchema {
+  name: string;
+  description?: string;
+  /** JSON Schema for the tool's parameters (object schema). */
+  parameters: Record<string, unknown>;
+}
+
+/** One model turn parsed back into provider-neutral form. */
+export interface AgentTurn {
+  content: string | null;
+  tool_calls: ToolCall[];
+  finish_reason?: string | null;
 }
 
 // ─── API Client Service Layer ────────────────────────────────
@@ -261,6 +303,55 @@ export const api = {
       messages,
       temperature,
       maxTokens,
+    });
+  },
+
+  // Tool-calling inference. Same credential resolution as `llmChat`, but passes
+  // function schemas and a richer message shape and returns any tool-call requests
+  // the model made (provider-neutral). The renderer-side agent loop executes the
+  // tools and calls this again with the results appended.
+  async llmChatTools(
+    provider: string,
+    baseURL: string,
+    modelName: string,
+    messages: AgentChatMessage[],
+    temperature: number,
+    maxTokens: number,
+    tools: ToolSchema[],
+    credentialId?: string | null,
+    credentialScope?: "global" | "local" | null,
+    workspacePath?: string | null
+  ): Promise<AgentTurn> {
+    return invoke<AgentTurn>("llm_chat_tools", {
+      provider,
+      baseURL,
+      credentialId: credentialId ?? null,
+      credentialScope: credentialScope ?? null,
+      workspacePath: workspacePath ?? null,
+      modelName,
+      messages,
+      temperature,
+      maxTokens,
+      tools,
+    });
+  },
+
+  // Execute a built-in native Agent tool server-side, returning its textual result.
+  // For web_search, pass the bound credentialId; Rust resolves it from the vault and
+  // the plaintext key never crosses back into the renderer.
+  async runNativeTool(
+    toolId: string,
+    args: Record<string, unknown>,
+    workspacePath?: string | null,
+    credentialId?: string | null,
+    credentialScope?: "global" | "local" | null
+  ): Promise<string> {
+    return invoke<string>("run_native_tool", {
+      toolId,
+      arguments: args,
+      workspacePath: workspacePath ?? null,
+      credentialId: credentialId ?? null,
+      credentialScope: credentialScope ?? null,
     });
   },
 

@@ -6,8 +6,10 @@ import type {
   AgentNodeData,
   AgentSlotKind,
   AgentStorageSlot,
+  AgentToolSettings,
   AgentToolsSlot,
 } from "@/nodes/types";
+import type { ToolTraceStep } from "@/engine/agentTools";
 import { agentSlotFocus } from "@/nodes/agentSlotFocus";
 import { LLM_DEFAULT_DATA } from "@/nodes/llmDefaults";
 import CollapsibleSection from "./CollapsibleSection";
@@ -110,11 +112,13 @@ function ToolsSlotEditor({
   tools,
   workspacePath,
   onChange,
+  onToolSettingsChange,
   onRemove,
 }: {
   tools: AgentToolsSlot;
   workspacePath: string;
   onChange: (next: ToolsSelection) => void;
+  onToolSettingsChange: (next: AgentToolSettings) => void;
   onRemove: () => void;
 }) {
   return (
@@ -127,6 +131,8 @@ function ToolsSlotEditor({
         }}
         onChange={onChange}
         workspacePath={workspacePath}
+        toolSettings={tools.toolSettings}
+        onToolSettingsChange={onToolSettingsChange}
       />
       <button type="button" className={actionButtonDangerClass} onClick={onRemove}>
         <span>Remove Tools</span>
@@ -167,7 +173,18 @@ export default function AgentInspector({
     return agentSlotFocus.subscribe(node.id, scrollTo);
   }, [node.id]);
 
-  const lastValue = (data.outputEnvelope as NodeOutputEnvelope | undefined)?.value;
+  const envelope = data.outputEnvelope as NodeOutputEnvelope | undefined;
+  const lastValue = envelope?.value;
+  // Tool Activity: prefer the live (transient) run log; fall back to the
+  // persisted tool trace on the envelope so it survives a reload.
+  const logs = Array.isArray(data.logs) ? (data.logs as string[]) : [];
+  const trace = (envelope?.data?.toolTrace ?? []) as ToolTraceStep[];
+  const activityLines =
+    logs.length > 0
+      ? logs
+      : trace.map(
+          (t) => `🔧 ${t.name}(${t.arguments}) → ${t.error ? "error: " : ""}${t.content}`
+        );
 
   return (
     <div className="flex flex-col gap-3">
@@ -224,7 +241,10 @@ export default function AgentInspector({
             <ToolsSlotEditor
               tools={tools}
               workspacePath={workspacePath}
-              onChange={(next) => onUpdate(node.id, { tools: next })}
+              onChange={(next) => onUpdate(node.id, { tools: { ...tools, ...next } })}
+              onToolSettingsChange={(ts) =>
+                onUpdate(node.id, { tools: { ...tools, toolSettings: ts } })
+              }
               onRemove={() => onUpdate(node.id, { tools: null })}
             />
           ) : (
@@ -238,6 +258,26 @@ export default function AgentInspector({
           )}
         </CollapsibleSection>
       </div>
+
+      {activityLines.length > 0 && (
+        <CollapsibleSection
+          title="Tool Activity"
+          icon="🔧"
+          defaultOpen={false}
+          badge={activityLines.length}
+        >
+          <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+            {activityLines.map((line, i) => (
+              <div
+                key={i}
+                className="text-[11px] text-text-main font-mono wrap-break-word rounded-md border border-border-subtle bg-card/40 px-2 py-1"
+              >
+                {line}
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
 
       <LastResponseSection
         value={lastValue}

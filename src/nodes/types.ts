@@ -85,13 +85,23 @@ export interface AgentStorageSlot {
   [key: string]: unknown;
 }
 
+/** Per-tool configuration that isn't just a selected id (e.g. the vault
+ * credential bound to web_search, resolved Rust-side at execution time). */
+export interface AgentToolSettings {
+  /** Credential id (Brave Search API key) used by the built-in web_search tool. */
+  webSearchCredentialId?: string;
+  [key: string]: unknown;
+}
+
 /** Tools selected for an Agent's Tools slot. Each list holds references (ids)
- * into the tools registry. Runtime invocation is deferred; these persist and
- * display today. */
+ * into the tools registry; the runnable built-in native tools are invoked at
+ * runtime via the agent loop (see docs/agent-node.md). */
 export interface AgentToolsSlot {
   native: string[];
   mcp: string[];
   skills: string[];
+  /** Optional per-tool config (e.g. web_search's bound credential). */
+  toolSettings?: AgentToolSettings;
   [key: string]: unknown;
 }
 

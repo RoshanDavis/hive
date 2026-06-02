@@ -4,6 +4,7 @@
 // concurrency-pool gate, and the output-envelope shape identical across both.
 
 import { api } from "@/services/api";
+import type { AgentChatMessage, AgentTurn, ToolSchema } from "@/services/api";
 import { concurrencyGovernor } from "@/services/concurrency";
 import type { ExecutionContext, NodeOutputEnvelope } from "./types";
 import { getUpstreamNodeData, getUpstreamNodes } from "./utils";
@@ -160,5 +161,42 @@ export function callLlm(
       },
       data: { reply: response },
     };
+  });
+}
+
+/**
+ * One tool-calling inference turn, pool-gated identically to {@link callLlm} (so a
+ * pool slot is released while tools execute between turns). Prepends the composed
+ * system prompt (if any) without mutating `messages`; returns the model's text and
+ * any tool-call requests. The Agent loop calls this repeatedly, appending the
+ * assistant turn + tool results to `messages` between calls.
+ */
+export function callLlmWithTools(
+  config: LlmConfig,
+  messages: AgentChatMessage[],
+  tools: ToolSchema[],
+  workspacePath: string
+): Promise<AgentTurn> {
+  const isLocal = concurrencyGovernor.isLocalModel(config.provider, config.baseURL);
+  const poolType = isLocal ? "local" : "cloud";
+
+  return concurrencyGovernor.enqueue(poolType, async () => {
+    const requestMessages: AgentChatMessage[] =
+      config.systemPrompt.trim() !== ""
+        ? [{ role: "system", content: config.systemPrompt }, ...messages]
+        : messages;
+
+    return api.llmChatTools(
+      config.provider,
+      config.baseURL,
+      config.modelName,
+      requestMessages,
+      config.temperature,
+      config.maxTokens,
+      tools,
+      config.credentialId,
+      null,
+      workspacePath
+    );
   });
 }

@@ -1,13 +1,20 @@
 //! Outbound LLM chat dispatch.
 //!
 //! Lives in Rust so API keys never reach the renderer and so the shared HTTP
-//! client can enforce stall timeouts that protect the run loop. `llm_chat`
-//! is a thin polymorphic switch over `provider`; per-provider request shapes
-//! stay inline until a 5th provider arrives (the trait extraction was
-//! explicitly deferred in the refactor plan).
+//! client can enforce stall timeouts that protect the run loop. `llm_chat` is a
+//! thin polymorphic switch over `provider` returning the assistant text;
+//! `llm_chat_tools` is its tool-calling sibling — it additionally passes function
+//! schemas and returns any tool-call requests the model made (provider-neutral
+//! [`AgentChatResponse`]) so the renderer-side agent loop can execute tools and
+//! continue the conversation. Per-provider request shapes stay inline (the trait
+//! extraction was explicitly deferred until a 5th provider arrives).
 
 use crate::commands::credentials::resolve_credential_values;
-use crate::models::{OllamaMessage, OllamaOptions, OllamaRequest, OllamaResponse};
+use crate::models::{
+    AgentChatMessage, AgentChatResponse, OllamaMessage, OllamaOptions, OllamaRequest,
+    OllamaResponse, ToolCall, ToolSchema,
+};
+use serde_json::{json, Value};
 
 /// Shared HTTP client for outbound LLM calls. Explicit connect + overall timeouts so a
 /// stalled or unresponsive provider can't hang the Tauri command (and the run loop) forever.
@@ -17,6 +24,39 @@ fn llm_http_client() -> Result<reqwest::Client, String> {
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))
+}
+
+/// Resolve a vault credential id (if any) into `(api_key, base_url)` server-side: the
+/// credential's stored `baseURL` overrides the passed-in one, and the plaintext key
+/// never crosses back into the renderer. Shared by `llm_chat` and `llm_chat_tools`.
+/// Ollama (local) passes no credential, so this returns `(None, base_url)` for it.
+fn resolve_key_and_url(
+    app: &tauri::AppHandle,
+    credential_id: Option<String>,
+    credential_scope: Option<String>,
+    workspace_path: Option<String>,
+    base_url: Option<String>,
+) -> Result<(Option<String>, Option<String>), String> {
+    if let Some(id) = credential_id.as_deref() {
+        let values = resolve_credential_values(
+            app,
+            id,
+            credential_scope.as_deref(),
+            workspace_path.as_deref(),
+        )?;
+        let resolved_key = values
+            .get("apiKey")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let resolved_url = values
+            .get("baseURL")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or(base_url);
+        Ok((resolved_key, resolved_url))
+    } else {
+        Ok((None, base_url))
+    }
 }
 
 #[tauri::command]
@@ -76,30 +116,10 @@ pub async fn llm_chat(
     temperature: f64,
     max_tokens: u32,
 ) -> Result<String, String> {
-    // Rust-side credential resolution: if a credentialId is provided, look it up
-    // in the appropriate vault and pull base_url/api_key from the stored values.
-    // The plaintext secret never crosses back into the renderer. Ollama (local)
-    // doesn't need a credential, so this is None for that path.
-    let (api_key, base_url) = if let Some(id) = credential_id.as_deref() {
-        let values = resolve_credential_values(
-            &app,
-            id,
-            credential_scope.as_deref(),
-            workspace_path.as_deref(),
-        )?;
-        let resolved_key = values
-            .get("apiKey")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let resolved_url = values
-            .get("baseURL")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .or(base_url);
-        (resolved_key, resolved_url)
-    } else {
-        (None, base_url)
-    };
+    // Rust-side credential resolution: the plaintext secret never crosses back into
+    // the renderer. Ollama (local) doesn't need a credential.
+    let (api_key, base_url) =
+        resolve_key_and_url(&app, credential_id, credential_scope, workspace_path, base_url)?;
 
     let provider_lower = provider.to_lowercase();
 
@@ -223,6 +243,398 @@ pub async fn llm_chat(
         }
 
         Err("Anthropic response contained no text".to_string())
+    } else {
+        Err(format!("Unsupported provider: {}", provider))
+    }
+}
+
+// ─── Tool-calling (agentic) chat ─────────────────────────────
+//
+// Same credential resolution as `llm_chat`, but accepts function schemas and a
+// richer message shape (assistant tool-call turns + tool-result messages) and
+// returns the model's tool-call requests structured. The TS agent loop calls this
+// once per turn, executes any requested tools, and feeds the results back.
+
+/// OpenAI-style `tools` array (also accepted by Ollama's `/api/chat`).
+fn openai_tools(tools: &[ToolSchema]) -> Vec<Value> {
+    tools
+        .iter()
+        .map(|t| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description.clone().unwrap_or_default(),
+                    "parameters": t.parameters,
+                }
+            })
+        })
+        .collect()
+}
+
+/// Translate neutral messages to the OpenAI chat-completions shape.
+fn openai_messages(messages: &[AgentChatMessage]) -> Vec<Value> {
+    messages
+        .iter()
+        .map(|m| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("role".into(), json!(m.role));
+            obj.insert(
+                "content".into(),
+                match &m.content {
+                    Some(c) => json!(c),
+                    None => Value::Null,
+                },
+            );
+            if let Some(tcs) = &m.tool_calls {
+                let calls: Vec<Value> = tcs
+                    .iter()
+                    .map(|tc| {
+                        json!({
+                            "id": tc.id,
+                            "type": "function",
+                            "function": { "name": tc.name, "arguments": tc.arguments }
+                        })
+                    })
+                    .collect();
+                obj.insert("tool_calls".into(), json!(calls));
+            }
+            if let Some(id) = &m.tool_call_id {
+                obj.insert("tool_call_id".into(), json!(id));
+            }
+            Value::Object(obj)
+        })
+        .collect()
+}
+
+async fn openai_chat_tools(
+    url: String,
+    api_key: Option<String>,
+    model_name: String,
+    messages: Vec<AgentChatMessage>,
+    temperature: f64,
+    max_tokens: u32,
+    tools: Vec<ToolSchema>,
+) -> Result<AgentChatResponse, String> {
+    let key = api_key.unwrap_or_default();
+    let client = llm_http_client()?;
+    let mut req = client.post(format!("{}/chat/completions", url));
+    if !key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", key));
+    }
+
+    let mut req_body = json!({
+        "model": model_name,
+        "messages": openai_messages(&messages),
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    });
+    if !tools.is_empty() {
+        req_body["tools"] = json!(openai_tools(&tools));
+    }
+
+    let res = req
+        .json(&req_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request to LLM: {}", e))?;
+    if !res.status().is_success() {
+        let status = res.status();
+        let err_text = res.text().await.unwrap_or_default();
+        return Err(format!("LLM provider returned error status ({}): {}", status, err_text));
+    }
+    let resp: Value = res
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response from LLM: {}", e))?;
+
+    let message = &resp["choices"][0]["message"];
+    let content = message["content"].as_str().map(|s| s.to_string());
+    let mut tool_calls = Vec::new();
+    if let Some(calls) = message["tool_calls"].as_array() {
+        for (i, tc) in calls.iter().enumerate() {
+            let id = tc["id"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("call_{}", i));
+            let name = tc["function"]["name"].as_str().unwrap_or_default().to_string();
+            let arguments = tc["function"]["arguments"].as_str().unwrap_or("{}").to_string();
+            if !name.is_empty() {
+                tool_calls.push(ToolCall { id, name, arguments });
+            }
+        }
+    }
+    let finish_reason = resp["choices"][0]["finish_reason"].as_str().map(|s| s.to_string());
+
+    Ok(AgentChatResponse { content, tool_calls, finish_reason })
+}
+
+/// Anthropic `tools` array (uses `input_schema`, not `parameters`).
+fn anthropic_tools(tools: &[ToolSchema]) -> Vec<Value> {
+    tools
+        .iter()
+        .map(|t| {
+            json!({
+                "name": t.name,
+                "description": t.description.clone().unwrap_or_default(),
+                "input_schema": t.parameters,
+            })
+        })
+        .collect()
+}
+
+/// Flush accumulated `tool_result` blocks into a single Anthropic user message.
+fn flush_tool_results(out: &mut Vec<Value>, pending: &mut Vec<Value>) {
+    if !pending.is_empty() {
+        out.push(json!({ "role": "user", "content": std::mem::take(pending) }));
+    }
+}
+
+/// Translate neutral messages to Anthropic's shape (system handled separately).
+/// Coalesces consecutive tool results into one user message and expands assistant
+/// tool calls into `tool_use` blocks (arguments string → object).
+fn anthropic_messages(messages: &[AgentChatMessage]) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut pending: Vec<Value> = Vec::new();
+    for m in messages {
+        if m.role == "tool" {
+            pending.push(json!({
+                "type": "tool_result",
+                "tool_use_id": m.tool_call_id.clone().unwrap_or_default(),
+                "content": m.content.clone().unwrap_or_default(),
+            }));
+            continue;
+        }
+        flush_tool_results(&mut out, &mut pending);
+        match m.role.as_str() {
+            "system" => {}
+            "assistant" => {
+                if let Some(tcs) = &m.tool_calls {
+                    let mut blocks = Vec::new();
+                    if let Some(c) = &m.content {
+                        if !c.is_empty() {
+                            blocks.push(json!({ "type": "text", "text": c }));
+                        }
+                    }
+                    for tc in tcs {
+                        let input: Value =
+                            serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!({}));
+                        blocks.push(json!({ "type": "tool_use", "id": tc.id, "name": tc.name, "input": input }));
+                    }
+                    out.push(json!({ "role": "assistant", "content": blocks }));
+                } else {
+                    out.push(json!({ "role": "assistant", "content": m.content.clone().unwrap_or_default() }));
+                }
+            }
+            _ => {
+                out.push(json!({ "role": "user", "content": m.content.clone().unwrap_or_default() }));
+            }
+        }
+    }
+    flush_tool_results(&mut out, &mut pending);
+    out
+}
+
+async fn anthropic_chat_tools(
+    url: String,
+    api_key: Option<String>,
+    model_name: String,
+    messages: Vec<AgentChatMessage>,
+    temperature: f64,
+    max_tokens: u32,
+    tools: Vec<ToolSchema>,
+) -> Result<AgentChatResponse, String> {
+    let key = api_key.unwrap_or_default();
+    if key.is_empty() {
+        return Err("Anthropic API Key is required".to_string());
+    }
+
+    let system_prompt = messages
+        .iter()
+        .filter(|m| m.role == "system")
+        .filter_map(|m| m.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let client = llm_http_client()?;
+    let mut req_body = json!({
+        "model": model_name,
+        "messages": anthropic_messages(&messages),
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    });
+    if !system_prompt.is_empty() {
+        req_body["system"] = json!(system_prompt);
+    }
+    if !tools.is_empty() {
+        req_body["tools"] = json!(anthropic_tools(&tools));
+    }
+
+    let res = client
+        .post(format!("{}/v1/messages", url))
+        .header("x-api-key", &key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&req_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request to Anthropic: {}", e))?;
+    if !res.status().is_success() {
+        let status = res.status();
+        let err_text = res.text().await.unwrap_or_default();
+        return Err(format!("Anthropic returned error status ({}): {}", status, err_text));
+    }
+    let resp: Value = res
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response from Anthropic: {}", e))?;
+
+    let mut text = String::new();
+    let mut tool_calls = Vec::new();
+    if let Some(blocks) = resp["content"].as_array() {
+        for block in blocks {
+            match block["type"].as_str() {
+                Some("text") => text.push_str(block["text"].as_str().unwrap_or_default()),
+                Some("tool_use") => {
+                    let id = block["id"].as_str().unwrap_or_default().to_string();
+                    let name = block["name"].as_str().unwrap_or_default().to_string();
+                    let arguments = block["input"].to_string();
+                    if !name.is_empty() {
+                        tool_calls.push(ToolCall { id, name, arguments });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let content = if text.is_empty() { None } else { Some(text) };
+    let finish_reason = resp["stop_reason"].as_str().map(|s| s.to_string());
+
+    Ok(AgentChatResponse { content, tool_calls, finish_reason })
+}
+
+/// Translate neutral messages to Ollama's `/api/chat` shape (tool-call arguments
+/// are objects there, not strings).
+fn ollama_messages(messages: &[AgentChatMessage]) -> Vec<Value> {
+    messages
+        .iter()
+        .map(|m| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("role".into(), json!(m.role));
+            obj.insert("content".into(), json!(m.content.clone().unwrap_or_default()));
+            if let Some(tcs) = &m.tool_calls {
+                let calls: Vec<Value> = tcs
+                    .iter()
+                    .map(|tc| {
+                        let args: Value =
+                            serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!({}));
+                        json!({ "function": { "name": tc.name, "arguments": args } })
+                    })
+                    .collect();
+                obj.insert("tool_calls".into(), json!(calls));
+            }
+            if let Some(name) = &m.name {
+                obj.insert("tool_name".into(), json!(name));
+            }
+            Value::Object(obj)
+        })
+        .collect()
+}
+
+async fn ollama_chat_tools(
+    url: String,
+    model_name: String,
+    messages: Vec<AgentChatMessage>,
+    temperature: f64,
+    max_tokens: u32,
+    tools: Vec<ToolSchema>,
+) -> Result<AgentChatResponse, String> {
+    let client = llm_http_client()?;
+    let mut req_body = json!({
+        "model": model_name,
+        "messages": ollama_messages(&messages),
+        "stream": false,
+        "options": { "temperature": temperature, "num_predict": max_tokens },
+    });
+    if !tools.is_empty() {
+        req_body["tools"] = json!(openai_tools(&tools));
+    }
+
+    let res = client
+        .post(format!("{}/api/chat", url))
+        .json(&req_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request to Ollama: {}", e))?;
+    if !res.status().is_success() {
+        let status = res.status();
+        let err_text = res.text().await.unwrap_or_default();
+        return Err(format!("Ollama returned error status ({}): {}", status, err_text));
+    }
+    let resp: Value = res
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+
+    let message = &resp["message"];
+    let content = message["content"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let mut tool_calls = Vec::new();
+    if let Some(calls) = message["tool_calls"].as_array() {
+        for (i, tc) in calls.iter().enumerate() {
+            let name = tc["function"]["name"].as_str().unwrap_or_default().to_string();
+            let arguments = tc["function"]["arguments"].to_string();
+            if !name.is_empty() {
+                tool_calls.push(ToolCall { id: format!("call_{}", i), name, arguments });
+            }
+        }
+    }
+    let finish_reason = if tool_calls.is_empty() {
+        resp["done_reason"].as_str().map(|s| s.to_string())
+    } else {
+        Some("tool_calls".to_string())
+    };
+
+    Ok(AgentChatResponse { content, tool_calls, finish_reason })
+}
+
+#[tauri::command]
+pub async fn llm_chat_tools(
+    app: tauri::AppHandle,
+    provider: String,
+    base_url: Option<String>,
+    credential_id: Option<String>,
+    credential_scope: Option<String>,
+    workspace_path: Option<String>,
+    model_name: String,
+    messages: Vec<AgentChatMessage>,
+    temperature: f64,
+    max_tokens: u32,
+    tools: Vec<ToolSchema>,
+) -> Result<AgentChatResponse, String> {
+    let (api_key, base_url) =
+        resolve_key_and_url(&app, credential_id, credential_scope, workspace_path, base_url)?;
+
+    let provider_lower = provider.to_lowercase();
+
+    if provider_lower == "ollama" {
+        let url = base_url.unwrap_or_else(|| "http://localhost:11434".to_string());
+        ollama_chat_tools(url, model_name, messages, temperature, max_tokens, tools).await
+    } else if provider_lower == "openai" || provider_lower == "other" || provider_lower == "google" {
+        let url = match provider_lower.as_str() {
+            "openai" => base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+            "google" => base_url.unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+            _ => base_url.unwrap_or_default(),
+        };
+        if url.is_empty() {
+            return Err("Base URL is required".to_string());
+        }
+        openai_chat_tools(url, api_key, model_name, messages, temperature, max_tokens, tools).await
+    } else if provider_lower == "anthropic" {
+        let url = base_url.unwrap_or_else(|| "https://api.anthropic.com".to_string());
+        anthropic_chat_tools(url, api_key, model_name, messages, temperature, max_tokens, tools).await
     } else {
         Err(format!("Unsupported provider: {}", provider))
     }

@@ -2,7 +2,8 @@
 //!
 //! Each submodule owns the IPC commands for one slice of the app:
 //! - [`workspace`] — workspace + space CRUD, per-node history cleanup, OS notifications.
-//! - [`llm`]       — Ollama + OpenAI-compatible + Anthropic chat dispatch.
+//! - [`llm`]       — Ollama + OpenAI-compatible + Anthropic chat dispatch (plain + tool-calling).
+//! - [`tools`]     — native Agent tool execution (calculator / current_time / web_search).
 //! - [`credentials`] — encrypted credential vault IPC + shared resolution helpers.
 //! - [`customization`] — node defaults, custom-node definitions, sandboxed scripts.
 //!
@@ -15,4 +16,5 @@
 pub mod credentials;
 pub mod customization;
 pub mod llm;
+pub mod tools;
 pub mod workspace;

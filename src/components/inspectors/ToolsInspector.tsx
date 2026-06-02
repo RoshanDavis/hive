@@ -1,4 +1,5 @@
 import type { InspectorProps } from "./types";
+import type { AgentToolSettings } from "@/nodes/types";
 import CollapsibleSection from "./CollapsibleSection";
 import InspectorActions from "./InspectorActions";
 import ToolsSelector, { type ToolsSelection } from "./shared/ToolsSelector";
@@ -15,6 +16,7 @@ export default function ToolsInspector({
     mcp: Array.isArray(node.data?.mcp) ? (node.data.mcp as string[]) : [],
     skills: Array.isArray(node.data?.skills) ? (node.data.skills as string[]) : [],
   };
+  const toolSettings = node.data?.toolSettings as AgentToolSettings | undefined;
 
   return (
     <div className="flex flex-col gap-3">
@@ -23,6 +25,8 @@ export default function ToolsInspector({
           value={value}
           onChange={(next) => onUpdate(node.id, { ...node.data, ...next })}
           workspacePath={workspacePath}
+          toolSettings={toolSettings}
+          onToolSettingsChange={(ts) => onUpdate(node.id, { ...node.data, toolSettings: ts })}
         />
       </CollapsibleSection>
 

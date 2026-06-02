@@ -78,11 +78,16 @@ function buildAgentSlotValue(
       records: Array.isArray(sourceData.records) ? sourceData.records : [],
     };
   }
-  return {
+  const tools: Record<string, unknown> = {
     native: Array.isArray(sourceData.native) ? sourceData.native : [],
     mcp: Array.isArray(sourceData.mcp) ? sourceData.mcp : [],
     skills: Array.isArray(sourceData.skills) ? sourceData.skills : [],
   };
+  // Carry per-tool config (e.g. the bound web_search credential) when present.
+  if (sourceData.toolSettings && typeof sourceData.toolSettings === "object") {
+    tools.toolSettings = sourceData.toolSettings;
+  }
+  return tools;
 }
 
 interface UseWorkspaceDragDropParams {

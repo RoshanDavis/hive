@@ -1,8 +1,8 @@
 /**
- * Unit tests for AgentExecutor. Mocks `@/services/api` so no Tauri runtime is
- * needed; drives the executor with a hand-built ExecutionContext whose
- * `updateNodeData` shallow-merges into a store (mirroring runnerSession). Runs
- * under jsdom.
+ * Unit tests for AgentExecutor. Mocks `@/services/api` and `@/services/toolsService`
+ * so no Tauri runtime is needed; drives the executor with a hand-built
+ * ExecutionContext whose `updateNodeData` shallow-merges into a store (mirroring
+ * runnerSession). Runs under jsdom.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -11,11 +11,18 @@ import type { Node, Edge } from "@xyflow/react";
 vi.mock("@/services/api", () => ({
   api: {
     llmChat: vi.fn().mockResolvedValue("agent reply"),
+    llmChatTools: vi.fn(),
+    runNativeTool: vi.fn(),
   },
 }));
+vi.mock("@/services/toolsService", () => ({
+  toolsService: { getAvailable: vi.fn() },
+}));
 
-import { AgentExecutor } from "@/engine/AgentExecutor";
+import { AgentExecutor, MAX_AGENT_ITERATIONS } from "@/engine/AgentExecutor";
 import { api } from "@/services/api";
+import { toolsService } from "@/services/toolsService";
+import { BUILT_IN_NATIVE_TOOLS } from "@/services/builtInTools";
 import type { ExecutionContext } from "@/engine/types";
 
 const LLM_SLOT = {
@@ -66,6 +73,10 @@ describe("AgentExecutor", () => {
   beforeEach(() => {
     vi.mocked(api.llmChat).mockClear();
     vi.mocked(api.llmChat).mockResolvedValue("agent reply");
+    vi.mocked(api.llmChatTools).mockReset();
+    vi.mocked(api.runNativeTool).mockReset();
+    vi.mocked(toolsService.getAvailable).mockReset();
+    vi.mocked(toolsService.getAvailable).mockResolvedValue(BUILT_IN_NATIVE_TOOLS);
   });
 
   it("runs the LLM slot and writes the output envelope", async () => {
@@ -118,5 +129,97 @@ describe("AgentExecutor", () => {
   it("throws when no LLM slot is configured", async () => {
     const { ctx } = makeHarness({ label: "Agent", llm: null, storage: null, tools: null });
     await expect(new AgentExecutor().execute(ctx)).rejects.toThrow(/LLM/);
+  });
+
+  it("does not call the tool-calling path when no tools are selected", async () => {
+    const { ctx } = makeHarness({
+      label: "Agent",
+      llm: { ...LLM_SLOT },
+      storage: null,
+      tools: null,
+    });
+
+    await new AgentExecutor().execute(ctx);
+
+    expect(api.llmChat).toHaveBeenCalledTimes(1);
+    expect(api.llmChatTools).not.toHaveBeenCalled();
+  });
+
+  it("invokes a requested tool and feeds the result back to the model", async () => {
+    const { ctx, store, agentId } = makeHarness({
+      label: "Agent",
+      llm: { ...LLM_SLOT },
+      storage: { kind: "jsonStorage", records: [] },
+      tools: { native: ["calculator"], mcp: [], skills: [] },
+    });
+
+    vi.mocked(api.llmChatTools)
+      .mockResolvedValueOnce({
+        content: null,
+        tool_calls: [{ id: "c1", name: "calculator", arguments: '{"expression":"(2+3)*7"}' }],
+        finish_reason: "tool_calls",
+      })
+      .mockResolvedValueOnce({ content: "The answer is 35.", tool_calls: [], finish_reason: "stop" });
+    vi.mocked(api.runNativeTool).mockResolvedValue("35");
+
+    await new AgentExecutor().execute(ctx);
+
+    // Two model turns: request tools, then produce the final answer.
+    expect(api.llmChatTools).toHaveBeenCalledTimes(2);
+    expect(api.llmChat).not.toHaveBeenCalled();
+    expect(api.runNativeTool).toHaveBeenCalledWith(
+      "calculator",
+      { expression: "(2+3)*7" },
+      "/ws",
+      null
+    );
+
+    // The second turn's message history carries the assistant tool-call turn + tool result.
+    const secondTurnMessages = vi.mocked(api.llmChatTools).mock.calls[1][3] as {
+      role: string;
+      content?: string | null;
+      tool_calls?: unknown[];
+    }[];
+    expect(secondTurnMessages.some((m) => m.role === "tool" && m.content === "35")).toBe(true);
+    expect(
+      secondTurnMessages.some((m) => m.role === "assistant" && Array.isArray(m.tool_calls))
+    ).toBe(true);
+
+    const env = store[agentId].outputEnvelope as {
+      value: string;
+      data: { toolTrace: { name: string; content: string }[] };
+    };
+    expect(env.value).toBe("The answer is 35.");
+    expect(env.data.toolTrace).toHaveLength(1);
+    expect(env.data.toolTrace[0]).toMatchObject({ name: "calculator", content: "35" });
+
+    // Final answer is appended to memory; the run log records the tool call.
+    const storage = store[agentId].storage as { records: { content: string }[] };
+    expect(storage.records[0].content).toBe("The answer is 35.");
+    const logs = store[agentId].logs as string[];
+    expect(logs.some((l) => l.includes("calculator"))).toBe(true);
+  });
+
+  it("stops at the maximum iteration cap when the model never finalizes", async () => {
+    const { ctx, store, agentId } = makeHarness({
+      label: "Agent",
+      llm: { ...LLM_SLOT },
+      storage: null,
+      tools: { native: ["calculator"], mcp: [], skills: [] },
+    });
+
+    // Always asks for another tool call — must be bounded by the cap.
+    vi.mocked(api.llmChatTools).mockResolvedValue({
+      content: null,
+      tool_calls: [{ id: "c", name: "calculator", arguments: "{}" }],
+      finish_reason: "tool_calls",
+    });
+    vi.mocked(api.runNativeTool).mockResolvedValue("ok");
+
+    await new AgentExecutor().execute(ctx);
+
+    expect(api.llmChatTools).toHaveBeenCalledTimes(MAX_AGENT_ITERATIONS);
+    const env = store[agentId].outputEnvelope as { value: string };
+    expect(env.value).toContain("maximum number of tool-call iterations");
   });
 });

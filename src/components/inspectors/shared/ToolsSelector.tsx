@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ToolDef } from "@/services/api";
+import type { AgentToolSettings } from "@/nodes/types";
 import { toolsService, type ToolCategory } from "@/services/toolsService";
-import { formLabelClass, formInputClass } from "@/components/shared/FormField";
+import { categoryIcon, RUNNABLE_NATIVE_TOOL_IDS } from "@/services/builtInTools";
+import NodeGridCard from "@/components/shared/NodeGridCard";
+import DashedAddCard from "@/components/shared/DashedAddCard";
+import { formLabelClass } from "@/components/shared/FormField";
+import ToolPickerMenu from "./ToolPickerMenu";
+import ToolFormModal from "./ToolFormModal";
+import ToolConfigModal from "./ToolConfigModal";
 
 export interface ToolsSelection {
   native: string[];
@@ -9,45 +16,50 @@ export interface ToolsSelection {
   skills: string[];
 }
 
-const CATEGORIES: { key: ToolCategory; title: string; icon: string; addPlaceholder: string }[] = [
-  { key: "native", title: "Native Tools", icon: "🔧", addPlaceholder: "New native tool name" },
-  { key: "mcp", title: "MCP Servers", icon: "🔌", addPlaceholder: "New MCP server name" },
-  { key: "skills", title: "Skills", icon: "✨", addPlaceholder: "New skill name" },
+const CATEGORIES: { key: ToolCategory; title: string; icon: string; addLabel: string }[] = [
+  { key: "native", title: "Native Tools", icon: "🔧", addLabel: "Add tool" },
+  { key: "mcp", title: "MCP Servers", icon: "🔌", addLabel: "Add server" },
+  { key: "skills", title: "Skills", icon: "✨", addLabel: "Add skill" },
 ];
-
-function slugify(label: string): string {
-  return (
-    label
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "") || "tool"
-  );
-}
 
 interface ToolsSelectorProps {
   value: ToolsSelection;
   onChange: (next: ToolsSelection) => void;
   workspacePath: string;
+  /** Per-tool settings (e.g. the web_search credential). Omit to hide tool config UI. */
+  toolSettings?: AgentToolSettings;
+  onToolSettingsChange?: (next: AgentToolSettings) => void;
+}
+
+/** True if a tool actually runs today. Built-in native tools do; user-created
+ * native tools + all MCP servers / skills are selectable but deferred. */
+function isRunnable(category: ToolCategory, id: string): boolean {
+  return category === "native" && RUNNABLE_NATIVE_TOOL_IDS.has(id);
 }
 
 /**
- * Multi-select picker for an Agent's / Tools node's native tools, MCP servers,
- * and skills. Lists built-in + user tools (toolsService), supports adding a
- * workspace-scoped custom tool and removing user tools. Selection only — runtime
- * invocation is deferred (see docs/agent-node.md).
+ * Card-grid picker for an Agent's / Tools node's native tools, MCP servers, and
+ * skills. Each category shows the selected tools as square cards plus a dashed
+ * "add" card that opens a searchable picker (existing tools) with a "create your
+ * own" path. Clicking a card opens its config (web_search binds a Brave key);
+ * hovering a card reveals a ✕ to deselect. Selection-only entries (user native
+ * tools, MCP, skills) carry a "not runnable yet" badge.
  */
-export default function ToolsSelector({ value, onChange, workspacePath }: ToolsSelectorProps) {
+export default function ToolsSelector({
+  value,
+  onChange,
+  workspacePath,
+  toolSettings,
+  onToolSettingsChange,
+}: ToolsSelectorProps) {
   const [available, setAvailable] = useState<Record<ToolCategory, ToolDef[]>>({
     native: [],
     mcp: [],
     skills: [],
   });
-  const [draft, setDraft] = useState<Record<ToolCategory, string>>({
-    native: "",
-    mcp: "",
-    skills: "",
-  });
+  const [pickerCategory, setPickerCategory] = useState<ToolCategory | null>(null);
+  const [creatingCategory, setCreatingCategory] = useState<ToolCategory | null>(null);
+  const [configTool, setConfigTool] = useState<{ category: ToolCategory; id: string } | null>(null);
 
   const reload = useCallback(async () => {
     const [native, mcp, skills] = await Promise.all([
@@ -59,42 +71,33 @@ export default function ToolsSelector({ value, onChange, workspacePath }: ToolsS
   }, [workspacePath]);
 
   useEffect(() => {
-    reload();
+    void reload();
   }, [reload]);
 
-  const toggle = (category: ToolCategory, id: string) => {
-    const selected = value[category];
-    const next = selected.includes(id)
-      ? selected.filter((x) => x !== id)
-      : [...selected, id];
-    onChange({ ...value, [category]: next });
+  const select = (category: ToolCategory, id: string) => {
+    if (value[category].includes(id)) return;
+    onChange({ ...value, [category]: [...value[category], id] });
   };
 
-  const handleAdd = async (category: ToolCategory) => {
-    const label = draft[category].trim();
-    if (!label) return;
-    const id = slugify(label);
-    await toolsService.addTool("workspace", category, { id, label }, workspacePath);
-    setDraft((d) => ({ ...d, [category]: "" }));
-    await reload();
-    if (!value[category].includes(id)) {
-      onChange({ ...value, [category]: [...value[category], id] });
-    }
+  const deselect = (category: ToolCategory, id: string) => {
+    onChange({ ...value, [category]: value[category].filter((x) => x !== id) });
   };
 
-  const handleRemove = async (category: ToolCategory, id: string) => {
-    await toolsService.removeTool(category, id, workspacePath);
-    if (value[category].includes(id)) {
-      onChange({ ...value, [category]: value[category].filter((x) => x !== id) });
-    }
-    await reload();
+  /** Status line under a selected card, or undefined for a runnable, configured tool. */
+  const cardSubtitle = (category: ToolCategory, id: string): string | undefined => {
+    if (id === "web_search" && !toolSettings?.webSearchCredentialId) return "⚠ needs key";
+    if (!isRunnable(category, id)) return "not runnable yet";
+    return undefined;
   };
+
+  const configDef =
+    configTool && (available[configTool.category].find((t) => t.id === configTool.id) ?? null);
 
   return (
     <div className="flex flex-col gap-4">
-      {CATEGORIES.map(({ key, title, icon, addPlaceholder }) => {
-        const items = available[key];
+      {CATEGORIES.map(({ key, title, icon, addLabel }) => {
         const selected = value[key];
+        const byId = new Map(available[key].map((t) => [t.id, t]));
         return (
           <div key={key} className="flex flex-col gap-2">
             <span className={formLabelClass}>
@@ -102,74 +105,90 @@ export default function ToolsSelector({ value, onChange, workspacePath }: ToolsS
               {selected.length > 0 ? ` (${selected.length})` : ""}
             </span>
 
-            {items.length === 0 ? (
-              <p className="text-[11px] text-text-muted m-0">None available. Add one below.</p>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {items.map((t) => {
-                  const checked = selected.includes(t.id);
-                  const builtIn = toolsService.isBuiltIn(key, t.id);
-                  return (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-2 rounded-md border border-border-subtle bg-card/40 px-2 py-1.5"
-                    >
-                      <input
-                        id={`tool-${key}-${t.id}`}
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggle(key, t.id)}
-                        className="cursor-pointer accent-[var(--accent)]"
-                      />
-                      <label
-                        htmlFor={`tool-${key}-${t.id}`}
-                        className="flex-1 min-w-0 cursor-pointer"
-                        title={t.description}
-                      >
-                        <span className="text-xs text-text-main truncate block">{t.label}</span>
-                      </label>
-                      {!builtIn && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(key, t.id)}
-                          className="shrink-0 text-[11px] text-text-muted hover:text-danger transition-colors cursor-pointer border-none bg-transparent"
-                          title="Remove this tool"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <input
-                className={formInputClass}
-                type="text"
-                value={draft[key]}
-                placeholder={addPlaceholder}
-                onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void handleAdd(key);
-                  }
-                }}
+            <div className="grid grid-cols-3 gap-2">
+              {selected.map((id) => {
+                const def = byId.get(id);
+                return (
+                  <NodeGridCard
+                    key={id}
+                    icon={def?.icon || categoryIcon(key)}
+                    label={def?.label || id}
+                    title={def?.description || def?.label || id}
+                    subtitle={cardSubtitle(key, id)}
+                    onClick={() => setConfigTool({ category: key, id })}
+                    onClear={() => deselect(key, id)}
+                    clearTitle="Remove from agent"
+                  />
+                );
+              })}
+              <DashedAddCard
+                label={addLabel}
+                title={`Add a ${title.toLowerCase().replace(/s$/, "")}`}
+                active={pickerCategory === key}
+                onClick={() => setPickerCategory(key)}
               />
-              <button
-                type="button"
-                onClick={() => void handleAdd(key)}
-                disabled={!draft[key].trim()}
-                className="shrink-0 rounded-md border border-border-subtle bg-card px-3 text-xs font-semibold text-text-main enabled:cursor-pointer enabled:hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Add
-              </button>
             </div>
           </div>
         );
       })}
+
+      {pickerCategory && (
+        <ToolPickerMenu
+          category={pickerCategory}
+          workspacePath={workspacePath}
+          excludeIds={value[pickerCategory]}
+          onPick={(id) => select(pickerCategory, id)}
+          onCreateNew={() => {
+            setCreatingCategory(pickerCategory);
+            setPickerCategory(null);
+          }}
+          onClose={() => {
+            setPickerCategory(null);
+            void reload();
+          }}
+        />
+      )}
+
+      {creatingCategory && (
+        <ToolFormModal
+          category={creatingCategory}
+          workspacePath={workspacePath}
+          onCreated={(id) => {
+            const category = creatingCategory;
+            setCreatingCategory(null);
+            void reload();
+            select(category, id);
+          }}
+          onClose={() => setCreatingCategory(null)}
+        />
+      )}
+
+      {configTool && configDef && (
+        <ToolConfigModal
+          category={configTool.category}
+          def={configDef}
+          runnable={isRunnable(configTool.category, configTool.id)}
+          workspacePath={workspacePath}
+          toolSettings={toolSettings}
+          onToolSettingsChange={onToolSettingsChange}
+          onRemove={() => deselect(configTool.category, configTool.id)}
+          onClose={() => setConfigTool(null)}
+        />
+      )}
+
+      {configTool && !configDef && (
+        // Selected id with no matching def (deleted from the registry). Offer removal.
+        <ToolConfigModal
+          category={configTool.category}
+          def={{ id: configTool.id, label: configTool.id }}
+          runnable={false}
+          workspacePath={workspacePath}
+          toolSettings={toolSettings}
+          onToolSettingsChange={onToolSettingsChange}
+          onRemove={() => deselect(configTool.category, configTool.id)}
+          onClose={() => setConfigTool(null)}
+        />
+      )}
     </div>
   );
 }
