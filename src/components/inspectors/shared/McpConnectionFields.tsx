@@ -177,6 +177,7 @@ export default function McpConnectionFields({
           selectedCredentialId={credentialId}
           onSelect={setCredentialId}
           workspacePath={workspacePath}
+          allowOtherTypes
         />
         {credentialId && transport === "stdio" && (
           <div className="flex flex-col gap-1 mt-1">

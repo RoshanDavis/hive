@@ -5,7 +5,12 @@ import type { NetworkGrant } from "@/types/customNodes";
 import { toolsService, type ToolCategory, type ToolsScope } from "@/services/toolsService";
 import { categoryIcon, builtinCredentialSchema, getBuiltinCredentialId } from "@/services/builtInTools";
 import { slugify } from "@/utils/slugify";
-import { formInputClass, formLabelClass, segmentedButtonClass } from "@/components/shared/FormField";
+import {
+  formInputBaseClass,
+  formInputClass,
+  formLabelClass,
+  segmentedButtonClass,
+} from "@/components/shared/FormField";
 import McpConnectionFields, { parsePairs, serializePairs } from "./McpConnectionFields";
 import ToolParamsEditor, {
   type ToolParam,
@@ -214,6 +219,15 @@ export default function ToolFormModal({
       if (isSkill && effectiveScope) {
         await api.saveSkillContent(effectiveScope, id, instructions, workspacePath || null);
       }
+      // A freshly-created script tool: seed + reveal its script.js right away so the
+      // user can author the code as part of creating it (no reopen-to-edit step).
+      if (creating && category === "native" && nativeKind === "script") {
+        try {
+          await api.openToolScript(scope, id, workspacePath || null);
+        } catch {
+          // Non-fatal — the tool is saved; they can open the script from its card later.
+        }
+      }
       onSaved(id);
     } catch (err) {
       setError(String(err));
@@ -363,7 +377,7 @@ export default function ToolFormModal({
                     <>
                       <div className="flex gap-2">
                         <select
-                          className={`${formInputClass} cursor-pointer w-28`}
+                          className={`${formInputBaseClass} cursor-pointer w-28 shrink-0`}
                           value={httpMethod}
                           onChange={(e) => setHttpMethod(e.target.value)}
                         >
@@ -374,7 +388,7 @@ export default function ToolFormModal({
                           ))}
                         </select>
                         <input
-                          className={`${formInputClass} flex-1`}
+                          className={`${formInputBaseClass} flex-1 min-w-0`}
                           type="text"
                           value={httpUrl}
                           placeholder="https://api.example.com/items/{{id}}"
@@ -408,6 +422,7 @@ export default function ToolFormModal({
                           selectedCredentialId={httpCredId}
                           onSelect={setHttpCredId}
                           workspacePath={workspacePath || null}
+                          allowOtherTypes
                         />
                         {httpCredId && (
                           <div className="flex gap-2 mt-1">
@@ -438,7 +453,7 @@ export default function ToolFormModal({
                     <>
                       <p className="text-[11px] text-text-muted m-0">
                         Returns its value to the model. Author the code in <code>script.js</code>
-                        {editing ? " (button below)" : " after creating (click the tool → “Open script.js”)"}.
+                        {editing ? " (button below)" : " — it opens for editing as soon as you click Create"}.
                         The model's arguments arrive as <code>ctx.config</code>.
                       </p>
                       {isScriptTool && editing && resolvedScope && (
@@ -500,6 +515,7 @@ export default function ToolFormModal({
                   onToolSettingsChange({ ...toolSettings, credentialIds });
                 }}
                 workspacePath={workspacePath || null}
+                allowOtherTypes
               />
             </div>
           )}

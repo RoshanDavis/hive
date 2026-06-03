@@ -1,4 +1,4 @@
-import { formInputClass, formLabelClass } from "@/components/shared/FormField";
+import { formInputBaseClass, formInputClass, formLabelClass } from "@/components/shared/FormField";
 
 /** One model-facing parameter row authored for a user tool. */
 export interface ToolParam {
@@ -72,14 +72,14 @@ export default function ToolParamsEditor({ value, onChange }: ToolParamsEditorPr
         <div key={i} className="flex flex-col gap-1 border border-border-subtle rounded-md p-2">
           <div className="flex items-center gap-2">
             <input
-              className={`${formInputClass} flex-1`}
+              className={`${formInputBaseClass} flex-1 min-w-0`}
               type="text"
               value={p.name}
               placeholder="name"
               onChange={(e) => update(i, { name: e.target.value })}
             />
             <select
-              className={`${formInputClass} cursor-pointer`}
+              className={`${formInputBaseClass} cursor-pointer shrink-0`}
               value={p.type}
               onChange={(e) => update(i, { type: e.target.value as ToolParam["type"] })}
             >

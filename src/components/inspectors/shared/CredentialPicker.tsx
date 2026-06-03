@@ -22,6 +22,13 @@ interface CredentialPickerProps {
    * landing-page global node-defaults editor), where only global credentials apply.
    */
   workspacePath: string | null;
+  /**
+   * When true, also list credentials of *other* schema types under an "Other"
+   * group and allow selecting them (with a mismatch warning) instead of hiding
+   * them. Useful for generic key/token contexts (HTTP tools, MCP) where any API
+   * key may work; left off for strict contexts (LLM provider keys).
+   */
+  allowOtherTypes?: boolean;
 }
 
 const SCOPE_LABEL: Record<CredentialScope, string> = {
@@ -34,6 +41,7 @@ export default function CredentialPicker({
   selectedCredentialId,
   onSelect,
   workspacePath,
+  allowOtherTypes = false,
 }: CredentialPickerProps) {
   const [credentials, setCredentials] = useState<CredentialMeta[]>([]);
   const [loading, setLoading] = useState(false);
@@ -82,12 +90,25 @@ export default function CredentialPicker({
     return groups;
   }, [matchingCredentials]);
 
+  // Credentials of other schema types — only offered when `allowOtherTypes`, under
+  // a separate group, so generic key/token contexts can reuse any stored key.
+  const otherCredentials = useMemo(
+    () => (allowOtherTypes ? credentials.filter((c) => !schemaTypes.includes(c.schemaType)) : []),
+    [allowOtherTypes, credentials, schemaTypes]
+  );
+
   const selectedExists = useMemo(
     () =>
       selectedCredentialId == null ||
-      matchingCredentials.some((c) => c.id === selectedCredentialId),
-    [matchingCredentials, selectedCredentialId]
+      matchingCredentials.some((c) => c.id === selectedCredentialId) ||
+      otherCredentials.some((c) => c.id === selectedCredentialId),
+    [matchingCredentials, otherCredentials, selectedCredentialId]
   );
+
+  // A selected credential whose type doesn't match what this context expects —
+  // allowed (via allowOtherTypes) but flagged so the user knows it may not work.
+  const selectedMismatch =
+    selectedCredentialId != null && otherCredentials.some((c) => c.id === selectedCredentialId);
 
   // If a credential is selected but doesn't exist (deleted, wrong scope, etc.),
   // we render a red "missing" row instead of silently dropping the selection.
@@ -126,7 +147,26 @@ export default function CredentialPicker({
             ))}
           </optgroup>
         )}
+        {otherCredentials.length > 0 && (
+          <optgroup label="⚠ Other types">
+            {otherCredentials.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.provider})
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
+
+      {selectedMismatch && (
+        <div className="bg-warning/10 border border-warning/30 rounded-md px-3 py-2 text-[11px] text-warning flex items-start gap-2">
+          <span>⚠️</span>
+          <span className="flex-1">
+            This credential is a different type than this tool expects — it may still work if it's
+            the right key, but double-check.
+          </span>
+        </div>
+      )}
 
       {loadError && (
         <div className="bg-danger/10 border border-danger/30 rounded-md px-3 py-2 text-[11px] text-danger flex items-start gap-2">

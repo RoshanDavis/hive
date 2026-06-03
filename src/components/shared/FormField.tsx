@@ -19,8 +19,17 @@
 export const formLabelClass =
   "text-xs font-semibold uppercase tracking-wider text-text-muted";
 
-export const formInputClass =
-  "w-full bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_var(--accent-glow)] outline-hidden";
+/**
+ * Input styling WITHOUT a width. Use this for inputs/selects that sit inside a
+ * flex ROW (compose with `flex-1 min-w-0` to grow, or a fixed `w-*`/`shrink-0`).
+ * Using the `w-full` {@link formInputClass} in a flex row makes a sibling claim
+ * 100% and collapses the grow-input to a 0-width sliver.
+ */
+export const formInputBaseClass =
+  "bg-input border border-border-subtle rounded-md px-3 py-2 text-sm text-text-main transition-colors focus:border-accent-dim focus:shadow-[0_0_0_2px_var(--accent-glow)] outline-hidden";
+
+/** Full-width input styling — the common case (stacked column layouts). */
+export const formInputClass = `${formInputBaseClass} w-full`;
 
 /**
  * Range slider. Picks up the same focus-glow ring as inputs so keyboard

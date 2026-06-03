@@ -306,13 +306,13 @@ export default function AgentInspector({
         </CollapsibleSection>
       </div>
 
-      {activityLines.length > 0 && (
-        <CollapsibleSection
-          title="Tool Activity"
-          icon="🔧"
-          defaultOpen={false}
-          badge={activityLines.length}
-        >
+      <CollapsibleSection
+        title="Logs"
+        icon="🔧"
+        defaultOpen={false}
+        badge={activityLines.length || undefined}
+      >
+        {activityLines.length > 0 ? (
           <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
             {activityLines.map((line, i) => (
               <div
@@ -323,8 +323,12 @@ export default function AgentInspector({
               </div>
             ))}
           </div>
-        </CollapsibleSection>
-      )}
+        ) : (
+          <p className="text-[11px] text-text-muted/80 italic m-0">
+            No activity yet. Tool calls and run notes from the latest run appear here.
+          </p>
+        )}
+      </CollapsibleSection>
 
       <LastResponseSection
         value={lastValue}

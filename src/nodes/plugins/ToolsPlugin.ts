@@ -20,6 +20,9 @@ const ToolsPlugin: NodePlugin = {
     mcp: [],
     skills: [],
   },
+  // No input/output ports: a Tools node isn't wired into the graph — it's config
+  // dragged into an Agent's Tools slot. (Empty array = render no handles.)
+  handles: [],
   inspector: ToolsInspector,
   credentialSchemas: [
     {
