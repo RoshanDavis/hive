@@ -24,6 +24,25 @@ export function paramsToJsonSchema(params: ToolParam[]): Record<string, unknown>
   return { type: "object", properties, ...(required.length ? { required } : {}) };
 }
 
+/** Inverse of {@link paramsToJsonSchema}: recover editable rows from a stored
+ * `parameters` JSON Schema so a saved tool can be re-edited. Unknown types fall
+ * back to "string". */
+export function jsonSchemaToParams(schema: Record<string, unknown> | undefined): ToolParam[] {
+  if (!schema || typeof schema !== "object") return [];
+  const properties = (schema.properties as Record<string, unknown> | undefined) ?? {};
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : []);
+  return Object.entries(properties).map(([name, raw]) => {
+    const def = (raw ?? {}) as { type?: unknown; description?: unknown };
+    const type = def.type === "number" || def.type === "boolean" ? def.type : "string";
+    return {
+      name,
+      type,
+      description: typeof def.description === "string" ? def.description : "",
+      required: required.has(name),
+    };
+  });
+}
+
 interface ToolParamsEditorProps {
   value: ToolParam[];
   onChange: (next: ToolParam[]) => void;

@@ -121,6 +121,8 @@ function ToolsSlotEditor({
   onToolSettingsChange: (next: AgentToolSettings) => void;
   onRemove: () => void;
 }) {
+  // `limitToolRounds` undefined ⇒ on (so it's on by default and existing agents keep a cap).
+  const limitEnabled = tools.toolSettings?.limitToolRounds !== false;
   return (
     <div className="flex flex-col gap-3">
       <ToolsSelector
@@ -135,23 +137,54 @@ function ToolsSlotEditor({
         onToolSettingsChange={onToolSettingsChange}
       />
 
-      <div className="flex items-center justify-between gap-2 border-t border-border-subtle pt-3">
-        <label className="text-[11px] text-text-muted">Max tool-call rounds (default 8)</label>
-        <input
-          type="number"
-          min={1}
-          max={25}
-          className="w-20 bg-input border border-border-subtle rounded-md px-2 py-1 text-xs text-text-main outline-none focus:border-accent-dim"
-          value={tools.toolSettings?.maxIterations ?? ""}
-          placeholder="8"
-          onChange={(e) => {
-            const n = parseInt(e.target.value, 10);
-            onToolSettingsChange({
-              ...tools.toolSettings,
-              maxIterations: Number.isFinite(n) ? n : undefined,
-            });
-          }}
-        />
+      <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-[11px] text-text-muted">Limit tool-call rounds</label>
+          <button
+            type="button"
+            onClick={() =>
+              onToolSettingsChange({ ...tools.toolSettings, limitToolRounds: !limitEnabled })
+            }
+            title={
+              limitEnabled
+                ? "On — cap the number of model⇄tool rounds"
+                : "Off — the agent may run up to 25 rounds"
+            }
+            className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${
+              limitEnabled ? "bg-accent" : "bg-input"
+            }`}
+          >
+            <div
+              className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${
+                limitEnabled ? "translate-x-4" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+        {limitEnabled ? (
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[11px] text-text-muted">Max rounds (default 10)</label>
+            <input
+              type="number"
+              min={1}
+              max={25}
+              className="w-20 bg-input border border-border-subtle rounded-md px-2 py-1 text-xs text-text-main outline-none focus:border-accent-dim"
+              value={tools.toolSettings?.maxIterations ?? ""}
+              placeholder="10"
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                onToolSettingsChange({
+                  ...tools.toolSettings,
+                  maxIterations: Number.isFinite(n) ? n : undefined,
+                });
+              }}
+            />
+          </div>
+        ) : (
+          <p className="text-[11px] text-text-muted/70 m-0">
+            Off — the agent may run up to 25 tool-call rounds.
+          </p>
+        )}
       </div>
 
       <button type="button" className={actionButtonDangerClass} onClick={onRemove}>

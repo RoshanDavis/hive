@@ -19,7 +19,11 @@ vi.mock("@/services/toolsService", () => ({
   toolsService: { getAvailable: vi.fn() },
 }));
 
-import { AgentExecutor, MAX_AGENT_ITERATIONS } from "@/engine/AgentExecutor";
+import {
+  AgentExecutor,
+  MAX_AGENT_ITERATIONS,
+  MAX_AGENT_ITERATIONS_CEIL,
+} from "@/engine/AgentExecutor";
 import { api } from "@/services/api";
 import { toolsService } from "@/services/toolsService";
 import { BUILT_IN_NATIVE_TOOLS } from "@/services/builtInTools";
@@ -118,12 +122,68 @@ describe("AgentExecutor", () => {
       storage: { kind: "jsonStorage", records: [] },
       tools: null,
     });
+    // A Storage slot makes the agent memory-capable, so it runs the tool loop (to
+    // offer the memory_* tools) even with no Tools slot. Final turn = no tool calls.
+    vi.mocked(api.llmChatTools).mockResolvedValue({
+      content: "agent reply",
+      tool_calls: [],
+      finish_reason: "stop",
+    });
 
     await new AgentExecutor().execute(ctx);
 
     const storage = store[agentId].storage as { records: { content: string }[] };
     expect(storage.records).toHaveLength(1);
     expect(storage.records[0].content).toBe("agent reply");
+  });
+
+  it("offers memory tools and persists a memory_save into storage", async () => {
+    const { ctx, store, agentId } = makeHarness({
+      label: "Agent",
+      llm: { ...LLM_SLOT },
+      storage: { kind: "jsonStorage", records: [] },
+      tools: null,
+    });
+    // First turn saves a memory, second turn finalizes. memory_* runs renderer-side.
+    vi.mocked(api.llmChatTools)
+      .mockResolvedValueOnce({
+        content: null,
+        tool_calls: [{ id: "m1", name: "memory_save", arguments: '{"content":"my name is Roshan"}' }],
+        finish_reason: "tool_calls",
+      })
+      .mockResolvedValueOnce({ content: "Noted.", tool_calls: [], finish_reason: "stop" });
+
+    await new AgentExecutor().execute(ctx);
+
+    // memory_save ran renderer-side (proving the memory tool was offered + dispatched):
+    // the saved memory + the final answer are both persisted (save runs before the append).
+    const storage = store[agentId].storage as { records: { content: string }[] };
+    expect(storage.records.map((r) => r.content)).toEqual(["my name is Roshan", "Noted."]);
+  });
+
+  it("runs up to the ceiling when the round limit is toggled off", async () => {
+    const { ctx } = makeHarness({
+      label: "Agent",
+      llm: { ...LLM_SLOT },
+      storage: null,
+      tools: {
+        native: ["calculator"],
+        mcp: [],
+        skills: [],
+        toolSettings: { limitToolRounds: false },
+      },
+    });
+
+    vi.mocked(api.llmChatTools).mockResolvedValue({
+      content: null,
+      tool_calls: [{ id: "c", name: "calculator", arguments: "{}" }],
+      finish_reason: "tool_calls",
+    });
+    vi.mocked(api.runNativeTool).mockResolvedValue("ok");
+
+    await new AgentExecutor().execute(ctx);
+
+    expect(api.llmChatTools).toHaveBeenCalledTimes(MAX_AGENT_ITERATIONS_CEIL);
   });
 
   it("throws when no LLM slot is configured", async () => {

@@ -3,6 +3,7 @@ import { storage, type ConcurrencySettings } from "@/services/storage";
 import CredentialManager from "./CredentialManager";
 import NodeDefaultsPanel from "./NodeDefaultsPanel";
 import CustomNodesPanel from "./CustomNodesPanel";
+import ToolsPanel from "./ToolsPanel";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -109,6 +110,9 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
 
           {/* Section: Custom Nodes — workspace + global management */}
           {workspacePath && <CustomNodesPanel showToast={showToast} />}
+
+          {/* Section: Tools — agent tool/MCP/skill registry (workspace + global) */}
+          {workspacePath && <ToolsPanel workspacePath={workspacePath} showToast={showToast} />}
 
           {/* Section: Concurrency Pools */}
           <div className="flex flex-col gap-4">

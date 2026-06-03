@@ -25,6 +25,7 @@ use rmcp::service::RunningService;
 use rmcp::transport::TokioChildProcess;
 use rmcp::{RoleClient, ServiceExt};
 
+use crate::commands::credentials::resolve_credential_values;
 use crate::models::{McpServerConfig, ToolSchema, ToolsConfig};
 use crate::utils::{hive_dir, tools_app_file};
 
@@ -80,6 +81,80 @@ fn load_mcp_config(
     ))
 }
 
+/// Resolve `cfg.credential_id` from the vault (if set) and inject the secret into
+/// the outgoing connection — an env var for stdio, the `Authorization` header for
+/// http — so the plaintext is materialized **only here**, at connect time, and is
+/// never written to `tools.json` or baked into the session cache key. Mirrors the
+/// HTTP-tool credential injection (`run_http_tool`); the secret field is `apiKey`.
+fn inject_mcp_credential(
+    app: &tauri::AppHandle,
+    workspace_path: Option<&str>,
+    mut cfg: McpServerConfig,
+) -> Result<McpServerConfig, String> {
+    let cred_id = match cfg.credential_id.clone().filter(|c| !c.trim().is_empty()) {
+        Some(id) => id,
+        None => return Ok(cfg),
+    };
+    let values = resolve_credential_values(app, &cred_id, None, workspace_path)?;
+    let secret = values
+        .get("apiKey")
+        .and_then(|v| v.as_str())
+        .or_else(|| values.values().find_map(|v| v.as_str()))
+        .ok_or_else(|| format!("MCP credential '{}' has no usable secret value.", cred_id))?
+        .to_string();
+
+    match cfg.transport.as_str() {
+        "stdio" => {
+            let env_key = cfg
+                .credential_env
+                .clone()
+                .filter(|e| !e.trim().is_empty())
+                .ok_or("stdio MCP credential requires an environment variable name")?;
+            cfg.env.get_or_insert_with(Default::default).insert(env_key, secret);
+        }
+        "http" => {
+            let header = cfg
+                .credential_header
+                .clone()
+                .filter(|h| !h.trim().is_empty())
+                .unwrap_or_else(|| "Authorization".to_string());
+            let prefix = cfg
+                .credential_prefix
+                .clone()
+                .unwrap_or_else(|| "Bearer ".to_string());
+            cfg.headers
+                .get_or_insert_with(Default::default)
+                .insert(header, format!("{}{}", prefix, secret));
+        }
+        _ => {}
+    }
+    Ok(cfg)
+}
+
+/// Build the child-process command for a stdio MCP server.
+///
+/// On **Windows** the usual launchers (`npx`, `npm`, `uvx`, `pnpm`, …) are `.cmd`
+/// batch shims that `Command::new` cannot execute directly, so virtually every
+/// stdio server fails to spawn. Run the command through `cmd /c <command> <args…>`
+/// so `PATHEXT` resolution applies, and set `CREATE_NO_WINDOW` so spawning a server
+/// doesn't flash a console window. On other platforms the command is spawned directly.
+fn build_stdio_command(command: &str, args: &[String]) -> tokio::process::Command {
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut cmd = tokio::process::Command::new("cmd");
+        cmd.arg("/c").arg(command).args(args);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd
+    }
+    #[cfg(not(windows))]
+    {
+        let mut cmd = tokio::process::Command::new(command);
+        cmd.args(args);
+        cmd
+    }
+}
+
 /// Spawn/connect the transport and run the MCP initialize handshake, bounded by
 /// `CONNECT_TIMEOUT_SECS`. Both transports erase to the same `RunningService` type.
 async fn connect(cfg: McpServerConfig) -> Result<RunningService<RoleClient, ()>, String> {
@@ -90,10 +165,8 @@ async fn connect(cfg: McpServerConfig) -> Result<RunningService<RoleClient, ()>,
                     .command
                     .filter(|c| !c.trim().is_empty())
                     .ok_or("stdio MCP server requires a command")?;
-                let mut cmd = tokio::process::Command::new(command);
-                if let Some(args) = &cfg.args {
-                    cmd.args(args);
-                }
+                let args = cfg.args.clone().unwrap_or_default();
+                let mut cmd = build_stdio_command(&command, &args);
                 if let Some(env) = &cfg.env {
                     cmd.envs(env);
                 }
@@ -148,6 +221,8 @@ async fn ensure_connected(
     id: &str,
 ) -> Result<Arc<RunningService<RoleClient, ()>>, String> {
     let cfg = load_mcp_config(app, workspace_path, id)?;
+    // Cache key is derived from the on-disk config (which holds only the credential
+    // *id*, never the secret), so the plaintext never lands in the cache string.
     let config_json = serde_json::to_string(&cfg).map_err(|e| e.to_string())?;
     let key = format!("{}|{}", workspace_path.unwrap_or("<global>"), id);
 
@@ -160,7 +235,9 @@ async fn ensure_connected(
         conns.remove(&key);
     }
 
-    let service = Arc::new(connect(cfg).await?);
+    // Resolve + inject any vault credential only now, at connect time.
+    let connect_cfg = inject_mcp_credential(app, workspace_path, cfg)?;
+    let service = Arc::new(connect(connect_cfg).await?);
     conns.insert(
         key,
         CachedConn {

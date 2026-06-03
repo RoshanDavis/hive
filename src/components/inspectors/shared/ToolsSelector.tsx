@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ToolDef } from "@/services/api";
 import type { AgentToolSettings } from "@/nodes/types";
-import { toolsService, type ToolCategory } from "@/services/toolsService";
+import { toolsService, type ToolCategory, type ToolsScope } from "@/services/toolsService";
 import { categoryIcon, isToolRunnable } from "@/services/builtInTools";
 import NodeGridCard from "@/components/shared/NodeGridCard";
 import DashedAddCard from "@/components/shared/DashedAddCard";
 import { formLabelClass } from "@/components/shared/FormField";
 import ToolPickerMenu from "./ToolPickerMenu";
 import ToolFormModal from "./ToolFormModal";
-import ToolConfigModal from "./ToolConfigModal";
 
 export interface ToolsSelection {
   native: string[];
@@ -31,13 +30,16 @@ interface ToolsSelectorProps {
   onToolSettingsChange?: (next: AgentToolSettings) => void;
 }
 
+/** A clicked card opens the tool modal in edit/config mode; the dashed card opens
+ * the searchable picker (which can branch to create). `initial` undefined = create. */
+type ModalState = { category: ToolCategory; initial?: { def: ToolDef; scope: ToolsScope | null } };
+
 /**
  * Card-grid picker for an Agent's / Tools node's native tools, MCP servers, and
  * skills. Each category shows the selected tools as square cards plus a dashed
  * "add" card that opens a searchable picker (existing tools) with a "create your
- * own" path. Clicking a card opens its config (web_search binds a Brave key);
- * hovering a card reveals a ✕ to deselect. Selection-only entries (user native
- * tools, MCP, skills) carry a "not runnable yet" badge.
+ * own" path. Clicking a card opens the unified tool modal (view a built-in /
+ * edit a user tool); hovering a card reveals a ✕ to deselect.
  */
 export default function ToolsSelector({
   value,
@@ -52,8 +54,7 @@ export default function ToolsSelector({
     skills: [],
   });
   const [pickerCategory, setPickerCategory] = useState<ToolCategory | null>(null);
-  const [creatingCategory, setCreatingCategory] = useState<ToolCategory | null>(null);
-  const [configTool, setConfigTool] = useState<{ category: ToolCategory; id: string } | null>(null);
+  const [modal, setModal] = useState<ModalState | null>(null);
 
   const reload = useCallback(async () => {
     const [native, mcp, skills] = await Promise.all([
@@ -93,9 +94,6 @@ export default function ToolsSelector({
     return undefined;
   };
 
-  const configDef =
-    configTool && (available[configTool.category].find((t) => t.id === configTool.id) ?? null);
-
   return (
     <div className="flex flex-col gap-4">
       {CATEGORIES.map(({ key, title, icon, addLabel }) => {
@@ -118,7 +116,9 @@ export default function ToolsSelector({
                     label={def?.label || id}
                     title={def?.description || def?.label || id}
                     subtitle={cardSubtitle(key, def, id)}
-                    onClick={() => setConfigTool({ category: key, id })}
+                    onClick={() =>
+                      setModal({ category: key, initial: { def: def ?? { id, label: id }, scope: null } })
+                    }
                     onClear={() => deselect(key, id)}
                     clearTitle="Remove from agent"
                   />
@@ -142,7 +142,7 @@ export default function ToolsSelector({
           excludeIds={value[pickerCategory]}
           onPick={(id) => select(pickerCategory, id)}
           onCreateNew={() => {
-            setCreatingCategory(pickerCategory);
+            setModal({ category: pickerCategory });
             setPickerCategory(null);
           }}
           onClose={() => {
@@ -152,48 +152,24 @@ export default function ToolsSelector({
         />
       )}
 
-      {creatingCategory && (
+      {modal && (
         <ToolFormModal
-          category={creatingCategory}
+          category={modal.category}
           workspacePath={workspacePath}
-          onCreated={(id) => {
-            const category = creatingCategory;
-            setCreatingCategory(null);
-            void reload();
-            select(category, id);
-          }}
-          onClose={() => setCreatingCategory(null)}
-        />
-      )}
-
-      {configTool && configDef && (
-        <ToolConfigModal
-          category={configTool.category}
-          def={configDef}
-          runnable={isToolRunnable(configTool.category, configDef)}
-          workspacePath={workspacePath}
+          initial={modal.initial}
           toolSettings={toolSettings}
           onToolSettingsChange={onToolSettingsChange}
-          onRemove={() => deselect(configTool.category, configTool.id)}
-          onClose={() => {
-            setConfigTool(null);
+          onSaved={(id) => {
+            const { category, initial } = modal;
+            setModal(null);
             void reload();
+            if (!initial) select(category, id); // newly created → add to the agent
           }}
-        />
-      )}
-
-      {configTool && !configDef && (
-        // Selected id with no matching def (deleted from the registry). Offer removal.
-        <ToolConfigModal
-          category={configTool.category}
-          def={{ id: configTool.id, label: configTool.id }}
-          runnable={false}
-          workspacePath={workspacePath}
-          toolSettings={toolSettings}
-          onToolSettingsChange={onToolSettingsChange}
-          onRemove={() => deselect(configTool.category, configTool.id)}
+          onRemove={
+            modal.initial ? () => deselect(modal.category, modal.initial!.def.id) : undefined
+          }
           onClose={() => {
-            setConfigTool(null);
+            setModal(null);
             void reload();
           }}
         />

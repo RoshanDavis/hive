@@ -1,4 +1,5 @@
 import CredentialGrantList from "@/components/customNodes/CredentialGrantList";
+import NetworkAllowlistEditor from "@/components/shared/NetworkAllowlistEditor";
 import { formInputClass, formLabelClass } from "@/components/shared/FormField";
 import type { HandleConfig } from "@/engine/plugin";
 import type {
@@ -24,8 +25,6 @@ interface ScriptNodeFormProps {
 
   network: NetworkGrant;
   setNetwork: React.Dispatch<React.SetStateAction<NetworkGrant>>;
-  /** Tri-state derived from `network`: which UI button is active. */
-  netMode: "none" | "all" | "allowlist";
 
   credentials: string[];
   setCredentials: React.Dispatch<React.SetStateAction<string[]>>;
@@ -49,7 +48,6 @@ export default function ScriptNodeForm({
   setLimits,
   network,
   setNetwork,
-  netMode,
   credentials,
   setCredentials,
   configSchema,
@@ -122,103 +120,8 @@ export default function ScriptNodeForm({
       </p>
 
       {/* Network grant */}
-      <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
-        <label className={formLabelClass}>Network</label>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setNetwork({ mode: "none", allow: [] })}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold border cursor-pointer transition-colors ${
-              netMode === "none"
-                ? "bg-accent/30 border-accent/50 text-text-main"
-                : "bg-card border-border-subtle text-text-muted hover:text-text-main"
-            }`}
-          >
-            🚫 None
-          </button>
-          <button
-            type="button"
-            onClick={() => setNetwork({ mode: "allowlist", allow: ["*"] })}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold border cursor-pointer transition-colors ${
-              netMode === "all"
-                ? "bg-accent/30 border-accent/50 text-text-main"
-                : "bg-card border-border-subtle text-text-muted hover:text-text-main"
-            }`}
-          >
-            🌐 Allow all
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setNetwork((n) => ({
-                mode: "allowlist",
-                // Coming from Allow-all, start a fresh list instead of keeping "*".
-                allow:
-                  n.allow.length === 1 && n.allow[0].trim() === "*" ? [] : n.allow,
-              }))
-            }
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold border cursor-pointer transition-colors ${
-              netMode === "allowlist"
-                ? "bg-accent/30 border-accent/50 text-text-main"
-                : "bg-card border-border-subtle text-text-muted hover:text-text-main"
-            }`}
-          >
-            📝 Allowlist
-          </button>
-        </div>
-
-        {netMode === "all" && (
-          <p className="text-[10px] text-text-muted/70 m-0">
-            All public hosts allowed. Private/loopback addresses (localhost, 127.0.0.1,
-            LAN) stay blocked — switch to Allowlist and list them exactly to reach them.
-          </p>
-        )}
-
-        {netMode === "allowlist" && (
-          <div className="flex flex-col gap-1.5">
-            {network.allow.map((host, i) => (
-              <div key={i} className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={host}
-                  placeholder="api.example.com or *.example.com"
-                  onChange={(e) =>
-                    setNetwork((n) => {
-                      const allow = [...n.allow];
-                      allow[i] = e.target.value;
-                      return { ...n, allow };
-                    })
-                  }
-                  className="flex-1 bg-input border border-border-subtle rounded-md px-3 py-1.5 text-sm text-text-main outline-none focus:border-accent-dim font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    setNetwork((n) => ({
-                      ...n,
-                      allow: n.allow.filter((_, j) => j !== i),
-                    }))
-                  }
-                  className="text-text-muted hover:text-danger border border-border-subtle rounded-md px-2 cursor-pointer bg-card hover:bg-card-hover"
-                  title="Remove host"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setNetwork((n) => ({ ...n, allow: [...n.allow, ""] }))}
-              className="self-start text-[11px] text-text-muted hover:text-text-main border border-dashed border-border-subtle hover:border-border-card rounded-md px-2 py-1 cursor-pointer bg-transparent transition-colors"
-            >
-              ＋ Add host
-            </button>
-            <p className="text-[10px] text-text-muted/70 m-0">
-              Hosts only (no path). Private/loopback addresses are blocked unless listed
-              exactly, and hosts that resolve into a private range are refused at connect time.
-            </p>
-          </div>
-        )}
+      <div className="border-t border-border-subtle pt-3">
+        <NetworkAllowlistEditor value={network} onChange={setNetwork} />
       </div>
 
       {/* Credential grants */}

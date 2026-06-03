@@ -266,3 +266,81 @@ describe("executeToolCall — MCP / HTTP / script / load_skill", () => {
     expect(api.loadSkillContent).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("buildAgentTools — memory", () => {
+  beforeEach(() => vi.mocked(toolsService.getAvailable).mockReset());
+
+  it("offers the memory tools when hasMemory, even with a null tools slot", async () => {
+    const r = await buildAgentTools(null, "/ws", { hasMemory: true });
+    expect(r.schemas.map((s) => s.name).sort()).toEqual([
+      "memory_list",
+      "memory_save",
+      "memory_search",
+    ]);
+    expect(r.lookup.get("memory_save")).toMatchObject({ kind: "memory", op: "save" });
+    expect(r.lookup.get("memory_search")).toMatchObject({ kind: "memory", op: "search" });
+    expect(r.lookup.get("memory_list")).toMatchObject({ kind: "memory", op: "list" });
+    expect(toolsService.getAvailable).not.toHaveBeenCalled();
+  });
+
+  it("omits the memory tools when hasMemory is not set", async () => {
+    const r = await buildAgentTools(null, "/ws");
+    expect(r.schemas.some((s) => s.name.startsWith("memory_"))).toBe(false);
+  });
+});
+
+describe("executeToolCall — memory", () => {
+  const lookup = new Map<string, ResolvedTool>([
+    ["memory_save", { kind: "memory", op: "save" }],
+    ["memory_search", { kind: "memory", op: "search" }],
+    ["memory_list", { kind: "memory", op: "list" }],
+  ]);
+
+  it("dispatches save / search / list to the memory handler", async () => {
+    const memory = {
+      save: vi.fn(() => "Saved to memory."),
+      search: vi.fn(() => "found"),
+      list: vi.fn(() => "recent"),
+    };
+    const save = await executeToolCall(
+      { id: "1", name: "memory_save", arguments: '{"content":"hi"}' },
+      lookup,
+      { workspacePath: "/ws", memory }
+    );
+    expect(save.content).toBe("Saved to memory.");
+    expect(memory.save).toHaveBeenCalledWith("hi");
+
+    const search = await executeToolCall(
+      { id: "2", name: "memory_search", arguments: '{"query":"h","limit":3}' },
+      lookup,
+      { workspacePath: "/ws", memory }
+    );
+    expect(search.content).toBe("found");
+    expect(memory.search).toHaveBeenCalledWith("h", 3);
+
+    const list = await executeToolCall({ id: "3", name: "memory_list", arguments: "{}" }, lookup, {
+      workspacePath: "/ws",
+      memory,
+    });
+    expect(list.content).toBe("recent");
+    expect(memory.list).toHaveBeenCalledWith(undefined);
+  });
+
+  it("rejects memory_save with empty content", async () => {
+    const memory = { save: vi.fn(), search: vi.fn(), list: vi.fn() };
+    const res = await executeToolCall(
+      { id: "1", name: "memory_save", arguments: '{"content":"   "}' },
+      lookup,
+      { workspacePath: "/ws", memory }
+    );
+    expect(res.error).toBe("invalid arguments");
+    expect(memory.save).not.toHaveBeenCalled();
+  });
+
+  it("errors when no memory handler is available", async () => {
+    const res = await executeToolCall({ id: "1", name: "memory_list", arguments: "{}" }, lookup, {
+      workspacePath: "/ws",
+    });
+    expect(res.error).toBe("no memory");
+  });
+});

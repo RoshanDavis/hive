@@ -111,6 +111,19 @@ pub struct McpServerConfig {
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub headers: Option<std::collections::HashMap<String, String>>,
+    /// Optional vault credential id, resolved + injected server-side at connect time
+    /// (so the secret never lives in plaintext in `tools.json`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_id: Option<String>,
+    /// http transport: header to inject the credential into (default "Authorization").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_header: Option<String>,
+    /// http transport: value prefix for the injected credential (default "Bearer ").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_prefix: Option<String>,
+    /// stdio transport: environment variable name to inject the credential into.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_env: Option<String>,
 }
 
 /// Declarative HTTP tool config (native-category user tool). Executed server-side

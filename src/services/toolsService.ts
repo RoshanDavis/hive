@@ -52,6 +52,17 @@ export const toolsService = {
     else workspaceCache.clear();
   },
 
+  /** User-defined tools for a category, split by scope (excludes built-ins, which
+   * aren't on disk). Used by the Tools settings panel to render + manage them. */
+  async listUserTools(
+    category: ToolCategory,
+    workspacePath: string | null
+  ): Promise<{ global: ToolDef[]; workspace: ToolDef[] }> {
+    const global = await ensureGlobal();
+    const workspace = workspacePath ? await ensureWorkspace(workspacePath) : null;
+    return { global: global[category], workspace: workspace ? workspace[category] : [] };
+  },
+
   /** Built-in ⊕ global ⊕ workspace tools for a category (de-duped by id). */
   async getAvailable(category: ToolCategory, workspacePath: string | null): Promise<ToolDef[]> {
     const global = await ensureGlobal();

@@ -61,6 +61,15 @@ export interface McpServerConfig {
   /** http (streamable) transport: endpoint URL + optional static headers. */
   url?: string;
   headers?: Record<string, string>;
+  /** Vault credential id, resolved + injected server-side at connect time (kept out
+   * of plaintext in tools.json). http → a header; stdio → an env var. */
+  credentialId?: string;
+  /** http: header to inject the credential into (default Authorization). */
+  credentialHeader?: string;
+  /** http: value prefix for the injected credential (default "Bearer "). */
+  credentialPrefix?: string;
+  /** stdio: environment variable name to inject the credential into. */
+  credentialEnv?: string;
 }
 
 /** Declarative HTTP tool (a user-created native tool). Executed server-side via

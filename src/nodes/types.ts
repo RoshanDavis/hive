@@ -90,7 +90,11 @@ export interface AgentStorageSlot {
 export interface AgentToolSettings {
   /** Credential id (Brave Search API key) used by the built-in web_search tool. */
   webSearchCredentialId?: string;
-  /** Cap on model⇄tool round-trips for this agent (clamped; default applies if unset). */
+  /** Whether to cap model⇄tool round-trips. `undefined` is treated as enabled
+   * (on by default) so existing agents keep their cap; `false` lets the loop run
+   * up to the absolute ceiling. */
+  limitToolRounds?: boolean;
+  /** Cap on model⇄tool round-trips when the limit is on (clamped; default applies if unset). */
   maxIterations?: number;
   [key: string]: unknown;
 }

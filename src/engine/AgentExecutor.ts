@@ -14,24 +14,26 @@ import {
   type ResolvedTool,
   type ToolTraceStep,
 } from "./agentTools";
+import { createMemoryHandler, makeStorageRecord, type MemoryHandler } from "./agentMemory";
 import type { AgentChatMessage, ToolSchema } from "@/services/api";
-import type {
-  AgentNodeData,
-  AgentStorageSlot,
-  ChatMessage,
-  JSONStorageRecord,
-} from "@/nodes/types";
+import type { AgentNodeData, AgentStorageSlot, ChatMessage, JSONStorageRecord } from "@/nodes/types";
 
 /** Default cap on model⇄tool round-trips, so a model that keeps calling tools can't
  * loop forever. Each iteration is one model turn (+ any tools it requested). A per-agent
  * `toolSettings.maxIterations` may override this up to {@link MAX_AGENT_ITERATIONS_CEIL}. */
-export const MAX_AGENT_ITERATIONS = 8;
+export const MAX_AGENT_ITERATIONS = 10;
 
-/** Absolute ceiling on the per-agent iteration override (a runaway guard). */
+/** Absolute ceiling on the per-agent iteration override (a runaway guard). Also the
+ * effective cap when the user turns the per-agent round limit off entirely. */
 export const MAX_AGENT_ITERATIONS_CEIL = 25;
 
-/** Resolve the effective iteration cap from an optional per-agent override. */
-function resolveMaxIterations(override: number | undefined): number {
+/**
+ * Resolve the effective iteration cap. When the per-agent limit toggle is off
+ * (`limitEnabled === false`), the loop may run up to the absolute ceiling;
+ * otherwise the override (or the default) is clamped into `[1, ceiling]`.
+ */
+function resolveMaxIterations(override: number | undefined, limitEnabled: boolean): number {
+  if (!limitEnabled) return MAX_AGENT_ITERATIONS_CEIL;
   if (typeof override !== "number" || !Number.isFinite(override)) return MAX_AGENT_ITERATIONS;
   return Math.max(1, Math.min(MAX_AGENT_ITERATIONS_CEIL, Math.floor(override)));
 }
@@ -43,35 +45,10 @@ const MEMORY_ENTRY_MAX = 240;
 /** Per-line cap for tool results in the human-readable run log. */
 const LOG_RESULT_MAX = 300;
 
-/**
- * Append the agent's output to its internal storage slot (its memory log),
- * mirroring the record shape the engine's post-execution storage sync writes to
- * jsonStorage nodes. Returns a new slot (records are decoupled to disk on save).
- */
-function appendStorageRecord(
-  slot: AgentStorageSlot,
-  envelope: NodeOutputEnvelope,
-  source: string
-): AgentStorageSlot {
-  const records = Array.isArray(slot.records) ? slot.records : [];
-  const record: JSONStorageRecord = {
-    id: Date.now().toString(),
-    timestamp: new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }),
-    source,
-    content: envelope.value,
-    envelope,
-    createdAt: new Date().toISOString(),
-  };
-  return { ...slot, records: [...records, record] };
-}
-
 /** Compose the agent's effective system prompt: the LLM slot's base prompt, a
- * digest of recent memory (Storage slot), and brief tool-use guidance. Empty
- * inputs contribute nothing, so an agent with no prompt/memory/tools yields "". */
+ * framing of its persistent memory (Storage slot) + a digest of recent entries,
+ * the skills catalog, and brief tool-use guidance. Empty inputs contribute
+ * nothing, so an agent with no prompt/memory/tools yields "". */
 function composeAgentSystemPrompt(
   base: string,
   storage: AgentStorageSlot | null,
@@ -82,16 +59,25 @@ function composeAgentSystemPrompt(
   const trimmedBase = base.trim();
   if (trimmedBase) parts.push(trimmedBase);
 
-  const records = storage && Array.isArray(storage.records) ? storage.records : [];
-  if (records.length > 0) {
-    const recent = records
-      .slice(-MEMORY_DIGEST_LIMIT)
-      .map((r) => {
-        const c = (r.content || "").replace(/\s+/g, " ").trim();
-        return `- ${c.length > MEMORY_ENTRY_MAX ? `${c.slice(0, MEMORY_ENTRY_MAX)}…` : c}`;
-      })
-      .join("\n");
-    parts.push(`Recent memory (your most recent stored entries):\n${recent}`);
+  // Frame the Storage slot as the agent's own memory so it knows the memory_* tools
+  // act on *its* store, and seed it with a digest of the most recent entries.
+  if (storage) {
+    const records = Array.isArray(storage.records) ? storage.records : [];
+    let memo =
+      "You have a persistent memory store that carries across runs. Call `memory_save` to " +
+      "remember durable facts (names, preferences, decisions), and `memory_search` or " +
+      "`memory_list` to recall them before you answer. This memory is your own.";
+    if (records.length > 0) {
+      const recent = records
+        .slice(-MEMORY_DIGEST_LIMIT)
+        .map((r) => {
+          const c = (r.content || "").replace(/\s+/g, " ").trim();
+          return `- ${c.length > MEMORY_ENTRY_MAX ? `${c.slice(0, MEMORY_ENTRY_MAX)}…` : c}`;
+        })
+        .join("\n");
+      memo += `\n\nYour most recent memory entries:\n${recent}`;
+    }
+    parts.push(memo);
   }
 
   if (skillCatalog.trim()) {
@@ -143,15 +129,25 @@ export class AgentExecutor implements NodeExecutor {
       );
     }
 
+    // A Storage slot makes this agent "memory-capable": it gets the memory_* tools
+    // and a working copy of its records that the loop mutates and we persist below.
+    const storageSlot = data.storage ?? null;
+    const workingRecords: JSONStorageRecord[] =
+      storageSlot && Array.isArray(storageSlot.records) ? [...storageSlot.records] : [];
+    const memory: MemoryHandler | undefined = storageSlot
+      ? createMemoryHandler(workingRecords, String(data.label || "Agent"))
+      : undefined;
+
     // Resolve selected tools into model-ready schemas, then compose the system
-    // prompt (which depends on whether any tools are available).
+    // prompt (which depends on whether any tools / memory are available).
     const { schemas, lookup, notes, skillCatalog } = await buildAgentTools(
       data.tools ?? null,
-      workspacePath
+      workspacePath,
+      { hasMemory: Boolean(storageSlot) }
     );
     config.systemPrompt = composeAgentSystemPrompt(
       config.systemPrompt,
-      data.storage ?? null,
+      storageSlot,
       schemas.length > 0,
       skillCatalog
     );
@@ -162,16 +158,18 @@ export class AgentExecutor implements NodeExecutor {
       const { envelope, logs } =
         schemas.length === 0
           ? { envelope: await callLlm(config, inputMessages, workspacePath), logs: notes }
-          : await this.runToolLoop(config, inputMessages, schemas, lookup, notes, context);
+          : await this.runToolLoop(config, inputMessages, schemas, lookup, notes, context, memory);
 
       const update: Record<string, unknown> = setOutputEnvelope(node.data, envelope);
       if (logs.length > 0) update.logs = logs;
-      if (data.storage) {
-        update.storage = appendStorageRecord(
-          data.storage,
+      if (storageSlot) {
+        // Persist the (possibly memory-tool-mutated) records plus the final answer.
+        const finalRecord = makeStorageRecord({
+          content: envelope.value,
+          source: String(data.label || "Agent"),
           envelope,
-          String(data.label || "Agent")
-        );
+        });
+        update.storage = { ...storageSlot, records: [...workingRecords, finalRecord] };
       }
       updateNodeData(node.id, update);
     } catch (err) {
@@ -191,12 +189,15 @@ export class AgentExecutor implements NodeExecutor {
     schemas: ToolSchema[],
     lookup: Map<string, ResolvedTool>,
     notes: string[],
-    context: ExecutionContext
+    context: ExecutionContext,
+    memory: MemoryHandler | undefined
   ): Promise<{ envelope: NodeOutputEnvelope; logs: string[] }> {
     const { node, workspacePath } = context;
     const data = node.data as AgentNodeData;
     const webSearchCredentialId = data.tools?.toolSettings?.webSearchCredentialId ?? null;
-    const maxIterations = resolveMaxIterations(data.tools?.toolSettings?.maxIterations);
+    // `limitToolRounds` undefined ⇒ enabled (on by default); false ⇒ run to the ceiling.
+    const limitEnabled = data.tools?.toolSettings?.limitToolRounds !== false;
+    const maxIterations = resolveMaxIterations(data.tools?.toolSettings?.maxIterations, limitEnabled);
 
     const working: AgentChatMessage[] = inputMessages.map((m) => ({
       role: m.role,
@@ -230,6 +231,7 @@ export class AgentExecutor implements NodeExecutor {
         const result = await executeToolCall(call, lookup, {
           workspacePath,
           webSearchCredentialId,
+          memory,
         });
         working.push({
           role: "tool",

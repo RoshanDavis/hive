@@ -14,6 +14,7 @@ import { api, type ToolCall, type ToolDef, type ToolSchema } from "@/services/ap
 import { toolsService } from "@/services/toolsService";
 import { concurrencyGovernor } from "@/services/concurrency";
 import { RUNNABLE_NATIVE_TOOL_IDS } from "@/services/builtInTools";
+import type { MemoryHandler } from "./agentMemory";
 import type { AgentToolsSlot } from "@/nodes/types";
 
 /**
@@ -24,13 +25,15 @@ import type { AgentToolsSlot } from "@/nodes/types";
  *   - `httpTool`      — a user declarative HTTP tool (Rust run_http_tool)
  *   - `scriptTool`    — a user sandboxed-script tool (Rust run_tool_script)
  *   - `loadSkill`     — the single built-in tool that returns a skill's SKILL.md
+ *   - `memory`        — read/write the agent's own Storage slot (renderer-side)
  */
 export type ResolvedTool =
   | { kind: "nativeBuiltin"; def: ToolDef }
   | { kind: "mcp"; serverId: string; toolName: string; def: ToolDef }
   | { kind: "httpTool"; def: ToolDef }
   | { kind: "scriptTool"; def: ToolDef }
-  | { kind: "loadSkill"; allowedSkillIds: Set<string> };
+  | { kind: "loadSkill"; allowedSkillIds: Set<string> }
+  | { kind: "memory"; op: "save" | "search" | "list" };
 
 export interface BuiltAgentTools {
   /** Function schemas to offer the model. Empty ⇒ the agent runs a single inference. */
@@ -65,6 +68,49 @@ const EMPTY_SCHEMA: Record<string, unknown> = { type: "object", properties: {} }
 
 /** The single built-in tool that returns a selected skill's full SKILL.md. */
 const LOAD_SKILL_TOOL = "load_skill";
+
+/** Built-in memory tool names, offered when the agent has a Storage slot. */
+const MEMORY_SAVE_TOOL = "memory_save";
+const MEMORY_SEARCH_TOOL = "memory_search";
+const MEMORY_LIST_TOOL = "memory_list";
+
+/** Append the agent's memory tools (read/write its own Storage slot) to a built
+ * set. Offered only when the agent has a Storage slot (see {@link buildAgentTools}). */
+function addMemoryTools(schemas: ToolSchema[], lookup: Map<string, ResolvedTool>): void {
+  schemas.push({
+    name: MEMORY_SAVE_TOOL,
+    description:
+      "Save a fact to your persistent memory so you can recall it in future runs. Use for durable facts (names, preferences, decisions), not for transient reasoning.",
+    parameters: {
+      type: "object",
+      properties: { content: { type: "string", description: "The fact to remember." } },
+      required: ["content"],
+    },
+  });
+  schemas.push({
+    name: MEMORY_SEARCH_TOOL,
+    description: "Search your persistent memory for entries matching a query (newest first).",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Text to search your memory for." },
+        limit: { type: "number", description: "Max entries to return (default 10)." },
+      },
+      required: ["query"],
+    },
+  });
+  schemas.push({
+    name: MEMORY_LIST_TOOL,
+    description: "List your most recent persistent-memory entries (newest first).",
+    parameters: {
+      type: "object",
+      properties: { limit: { type: "number", description: "Max entries to return (default 10)." } },
+    },
+  });
+  lookup.set(MEMORY_SAVE_TOOL, { kind: "memory", op: "save" });
+  lookup.set(MEMORY_SEARCH_TOOL, { kind: "memory", op: "search" });
+  lookup.set(MEMORY_LIST_TOOL, { kind: "memory", op: "list" });
+}
 
 /** Build the model-facing function schema for a registry tool. */
 function toSchema(def: ToolDef): ToolSchema {
@@ -102,12 +148,17 @@ function mcpSchemaName(serverId: string, toolName: string, taken: Set<string>): 
  */
 export async function buildAgentTools(
   toolsSlot: AgentToolsSlot | null,
-  workspacePath: string
+  workspacePath: string,
+  opts: { hasMemory?: boolean } = {}
 ): Promise<BuiltAgentTools> {
   const schemas: ToolSchema[] = [];
   const lookup = new Map<string, ResolvedTool>();
   const notes: string[] = [];
   let skillCatalog = "";
+
+  // Memory tools are offered whenever the agent has a Storage slot, independent of
+  // the Tools slot — an agent can have memory without any other tools.
+  if (opts.hasMemory) addMemoryTools(schemas, lookup);
 
   if (!toolsSlot) return { schemas, lookup, notes, skillCatalog };
 
@@ -228,6 +279,8 @@ export interface ExecuteToolOptions {
   workspacePath: string;
   /** Credential id bound to web_search (from the Tools slot), if any. */
   webSearchCredentialId?: string | null;
+  /** Memory access for the memory_* tools (present when the agent has a Storage slot). */
+  memory?: MemoryHandler;
 }
 
 /**
@@ -261,9 +314,16 @@ export async function executeToolCall(
   try {
     switch (resolved.kind) {
       case "nativeBuiltin": {
-        const credentialId =
-          call.name === "web_search" ? opts.webSearchCredentialId ?? null : null;
-        const result = await api.runNativeTool(call.name, args, opts.workspacePath, credentialId);
+        // web_search hits the network (Brave) so it's pool-gated like the other
+        // network/process tools; calculator/current_time are pure compute.
+        if (call.name === "web_search") {
+          const credentialId = opts.webSearchCredentialId ?? null;
+          const result = await concurrencyGovernor.enqueue("general", () =>
+            api.runNativeTool(call.name, args, opts.workspacePath, credentialId)
+          );
+          return { name: call.name, content: result };
+        }
+        const result = await api.runNativeTool(call.name, args, opts.workspacePath, null);
         return { name: call.name, content: result };
       }
       // Network/process-bound kinds run through the shared "general" pool so
@@ -303,6 +363,29 @@ export async function executeToolCall(
           name: call.name,
           content: content || `Skill "${skillId}" has no instructions yet.`,
         };
+      }
+      case "memory": {
+        if (!opts.memory) {
+          return { name: call.name, content: "Error: this agent has no memory.", error: "no memory" };
+        }
+        if (resolved.op === "save") {
+          const content = typeof args.content === "string" ? args.content.trim() : "";
+          if (!content) {
+            return {
+              name: call.name,
+              content: "Error: memory_save requires a non-empty 'content'.",
+              error: "invalid arguments",
+            };
+          }
+          return { name: call.name, content: opts.memory.save(content) };
+        }
+        if (resolved.op === "search") {
+          const query = typeof args.query === "string" ? args.query : "";
+          const limit = typeof args.limit === "number" ? args.limit : undefined;
+          return { name: call.name, content: opts.memory.search(query, limit) };
+        }
+        const limit = typeof args.limit === "number" ? args.limit : undefined;
+        return { name: call.name, content: opts.memory.list(limit) };
       }
       default:
         return {

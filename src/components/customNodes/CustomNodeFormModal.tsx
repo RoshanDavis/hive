@@ -218,17 +218,6 @@ export default function CustomNodeFormModal({
 
   const lockBase = initial?.lockBaseType || editing;
 
-  // The network grant is stored as { mode, allow }, but the UI presents three
-  // choices. "Allow all" is just the sentinel allow:["*"] — the Rust guard
-  // treats "*" as any host while still blocking private/loopback unless listed
-  // exactly, so it needs no new mode.
-  const isAllowAll =
-    script.network.mode === "allowlist" &&
-    script.network.allow.length === 1 &&
-    script.network.allow[0].trim() === "*";
-  const netMode: "none" | "all" | "allowlist" =
-    script.network.mode === "none" ? "none" : isAllowAll ? "all" : "allowlist";
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]"
@@ -394,7 +383,6 @@ export default function CustomNodeFormModal({
               setLimits={script.setLimits}
               network={script.network}
               setNetwork={script.setNetwork}
-              netMode={netMode}
               credentials={script.credentials}
               setCredentials={script.setCredentials}
               configSchema={script.configSchema}

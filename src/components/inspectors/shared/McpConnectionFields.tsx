@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import type { McpServerConfig } from "@/services/api";
 import { formInputClass, formLabelClass } from "@/components/shared/FormField";
+import CredentialPicker from "./CredentialPicker";
 
 interface McpConnectionFieldsProps {
   value: McpServerConfig;
   onChange: (next: McpServerConfig) => void;
+  /** Workspace the server is authored in (or null at global scope). Threaded so the
+   * credential picker can offer workspace-scoped credentials. */
+  workspacePath?: string | null;
 }
 
 /** One non-empty trimmed entry per line. */
@@ -30,7 +34,8 @@ export function parsePairs(text: string, sep: string): Record<string, string> {
   return out;
 }
 
-function serializePairs(obj: Record<string, string> | undefined, sep: string): string {
+/** Serialize a map back into `KEY<sep>VALUE` lines (inverse of {@link parsePairs}). */
+export function serializePairs(obj: Record<string, string> | undefined, sep: string): string {
   if (!obj) return "";
   return Object.entries(obj)
     .map(([k, v]) => `${k}${sep}${v}`)
@@ -51,7 +56,11 @@ const toggleClass = (active: boolean) =>
  * sent from the renderer at execution. Keeps local text state for the multiline
  * fields (seeded once) and emits a normalized `McpServerConfig` on every change.
  */
-export default function McpConnectionFields({ value, onChange }: McpConnectionFieldsProps) {
+export default function McpConnectionFields({
+  value,
+  onChange,
+  workspacePath = null,
+}: McpConnectionFieldsProps) {
   const [transport, setTransport] = useState<"stdio" | "http">(
     value.transport === "http" ? "http" : "stdio"
   );
@@ -60,11 +69,21 @@ export default function McpConnectionFields({ value, onChange }: McpConnectionFi
   const [envText, setEnvText] = useState(serializePairs(value.env, "="));
   const [url, setUrl] = useState(value.url ?? "");
   const [headersText, setHeadersText] = useState(serializePairs(value.headers, ": "));
+  // Vault credential: injected server-side at connect time (env var for stdio, the
+  // Authorization header for http), so the secret never lives in tools.json.
+  const [credentialId, setCredentialId] = useState<string | null>(value.credentialId ?? null);
+  const [credentialEnv, setCredentialEnv] = useState(value.credentialEnv ?? "API_KEY");
+  const [credentialPrefix, setCredentialPrefix] = useState(value.credentialPrefix ?? "Bearer ");
 
   // Emit a normalized config whenever a field changes. `onChange` is intentionally
   // omitted from deps: the parent stores the emitted value but doesn't feed it back
   // into our local state (seeded once), so there's no update loop.
   useEffect(() => {
+    const cred = credentialId
+      ? transport === "stdio"
+        ? { credentialId, credentialEnv: credentialEnv.trim() || undefined }
+        : { credentialId, credentialPrefix }
+      : {};
     const next: McpServerConfig =
       transport === "stdio"
         ? {
@@ -72,15 +91,17 @@ export default function McpConnectionFields({ value, onChange }: McpConnectionFi
             command: command.trim() || undefined,
             args: parseLines(argsText),
             env: parsePairs(envText, "="),
+            ...cred,
           }
         : {
             transport: "http",
             url: url.trim() || undefined,
             headers: parsePairs(headersText, ":"),
+            ...cred,
           };
     onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transport, command, argsText, envText, url, headersText]);
+  }, [transport, command, argsText, envText, url, headersText, credentialId, credentialEnv, credentialPrefix]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -153,6 +174,45 @@ export default function McpConnectionFields({ value, onChange }: McpConnectionFi
           </div>
         </>
       )}
+
+      {/* Credential (optional): kept in the vault, injected server-side at connect
+          time so the secret never lands in tools.json. */}
+      <div className="flex flex-col gap-1 border-t border-border-subtle pt-3">
+        <label className={formLabelClass}>Credential (optional, kept in the vault)</label>
+        <CredentialPicker
+          schemaTypes={["apiToken"]}
+          selectedCredentialId={credentialId}
+          onSelect={setCredentialId}
+          workspacePath={workspacePath}
+        />
+        {credentialId && transport === "stdio" && (
+          <div className="flex flex-col gap-1 mt-1">
+            <label className={formLabelClass}>Inject into environment variable</label>
+            <input
+              className={`${formInputClass} font-mono`}
+              type="text"
+              value={credentialEnv}
+              placeholder="API_KEY"
+              onChange={(e) => setCredentialEnv(e.target.value)}
+            />
+          </div>
+        )}
+        {credentialId && transport === "http" && (
+          <div className="flex flex-col gap-1 mt-1">
+            <label className={formLabelClass}>Authorization value prefix</label>
+            <input
+              className={`${formInputClass} font-mono`}
+              type="text"
+              value={credentialPrefix}
+              placeholder="Bearer "
+              onChange={(e) => setCredentialPrefix(e.target.value)}
+            />
+            <span className="text-[11px] text-text-muted">
+              Sent as the <code>Authorization</code> header (<code>{credentialPrefix}…</code>).
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
