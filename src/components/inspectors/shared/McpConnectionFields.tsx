@@ -1,0 +1,158 @@
+import { useEffect, useState } from "react";
+import type { McpServerConfig } from "@/services/api";
+import { formInputClass, formLabelClass } from "@/components/shared/FormField";
+
+interface McpConnectionFieldsProps {
+  value: McpServerConfig;
+  onChange: (next: McpServerConfig) => void;
+}
+
+/** One non-empty trimmed entry per line. */
+export function parseLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+/** Parse `KEY<sep>VALUE` lines into a map (first `sep` splits; blank keys dropped). */
+export function parsePairs(text: string, sep: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf(sep);
+    if (idx <= 0) continue;
+    const key = trimmed.slice(0, idx).trim();
+    const val = trimmed.slice(idx + sep.length).trim();
+    if (key) out[key] = val;
+  }
+  return out;
+}
+
+function serializePairs(obj: Record<string, string> | undefined, sep: string): string {
+  if (!obj) return "";
+  return Object.entries(obj)
+    .map(([k, v]) => `${k}${sep}${v}`)
+    .join("\n");
+}
+
+const toggleClass = (active: boolean) =>
+  `flex-1 rounded-md border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${
+    active
+      ? "border-accent bg-accent-glow text-accent"
+      : "border-border-subtle bg-card text-text-secondary hover:bg-card-hover"
+  }`;
+
+/**
+ * Editor for an MCP server's connection config, shared by the create form and the
+ * config modal. The connection itself is stored on disk and read server-side at
+ * run time — this only edits the persisted `ToolDef.mcp` blob; no command is ever
+ * sent from the renderer at execution. Keeps local text state for the multiline
+ * fields (seeded once) and emits a normalized `McpServerConfig` on every change.
+ */
+export default function McpConnectionFields({ value, onChange }: McpConnectionFieldsProps) {
+  const [transport, setTransport] = useState<"stdio" | "http">(
+    value.transport === "http" ? "http" : "stdio"
+  );
+  const [command, setCommand] = useState(value.command ?? "");
+  const [argsText, setArgsText] = useState((value.args ?? []).join("\n"));
+  const [envText, setEnvText] = useState(serializePairs(value.env, "="));
+  const [url, setUrl] = useState(value.url ?? "");
+  const [headersText, setHeadersText] = useState(serializePairs(value.headers, ": "));
+
+  // Emit a normalized config whenever a field changes. `onChange` is intentionally
+  // omitted from deps: the parent stores the emitted value but doesn't feed it back
+  // into our local state (seeded once), so there's no update loop.
+  useEffect(() => {
+    const next: McpServerConfig =
+      transport === "stdio"
+        ? {
+            transport: "stdio",
+            command: command.trim() || undefined,
+            args: parseLines(argsText),
+            env: parsePairs(envText, "="),
+          }
+        : {
+            transport: "http",
+            url: url.trim() || undefined,
+            headers: parsePairs(headersText, ":"),
+          };
+    onChange(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transport, command, argsText, envText, url, headersText]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <label className={formLabelClass}>Transport</label>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setTransport("stdio")} className={toggleClass(transport === "stdio")}>
+            ⌨ stdio (local process)
+          </button>
+          <button type="button" onClick={() => setTransport("http")} className={toggleClass(transport === "http")}>
+            🌐 HTTP (streamable)
+          </button>
+        </div>
+      </div>
+
+      {transport === "stdio" ? (
+        <>
+          <div className="flex flex-col gap-1">
+            <label className={formLabelClass}>Command</label>
+            <input
+              className={formInputClass}
+              type="text"
+              value={command}
+              placeholder="e.g. npx"
+              onChange={(e) => setCommand(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={formLabelClass}>Arguments (one per line)</label>
+            <textarea
+              className={`${formInputClass} font-mono`}
+              rows={3}
+              value={argsText}
+              placeholder={"-y\n@modelcontextprotocol/server-everything"}
+              onChange={(e) => setArgsText(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={formLabelClass}>Environment (KEY=VALUE per line, optional)</label>
+            <textarea
+              className={`${formInputClass} font-mono`}
+              rows={2}
+              value={envText}
+              placeholder="API_KEY=..."
+              onChange={(e) => setEnvText(e.target.value)}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col gap-1">
+            <label className={formLabelClass}>Server URL</label>
+            <input
+              className={formInputClass}
+              type="text"
+              value={url}
+              placeholder="https://example.com/mcp"
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={formLabelClass}>Headers (Header: value per line, optional)</label>
+            <textarea
+              className={`${formInputClass} font-mono`}
+              rows={2}
+              value={headersText}
+              placeholder="Authorization: Bearer ..."
+              onChange={(e) => setHeadersText(e.target.value)}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

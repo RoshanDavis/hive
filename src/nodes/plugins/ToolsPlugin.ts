@@ -37,6 +37,23 @@ const ToolsPlugin: NodePlugin = {
         },
       ],
     },
+    {
+      // Generic bearer/API-key credential for user-defined HTTP tools. Injected
+      // server-side as a header (default `Authorization: Bearer <apiKey>`).
+      type: "apiToken",
+      label: "API Token / Key",
+      provider: "Custom",
+      icon: "🔑",
+      fields: [
+        {
+          key: "apiKey",
+          label: "Token / API Key",
+          type: "password",
+          required: true,
+          placeholder: "sk-…",
+        },
+      ],
+    },
   ],
 };
 

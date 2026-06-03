@@ -68,6 +68,22 @@ export const toolsService = {
     return builtInToolsFor(category).some((t) => t.id === id);
   },
 
+  /** Which on-disk scope holds a user tool id (workspace shadows global), or null
+   * if it's only a built-in / not found. Used to locate a skill's SKILL.md body. */
+  async scopeOf(
+    category: ToolCategory,
+    id: string,
+    workspacePath: string | null
+  ): Promise<ToolsScope | null> {
+    if (workspacePath) {
+      const ws = await ensureWorkspace(workspacePath);
+      if (ws[category].some((t) => t.id === id)) return "workspace";
+    }
+    const global = await ensureGlobal();
+    if (global[category].some((t) => t.id === id)) return "global";
+    return null;
+  },
+
   /** Add a user tool at the given scope. No-op on duplicate id within that scope. */
   async addTool(
     scope: ToolsScope,
@@ -83,6 +99,28 @@ export const toolsService = {
     cfg[category] = [...cfg[category], def];
     if (scope === "global") await this.saveGlobal(cfg);
     else await this.saveWorkspace(workspacePath!, cfg);
+  },
+
+  /** Replace an existing user tool by id, in whichever scope holds it (built-ins
+   * are not on disk, so they're never matched). No-op if the id isn't found. */
+  async updateTool(
+    category: ToolCategory,
+    def: ToolDef,
+    workspacePath: string | null
+  ): Promise<void> {
+    const global = await ensureGlobal();
+    if (global[category].some((t) => t.id === def.id)) {
+      global[category] = global[category].map((t) => (t.id === def.id ? def : t));
+      await this.saveGlobal(global);
+      return;
+    }
+    if (workspacePath) {
+      const ws = await ensureWorkspace(workspacePath);
+      if (ws[category].some((t) => t.id === def.id)) {
+        ws[category] = ws[category].map((t) => (t.id === def.id ? def : t));
+        await this.saveWorkspace(workspacePath, ws);
+      }
+    }
   },
 
   /** Remove a user tool from both scopes (built-ins are unaffected — not on disk). */

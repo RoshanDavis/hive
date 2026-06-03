@@ -9,7 +9,7 @@
 mod net;
 mod runtime;
 
-pub use net::{CredentialResolver, FetchEnv, NetworkGrant};
+pub use net::{do_fetch as http_request, CredentialResolver, FetchEnv, NetworkGrant};
 pub use runtime::{
     clamp_memory_bytes, clamp_timeout_ms, run_quickjs, DEFAULT_MEMORY_BYTES, DEFAULT_TIMEOUT_MS,
     MAX_SOURCE_BYTES, STARTER_SCRIPT,

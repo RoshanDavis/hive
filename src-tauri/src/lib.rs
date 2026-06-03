@@ -10,6 +10,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        // Live MCP client sessions are cached here and reused across runs.
+        .manage(commands::mcp::McpManager::default())
         .invoke_handler(tauri::generate_handler![
             // workspace
             commands::workspace::get_workspaces,
@@ -32,6 +34,12 @@ pub fn run() {
             commands::llm::llm_chat_tools,
             // tools (native Agent tool execution)
             commands::tools::run_native_tool,
+            commands::tools::run_http_tool,
+            commands::tools::run_tool_script,
+            commands::tools::open_tool_script,
+            // mcp (Model Context Protocol client)
+            commands::mcp::mcp_list_tools,
+            commands::mcp::mcp_call_tool,
             // credentials
             commands::credentials::credential_list,
             commands::credentials::credential_add,
@@ -48,6 +56,9 @@ pub fn run() {
             commands::customization::save_global_tools,
             commands::customization::load_workspace_tools,
             commands::customization::save_workspace_tools,
+            commands::customization::load_skill_content,
+            commands::customization::save_skill_content,
+            commands::customization::open_skill_instructions,
             commands::customization::list_global_custom_nodes,
             commands::customization::list_workspace_custom_nodes,
             commands::customization::save_global_custom_node,

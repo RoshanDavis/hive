@@ -40,3 +40,4 @@ rand = "0.8"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 hive-sandbox = { path = "crates/sandbox" }
+rmcp = { version = "1.7.0", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }

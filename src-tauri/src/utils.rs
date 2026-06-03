@@ -97,6 +97,20 @@ pub fn tools_app_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(app_data.join("tools.json"))
 }
 
+// ─── Skills directory (global, at app_data_dir) ───────────────
+// Skill *metadata* lives in tools.json (`skills[]`); only the SKILL.md
+// instruction body lives here, at skills/<id>/SKILL.md.
+
+pub fn skills_app_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let dir = app_data.join("skills");
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create skills dir: {}", e))?;
+    Ok(dir)
+}
+
 // ─── Custom-node directory (global, at app_data_dir) ──────────
 
 pub fn custom_nodes_app_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {

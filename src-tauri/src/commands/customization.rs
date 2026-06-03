@@ -3,16 +3,17 @@
 //! All three concerns share the "scope = global | workspace" + disk-backed
 //! definition pattern, so they live together here. Script execution itself
 //! happens in the Tauri-free [`hive_sandbox`] crate — this module just reads
-//! the on-disk definition (source + clamped limits + capability grants),
-//! supplies a [`VaultResolver`] for credential lookup, and hands off.
+//! the on-disk definition (source + clamped limits + capability grants) and hands
+//! off to [`super::sandbox_support`] (which supplies the vault credential resolver).
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::commands::credentials::resolve_credential_values;
+use crate::commands::sandbox_support::run_sandbox_script;
 use crate::models::{CustomNodeDefinition, NodeDefaultsConfig, ToolsConfig};
 use crate::utils::{
-    custom_nodes_app_dir, hive_dir, node_defaults_app_file, tools_app_file, write_atomic, write_json,
+    custom_nodes_app_dir, hive_dir, node_defaults_app_file, skills_app_dir, tools_app_file,
+    write_atomic, write_json,
 };
 
 // ─── Node defaults IPC ────────────────────────────────────────
@@ -103,6 +104,92 @@ pub fn load_workspace_tools(workspace_path: String) -> Result<ToolsConfig, Strin
 #[tauri::command]
 pub fn save_workspace_tools(workspace_path: String, config: ToolsConfig) -> Result<(), String> {
     write_tools_file(&hive_dir(&workspace_path).join("tools.json"), &config)
+}
+
+// ─── Skills IPC ───────────────────────────────────────────────
+//
+// A skill is metadata (in `tools.json` `skills[]`) plus an instruction body in
+// `<scope>/skills/<id>/SKILL.md`. The Agent loop injects a short catalog of selected
+// skills into the system prompt and exposes a `load_skill` tool that returns the full
+// SKILL.md on demand (progressive disclosure). Body reads are local-first (workspace
+// shadows global); writes/opens take an explicit scope (the UI knows it).
+
+const STARTER_SKILL_MD: &str = "# Skill\n\nDescribe when this skill applies, then give the agent step-by-step \
+instructions to follow when it loads this skill.\n";
+
+fn skills_dir_for_scope(
+    app: &tauri::AppHandle,
+    scope: &str,
+    workspace_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    match scope {
+        "global" => skills_app_dir(app),
+        "workspace" => {
+            let wp = workspace_path
+                .ok_or_else(|| "Workspace scope requires workspace_path".to_string())?;
+            Ok(hive_dir(wp).join("skills"))
+        }
+        other => Err(format!("Unknown skill scope: {}", other)),
+    }
+}
+
+/// Read a skill's SKILL.md, local-first (workspace shadows global). Returns an empty
+/// string (not an error) when the skill has no instructions yet, so the agent's
+/// `load_skill` tool degrades gracefully.
+#[tauri::command]
+pub fn load_skill_content(
+    app: tauri::AppHandle,
+    workspace_path: Option<String>,
+    id: String,
+) -> Result<String, String> {
+    if let Some(wp) = &workspace_path {
+        let p = hive_dir(wp).join("skills").join(&id).join("SKILL.md");
+        if p.is_file() {
+            return fs::read_to_string(&p).map_err(|e| format!("Failed to read SKILL.md: {}", e));
+        }
+    }
+    let p = skills_app_dir(&app)?.join(&id).join("SKILL.md");
+    if p.is_file() {
+        return fs::read_to_string(&p).map_err(|e| format!("Failed to read SKILL.md: {}", e));
+    }
+    Ok(String::new())
+}
+
+/// Write a skill's SKILL.md at the given scope.
+#[tauri::command]
+pub fn save_skill_content(
+    app: tauri::AppHandle,
+    scope: String,
+    id: String,
+    content: String,
+    workspace_path: Option<String>,
+) -> Result<(), String> {
+    let dir = skills_dir_for_scope(&app, &scope, workspace_path.as_deref())?.join(&id);
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create skill dir: {}", e))?;
+    write_atomic(&dir.join("SKILL.md"), content.as_bytes())
+}
+
+/// Ensure a skill's SKILL.md exists (seeding a starter if absent), then reveal it in
+/// the OS file manager so the user can edit it in their own editor (BYO editor).
+#[tauri::command]
+pub fn open_skill_instructions(
+    app: tauri::AppHandle,
+    scope: String,
+    id: String,
+    workspace_path: Option<String>,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let dir = skills_dir_for_scope(&app, &scope, workspace_path.as_deref())?.join(&id);
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create skill dir: {}", e))?;
+    let path = dir.join("SKILL.md");
+    if !path.exists() {
+        write_atomic(&path, STARTER_SKILL_MD.as_bytes())?;
+    }
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|e| format!("Failed to reveal SKILL.md: {}", e))?;
+    Ok(())
 }
 
 // ─── Custom nodes IPC ─────────────────────────────────────────
@@ -254,22 +341,6 @@ struct ScriptLimitsRaw {
     memory_bytes: Option<usize>,
 }
 
-/// Bridges the sandbox crate's credential lookup to the Tauri vault. The plaintext is
-/// resolved here, server-side, and never crosses back into the renderer or the JS heap.
-struct VaultResolver {
-    app: tauri::AppHandle,
-    workspace_path: Option<String>,
-}
-
-impl hive_sandbox::CredentialResolver for VaultResolver {
-    fn resolve(
-        &self,
-        credential_id: &str,
-    ) -> Result<serde_json::Map<String, serde_json::Value>, String> {
-        resolve_credential_values(&self.app, credential_id, None, self.workspace_path.as_deref())
-    }
-}
-
 /// Read the on-disk entry filename for a custom node, defaulting to "script.js".
 fn script_entry_for(folder: &Path) -> String {
     let node_json = folder.join("node.json");
@@ -385,32 +456,18 @@ pub async fn run_script(
     config: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let prepared = prepare_script(&app, &scope, &id, workspace_path.as_deref())?;
-    let input_json = serde_json::to_string(&input).map_err(|e| e.to_string())?;
-    let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
-
-    let resolver: std::sync::Arc<dyn hive_sandbox::CredentialResolver> =
-        std::sync::Arc::new(VaultResolver {
-            app: app.clone(),
-            workspace_path: workspace_path.clone(),
-        });
-    let fetch_env = hive_sandbox::FetchEnv {
-        resolver: Some(resolver),
-        network: prepared.network,
-        credentials: prepared.credentials,
-    };
-
-    tokio::task::spawn_blocking(move || {
-        hive_sandbox::run_quickjs(
-            &prepared.source,
-            &input_json,
-            &config_json,
-            prepared.timeout_ms,
-            prepared.memory_bytes,
-            fetch_env,
-        )
-    })
+    run_sandbox_script(
+        app,
+        workspace_path,
+        prepared.source,
+        prepared.timeout_ms,
+        prepared.memory_bytes,
+        prepared.network,
+        prepared.credentials,
+        input,
+        config,
+    )
     .await
-    .map_err(|e| format!("Script task failed: {}", e))?
 }
 
 /// Ensure the node's script file exists (seeding a starter template if absent), then

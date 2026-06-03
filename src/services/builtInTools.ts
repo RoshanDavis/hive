@@ -53,6 +53,22 @@ export const RUNNABLE_NATIVE_TOOL_IDS = new Set(
   BUILT_IN_NATIVE_TOOLS.map((t) => t.id)
 );
 
+/**
+ * Whether a selected tool actually executes, given its def + category. Built-in
+ * natives always run; a user native tool runs once it carries HTTP or script
+ * config; an MCP server runs once it has connection config; a skill always runs
+ * (the agent reads it via the built-in load_skill tool). Drives the card badges
+ * in the Tools selector. See docs/agent-node.md.
+ */
+export function isToolRunnable(category: ToolCategory, def: ToolDef): boolean {
+  if (category === "native") {
+    return RUNNABLE_NATIVE_TOOL_IDS.has(def.id) || Boolean(def.http || def.script);
+  }
+  if (category === "mcp") return Boolean(def.mcp);
+  if (category === "skills") return true;
+  return false;
+}
+
 /** Fallback card icon for a tool that declares none, by category. */
 export function categoryIcon(category: ToolCategory): string {
   if (category === "native") return "🔧";

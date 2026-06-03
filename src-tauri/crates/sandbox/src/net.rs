@@ -137,14 +137,18 @@ struct FetchOptions {
     credential_prefix: Option<String>,
 }
 
-/// Perform a gated HTTP request from the sandbox. Always returns a JSON string: either
-/// the response `{ status, ok, body, headers }` or `{ "__error": "..." }`. Credentials
-/// are resolved + injected server-side; the plaintext never enters the JS heap.
+/// Perform a gated HTTP request. Always returns a JSON string: either the response
+/// `{ status, ok, body, headers }` or `{ "__error": "..." }`. Credentials are
+/// resolved + injected server-side; the plaintext never enters the JS heap. All
+/// SSRF policy (scheme, allowlist, private-IP/DNS-rebinding) is enforced here.
 ///
-/// `deadline` is the script's wall-clock budget (shared with the QuickJS interrupt
-/// handler): the per-request timeout is capped to the remaining budget so a blocking
-/// fetch can't overrun the script's declared timeout.
-pub(crate) fn do_fetch(
+/// Public as `hive_sandbox::http_request` so declarative HTTP *tools* (the Agent
+/// node) share this one audited path with the script sandbox's `ctx.fetch`.
+///
+/// `deadline` is the caller's wall-clock budget (shared with the QuickJS interrupt
+/// handler for scripts): the per-request timeout is capped to the remaining budget so a
+/// blocking fetch can't overrun the caller's declared timeout.
+pub fn do_fetch(
     env: &FetchEnv,
     url: &str,
     opts_json: &str,
@@ -451,5 +455,18 @@ mod tests {
         let past = std::time::Instant::now();
         let out = do_fetch(&env, "https://api.example.com", "{}", past);
         assert!(error_of(&out).contains("time budget"), "got: {}", out);
+    }
+
+    #[test]
+    fn public_http_request_blocks_disabled_network() {
+        // `http_request` (the public re-export of do_fetch) used by declarative HTTP
+        // tools must enforce the same grants — here it refuses before any network.
+        let env = FetchEnv {
+            resolver: None,
+            network: NetworkGrant { mode: "none".into(), allow: vec!["*".into()] },
+            credentials: vec![],
+        };
+        let out = super::do_fetch(&env, "https://api.example.com", "{}", soon());
+        assert!(error_of(&out).contains("disabled"), "got: {}", out);
     }
 }

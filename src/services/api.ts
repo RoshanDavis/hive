@@ -49,9 +49,54 @@ export interface NodeDefaultsConfig {
   models: Record<string, ModelEntry[]>;
 }
 
+/** MCP server connection config, persisted on disk in the tools.json `mcp[]`
+ * entry. The renderer never sends a command line — Rust reads this off disk by
+ * id and spawns/connects to the server itself (disk is authoritative for grants). */
+export interface McpServerConfig {
+  transport: "stdio" | "http";
+  /** stdio transport: executable + args + extra environment. */
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  /** http (streamable) transport: endpoint URL + optional static headers. */
+  url?: string;
+  headers?: Record<string, string>;
+}
+
+/** Declarative HTTP tool (a user-created native tool). Executed server-side via
+ * the SSRF-guarded fetch with a vault credential injected. Model arguments are
+ * substituted into `{{arg}}` placeholders; leftover args become the body/query. */
+export interface HttpToolConfig {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  /** Optional request-body template (`{{arg}}` substituted). */
+  bodyTemplate?: string;
+  /** Vault credential id, resolved + injected server-side. */
+  credentialId?: string;
+  /** Header name / value prefix for the injected credential (default Authorization / "Bearer "). */
+  credentialHeader?: string;
+  credentialPrefix?: string;
+  /** SSRF allowlist host globs; defaults to the url's host. */
+  allow?: string[];
+}
+
+/** Sandboxed-script tool (a user-created native tool). The JS body lives on disk
+ * at `<scope>/tools/<id>/script.js`; only the capability grants are persisted here
+ * (mirrors a Tier-3 custom script node). */
+export interface ScriptToolConfig {
+  runtime?: "js";
+  entry?: string;
+  network?: { mode: "none" | "allowlist"; allow: string[] };
+  credentials?: string[];
+  limits?: { timeoutMs: number; memoryBytes: number };
+}
+
 /** A selectable tool / MCP server / skill the Agent's Tools slot can reference.
  * `parameters` is the JSON Schema for the tool's call signature, passed to the
- * model when the tool is offered (absent for selection-only entries). */
+ * model when the tool is offered (absent for selection-only entries). The
+ * `mcp`/`http`/`script` sub-objects carry the (disk-authoritative) execution
+ * config for each runnable kind; which one is present determines the kind. */
 export interface ToolDef {
   id: string;
   label: string;
@@ -59,6 +104,12 @@ export interface ToolDef {
   parameters?: Record<string, unknown>;
   /** Emoji/icon shown on the tool card. Falls back to a per-category icon. */
   icon?: string;
+  /** MCP server connection (mcp-category entries). */
+  mcp?: McpServerConfig;
+  /** Declarative HTTP endpoint (native-category user tools). */
+  http?: HttpToolConfig;
+  /** Sandboxed JS body (native-category user tools). */
+  script?: ScriptToolConfig;
 }
 
 export interface ToolsConfig {
@@ -206,6 +257,39 @@ export const api = {
     return invoke<void>("save_workspace_tools", { workspacePath, config });
   },
 
+  // Skills. Metadata lives in tools.json `skills[]`; the SKILL.md instruction body
+  // lives at <scope>/skills/<id>/SKILL.md. `loadSkillContent` is local-first (used by
+  // the agent's load_skill tool); save/open take an explicit scope.
+  async loadSkillContent(workspacePath: string | null, id: string): Promise<string> {
+    return invoke<string>("load_skill_content", { workspacePath: workspacePath ?? null, id });
+  },
+
+  async saveSkillContent(
+    scope: "global" | "workspace",
+    id: string,
+    content: string,
+    workspacePath: string | null
+  ): Promise<void> {
+    return invoke<void>("save_skill_content", {
+      scope,
+      id,
+      content,
+      workspacePath: workspacePath ?? null,
+    });
+  },
+
+  async openSkillInstructions(
+    scope: "global" | "workspace",
+    id: string,
+    workspacePath: string | null
+  ): Promise<void> {
+    return invoke<void>("open_skill_instructions", {
+      scope,
+      id,
+      workspacePath: workspacePath ?? null,
+    });
+  },
+
   // Custom nodes (global + workspace)
   async listGlobalCustomNodes(): Promise<CustomNodeDefinition[]> {
     return invoke<CustomNodeDefinition[]>("list_global_custom_nodes");
@@ -336,6 +420,32 @@ export const api = {
     });
   },
 
+  // MCP (Model Context Protocol). The server connection config lives on disk in
+  // the tools.json `mcp[]` entry; Rust reads it by id (local-first) and
+  // spawns/connects server-side — the renderer only passes the server id + tool
+  // name + the model's arguments. `mcpListTools` discovers a server's tools;
+  // `mcpCallTool` invokes one and returns its text result.
+  async mcpListTools(workspacePath: string | null, id: string): Promise<ToolSchema[]> {
+    return invoke<ToolSchema[]>("mcp_list_tools", {
+      workspacePath: workspacePath ?? null,
+      id,
+    });
+  },
+
+  async mcpCallTool(
+    workspacePath: string | null,
+    id: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<string> {
+    return invoke<string>("mcp_call_tool", {
+      workspacePath: workspacePath ?? null,
+      id,
+      toolName,
+      arguments: args,
+    });
+  },
+
   // Execute a built-in native Agent tool server-side, returning its textual result.
   // For web_search, pass the bound credentialId; Rust resolves it from the vault and
   // the plaintext key never crosses back into the renderer.
@@ -352,6 +462,49 @@ export const api = {
       workspacePath: workspacePath ?? null,
       credentialId: credentialId ?? null,
       credentialScope: credentialScope ?? null,
+    });
+  },
+
+  // Execute a user-defined HTTP tool server-side. The url/method/headers/body and
+  // (granted) credential live on disk in the tool's `http` config, read by id; the
+  // renderer passes only the tool id + the model's arguments.
+  async runHttpTool(
+    workspacePath: string | null,
+    id: string,
+    args: Record<string, unknown>
+  ): Promise<string> {
+    return invoke<string>("run_http_tool", {
+      workspacePath: workspacePath ?? null,
+      id,
+      arguments: args,
+    });
+  },
+
+  // Execute a user-defined script tool in the QuickJS sandbox. The JS body + grants
+  // live on disk; the model's arguments arrive as ctx.config (and ctx.input.data).
+  async runToolScript(
+    workspacePath: string | null,
+    id: string,
+    args: Record<string, unknown>
+  ): Promise<string> {
+    return invoke<string>("run_tool_script", {
+      workspacePath: workspacePath ?? null,
+      id,
+      arguments: args,
+    });
+  },
+
+  // Ensure a script tool's script.js exists (seeding a starter if absent) and reveal
+  // it in the OS file manager so the user can author it in their own editor.
+  async openToolScript(
+    scope: "global" | "workspace",
+    id: string,
+    workspacePath: string | null
+  ): Promise<void> {
+    return invoke<void>("open_tool_script", {
+      scope,
+      id,
+      workspacePath: workspacePath ?? null,
     });
   },
 

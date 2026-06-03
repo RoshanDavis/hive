@@ -93,6 +93,83 @@ impl Default for NodeDefaultsConfig {
 // User-defined native tools / MCP servers / skills the Agent's Tools slot can
 // reference. Runtime invocation is deferred; this is selection metadata only.
 
+/// MCP server connection config (mcp-category `ToolDef`). The renderer never
+/// sends a command line — `commands::mcp` reads this off disk by id and spawns /
+/// connects server-side (disk is authoritative for grants).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerConfig {
+    /// "stdio" | "http"
+    pub transport: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<std::collections::HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
+}
+
+/// Declarative HTTP tool config (native-category user tool). Executed server-side
+/// via the shared SSRF-guarded fetch with a vault credential injected.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpToolConfig {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_header: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow: Option<Vec<String>>,
+}
+
+/// Resource ceilings for a script tool (clamped server-side, like script nodes).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptLimitsConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_bytes: Option<usize>,
+}
+
+/// Network allowlist grant for a script tool's `ctx.fetch`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NetworkGrantConfig {
+    pub mode: String,
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
+/// Sandboxed-script tool config (native-category user tool). The JS body lives on
+/// disk at `<scope>/tools/<id>/script.js`; only the grants are persisted here.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptToolConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<NetworkGrantConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<ScriptLimitsConfig>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDef {
     pub id: String,
@@ -106,6 +183,15 @@ pub struct ToolDef {
     /// Emoji/icon shown on the tool card in the picker. Optional.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// MCP server connection (mcp-category entries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<McpServerConfig>,
+    /// Declarative HTTP endpoint (native-category user tools).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http: Option<HttpToolConfig>,
+    /// Sandboxed JS body grants (native-category user tools).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<ScriptToolConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ToolDef } from "@/services/api";
 import type { AgentToolSettings } from "@/nodes/types";
 import { toolsService, type ToolCategory } from "@/services/toolsService";
-import { categoryIcon, RUNNABLE_NATIVE_TOOL_IDS } from "@/services/builtInTools";
+import { categoryIcon, isToolRunnable } from "@/services/builtInTools";
 import NodeGridCard from "@/components/shared/NodeGridCard";
 import DashedAddCard from "@/components/shared/DashedAddCard";
 import { formLabelClass } from "@/components/shared/FormField";
@@ -29,12 +29,6 @@ interface ToolsSelectorProps {
   /** Per-tool settings (e.g. the web_search credential). Omit to hide tool config UI. */
   toolSettings?: AgentToolSettings;
   onToolSettingsChange?: (next: AgentToolSettings) => void;
-}
-
-/** True if a tool actually runs today. Built-in native tools do; user-created
- * native tools + all MCP servers / skills are selectable but deferred. */
-function isRunnable(category: ToolCategory, id: string): boolean {
-  return category === "native" && RUNNABLE_NATIVE_TOOL_IDS.has(id);
 }
 
 /**
@@ -84,9 +78,18 @@ export default function ToolsSelector({
   };
 
   /** Status line under a selected card, or undefined for a runnable, configured tool. */
-  const cardSubtitle = (category: ToolCategory, id: string): string | undefined => {
+  const cardSubtitle = (
+    category: ToolCategory,
+    def: ToolDef | undefined,
+    id: string
+  ): string | undefined => {
     if (id === "web_search" && !toolSettings?.webSearchCredentialId) return "⚠ needs key";
-    if (!isRunnable(category, id)) return "not runnable yet";
+    if (!def) return undefined;
+    if (!isToolRunnable(category, def)) {
+      if (category === "mcp") return "⚠ needs connection";
+      if (category === "native") return "⚠ needs setup";
+      return "not runnable yet";
+    }
     return undefined;
   };
 
@@ -114,7 +117,7 @@ export default function ToolsSelector({
                     icon={def?.icon || categoryIcon(key)}
                     label={def?.label || id}
                     title={def?.description || def?.label || id}
-                    subtitle={cardSubtitle(key, id)}
+                    subtitle={cardSubtitle(key, def, id)}
                     onClick={() => setConfigTool({ category: key, id })}
                     onClear={() => deselect(key, id)}
                     clearTitle="Remove from agent"
@@ -167,12 +170,15 @@ export default function ToolsSelector({
         <ToolConfigModal
           category={configTool.category}
           def={configDef}
-          runnable={isRunnable(configTool.category, configTool.id)}
+          runnable={isToolRunnable(configTool.category, configDef)}
           workspacePath={workspacePath}
           toolSettings={toolSettings}
           onToolSettingsChange={onToolSettingsChange}
           onRemove={() => deselect(configTool.category, configTool.id)}
-          onClose={() => setConfigTool(null)}
+          onClose={() => {
+            setConfigTool(null);
+            void reload();
+          }}
         />
       )}
 
@@ -186,7 +192,10 @@ export default function ToolsSelector({
           toolSettings={toolSettings}
           onToolSettingsChange={onToolSettingsChange}
           onRemove={() => deselect(configTool.category, configTool.id)}
-          onClose={() => setConfigTool(null)}
+          onClose={() => {
+            setConfigTool(null);
+            void reload();
+          }}
         />
       )}
     </div>

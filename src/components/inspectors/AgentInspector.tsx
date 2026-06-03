@@ -134,6 +134,26 @@ function ToolsSlotEditor({
         toolSettings={tools.toolSettings}
         onToolSettingsChange={onToolSettingsChange}
       />
+
+      <div className="flex items-center justify-between gap-2 border-t border-border-subtle pt-3">
+        <label className="text-[11px] text-text-muted">Max tool-call rounds (default 8)</label>
+        <input
+          type="number"
+          min={1}
+          max={25}
+          className="w-20 bg-input border border-border-subtle rounded-md px-2 py-1 text-xs text-text-main outline-none focus:border-accent-dim"
+          value={tools.toolSettings?.maxIterations ?? ""}
+          placeholder="8"
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            onToolSettingsChange({
+              ...tools.toolSettings,
+              maxIterations: Number.isFinite(n) ? n : undefined,
+            });
+          }}
+        />
+      </div>
+
       <button type="button" className={actionButtonDangerClass} onClick={onRemove}>
         <span>Remove Tools</span>
       </button>
