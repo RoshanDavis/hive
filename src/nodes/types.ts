@@ -88,11 +88,14 @@ export interface AgentStorageSlot {
 /** Per-tool configuration that isn't just a selected id (e.g. the vault
  * credential bound to web_search, resolved Rust-side at execution time). */
 export interface AgentToolSettings {
-  /** Credential id (Brave Search API key) used by the built-in web_search tool. */
+  /** Vault credential id bound to a credential-requiring built-in tool, keyed by
+   * tool id (e.g. `{ web_search: "cred_…" }`). Resolved Rust-side at execution time. */
+  credentialIds?: Record<string, string>;
+  /** @deprecated Superseded by `credentialIds.web_search`; still read for back-compat. */
   webSearchCredentialId?: string;
   /** Whether to cap model⇄tool round-trips. `undefined` is treated as enabled
-   * (on by default) so existing agents keep their cap; `false` lets the loop run
-   * up to the absolute ceiling. */
+   * (on by default) so existing agents keep their cap; `false` removes the cap
+   * entirely (the loop runs unbounded until it stops calling tools / is cancelled). */
   limitToolRounds?: boolean;
   /** Cap on model⇄tool round-trips when the limit is on (clamped; default applies if unset). */
   maxIterations?: number;

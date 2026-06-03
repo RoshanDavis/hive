@@ -13,7 +13,7 @@
 import { api, type ToolCall, type ToolDef, type ToolSchema } from "@/services/api";
 import { toolsService } from "@/services/toolsService";
 import { concurrencyGovernor } from "@/services/concurrency";
-import { RUNNABLE_NATIVE_TOOL_IDS } from "@/services/builtInTools";
+import { RUNNABLE_NATIVE_TOOL_IDS, builtinNeedsCredential } from "@/services/builtInTools";
 import type { MemoryHandler } from "./agentMemory";
 import type { AgentToolsSlot } from "@/nodes/types";
 
@@ -277,8 +277,9 @@ export async function buildAgentTools(
 
 export interface ExecuteToolOptions {
   workspacePath: string;
-  /** Credential id bound to web_search (from the Tools slot), if any. */
-  webSearchCredentialId?: string | null;
+  /** Vault credential ids bound to credential-requiring built-in tools, keyed by
+   * tool name (e.g. `{ web_search: "cred_…" }`). Resolved server-side by id. */
+  builtinCredentialIds?: Record<string, string | null>;
   /** Memory access for the memory_* tools (present when the agent has a Storage slot). */
   memory?: MemoryHandler;
 }
@@ -314,10 +315,11 @@ export async function executeToolCall(
   try {
     switch (resolved.kind) {
       case "nativeBuiltin": {
-        // web_search hits the network (Brave) so it's pool-gated like the other
-        // network/process tools; calculator/current_time are pure compute.
-        if (call.name === "web_search") {
-          const credentialId = opts.webSearchCredentialId ?? null;
+        // Credential-requiring built-ins (e.g. web_search) are network-bound, so
+        // they're pool-gated and get their bound credential; calculator/current_time
+        // are pure compute and run ungated with no credential.
+        if (builtinNeedsCredential(call.name)) {
+          const credentialId = opts.builtinCredentialIds?.[call.name] ?? null;
           const result = await concurrencyGovernor.enqueue("general", () =>
             api.runNativeTool(call.name, args, opts.workspacePath, credentialId)
           );

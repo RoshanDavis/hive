@@ -4,6 +4,7 @@ import CredentialManager from "./CredentialManager";
 import NodeDefaultsPanel from "./NodeDefaultsPanel";
 import CustomNodesPanel from "./CustomNodesPanel";
 import ToolsPanel from "./ToolsPanel";
+import ToggleSwitch from "@/components/shared/ToggleSwitch";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -146,12 +147,11 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                     <div className="flex items-center gap-4 self-end md:self-center">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-text-secondary">Enable Limit</span>
-                        <button
-                          onClick={() => setLocalEnabled(!localEnabled)}
-                          className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${localEnabled ? 'bg-accent' : 'bg-input'}`}
-                        >
-                          <div className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${localEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                        </button>
+                        <ToggleSwitch
+                          checked={localEnabled}
+                          onChange={setLocalEnabled}
+                          ariaLabel="Enable local model pool limit"
+                        />
                       </div>
                       {localEnabled && (
                         <div className="flex items-center gap-1.5 bg-input border border-border-subtle rounded-lg px-2 py-1">
@@ -252,12 +252,11 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                   <div className="flex items-center gap-4 self-end md:self-center">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-text-secondary">Enable Limit</span>
-                      <button
-                        onClick={() => setCloudEnabled(!cloudEnabled)}
-                        className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${cloudEnabled ? 'bg-accent' : 'bg-input'}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${cloudEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                      </button>
+                      <ToggleSwitch
+                        checked={cloudEnabled}
+                        onChange={setCloudEnabled}
+                        ariaLabel="Enable cloud model pool limit"
+                      />
                     </div>
                     {cloudEnabled && (
                       <div className="flex items-center gap-1.5 bg-input border border-border-subtle rounded-lg px-2 py-1">
@@ -289,12 +288,11 @@ export default function SettingsModal({ isOpen, onClose, showToast, workspacePat
                   <div className="flex items-center gap-4 self-end md:self-center">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-text-secondary">Enable Limit</span>
-                      <button
-                        onClick={() => setGeneralEnabled(!generalEnabled)}
-                        className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${generalEnabled ? 'bg-accent' : 'bg-input'}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${generalEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                      </button>
+                      <ToggleSwitch
+                        checked={generalEnabled}
+                        onChange={setGeneralEnabled}
+                        ariaLabel="Enable general tasks pool limit"
+                      />
                     </div>
                     {generalEnabled && (
                       <div className="flex items-center gap-1.5 bg-input border border-border-subtle rounded-lg px-2 py-1">

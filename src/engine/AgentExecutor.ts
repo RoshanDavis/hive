@@ -15,6 +15,7 @@ import {
   type ToolTraceStep,
 } from "./agentTools";
 import { createMemoryHandler, makeStorageRecord, type MemoryHandler } from "./agentMemory";
+import { builtinNeedsCredential, getBuiltinCredentialId } from "@/services/builtInTools";
 import type { AgentChatMessage, ToolSchema } from "@/services/api";
 import type { AgentNodeData, AgentStorageSlot, ChatMessage, JSONStorageRecord } from "@/nodes/types";
 
@@ -23,17 +24,19 @@ import type { AgentNodeData, AgentStorageSlot, ChatMessage, JSONStorageRecord } 
  * `toolSettings.maxIterations` may override this up to {@link MAX_AGENT_ITERATIONS_CEIL}. */
 export const MAX_AGENT_ITERATIONS = 10;
 
-/** Absolute ceiling on the per-agent iteration override (a runaway guard). Also the
- * effective cap when the user turns the per-agent round limit off entirely. */
+/** Absolute ceiling on the per-agent iteration override when the limit is *on*
+ * (a runaway guard for the configured cap). */
 export const MAX_AGENT_ITERATIONS_CEIL = 25;
 
 /**
  * Resolve the effective iteration cap. When the per-agent limit toggle is off
- * (`limitEnabled === false`), the loop may run up to the absolute ceiling;
- * otherwise the override (or the default) is clamped into `[1, ceiling]`.
+ * (`limitEnabled === false`), the loop is **unbounded** (`Infinity`) — it runs
+ * until the model stops calling tools or the run is cancelled (see the cancellation
+ * check in {@link AgentExecutor.runToolLoop}). When on, the override (or the
+ * default) is clamped into `[1, ceiling]`.
  */
 function resolveMaxIterations(override: number | undefined, limitEnabled: boolean): number {
-  if (!limitEnabled) return MAX_AGENT_ITERATIONS_CEIL;
+  if (!limitEnabled) return Infinity;
   if (typeof override !== "number" || !Number.isFinite(override)) return MAX_AGENT_ITERATIONS;
   return Math.max(1, Math.min(MAX_AGENT_ITERATIONS_CEIL, Math.floor(override)));
 }
@@ -194,10 +197,16 @@ export class AgentExecutor implements NodeExecutor {
   ): Promise<{ envelope: NodeOutputEnvelope; logs: string[] }> {
     const { node, workspacePath } = context;
     const data = node.data as AgentNodeData;
-    const webSearchCredentialId = data.tools?.toolSettings?.webSearchCredentialId ?? null;
-    // `limitToolRounds` undefined ⇒ enabled (on by default); false ⇒ run to the ceiling.
-    const limitEnabled = data.tools?.toolSettings?.limitToolRounds !== false;
-    const maxIterations = resolveMaxIterations(data.tools?.toolSettings?.maxIterations, limitEnabled);
+    const toolSettings = data.tools?.toolSettings;
+    // Resolve the bound credential for any selected credential-requiring built-in
+    // (e.g. web_search); declaration-driven, so no tool id is hardcoded here.
+    const builtinCredentialIds: Record<string, string | null> = {};
+    for (const id of data.tools?.native ?? []) {
+      if (builtinNeedsCredential(id)) builtinCredentialIds[id] = getBuiltinCredentialId(toolSettings, id);
+    }
+    // `limitToolRounds` undefined ⇒ enabled (on by default); false ⇒ unbounded.
+    const limitEnabled = toolSettings?.limitToolRounds !== false;
+    const maxIterations = resolveMaxIterations(toolSettings?.maxIterations, limitEnabled);
 
     const working: AgentChatMessage[] = inputMessages.map((m) => ({
       role: m.role,
@@ -211,6 +220,15 @@ export class AgentExecutor implements NodeExecutor {
     let iterations = 0;
 
     for (let i = 0; i < maxIterations; i++) {
+      // Poll for cancellation between rounds so a Stop halts an in-flight loop —
+      // essential when the round limit is off (maxIterations === Infinity).
+      if (context.isCancelled?.()) {
+        finalText = lastContent
+          ? `${lastContent}\n\n(Stopped: run cancelled.)`
+          : "Run cancelled before a final answer.";
+        logs.push("⛔ Cancelled.");
+        break;
+      }
       iterations = i + 1;
       const turn = await callLlmWithTools(config, working, schemas, workspacePath);
       if (turn.content) lastContent = turn.content;
@@ -230,7 +248,7 @@ export class AgentExecutor implements NodeExecutor {
       for (const call of turn.tool_calls) {
         const result = await executeToolCall(call, lookup, {
           workspacePath,
-          webSearchCredentialId,
+          builtinCredentialIds,
           memory,
         });
         working.push({

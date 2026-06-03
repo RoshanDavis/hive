@@ -19,11 +19,7 @@ vi.mock("@/services/toolsService", () => ({
   toolsService: { getAvailable: vi.fn() },
 }));
 
-import {
-  AgentExecutor,
-  MAX_AGENT_ITERATIONS,
-  MAX_AGENT_ITERATIONS_CEIL,
-} from "@/engine/AgentExecutor";
+import { AgentExecutor, MAX_AGENT_ITERATIONS } from "@/engine/AgentExecutor";
 import { api } from "@/services/api";
 import { toolsService } from "@/services/toolsService";
 import { BUILT_IN_NATIVE_TOOLS } from "@/services/builtInTools";
@@ -161,8 +157,8 @@ describe("AgentExecutor", () => {
     expect(storage.records.map((r) => r.content)).toEqual(["my name is Roshan", "Noted."]);
   });
 
-  it("runs up to the ceiling when the round limit is toggled off", async () => {
-    const { ctx } = makeHarness({
+  it("runs unbounded when the limit is off and halts on cancellation", async () => {
+    const { ctx, store, agentId } = makeHarness({
       label: "Agent",
       llm: { ...LLM_SLOT },
       storage: null,
@@ -174,16 +170,23 @@ describe("AgentExecutor", () => {
       },
     });
 
+    // The model never finalizes — only cancellation can stop the (unbounded) loop.
     vi.mocked(api.llmChatTools).mockResolvedValue({
       content: null,
       tool_calls: [{ id: "c", name: "calculator", arguments: "{}" }],
       finish_reason: "tool_calls",
     });
     vi.mocked(api.runNativeTool).mockResolvedValue("ok");
+    // Cancel before the 4th round (checked at the top of each iteration, pre-LLM-call).
+    ctx.isCancelled = () => vi.mocked(api.llmChatTools).mock.calls.length >= 3;
 
     await new AgentExecutor().execute(ctx);
 
-    expect(api.llmChatTools).toHaveBeenCalledTimes(MAX_AGENT_ITERATIONS_CEIL);
+    // Well past MAX_AGENT_ITERATIONS (10) would run forever if unbounded weren't honored;
+    // cancellation stops it at 3 rounds.
+    expect(api.llmChatTools).toHaveBeenCalledTimes(3);
+    const env = store[agentId].outputEnvelope as { value: string };
+    expect(env.value.toLowerCase()).toContain("cancel");
   });
 
   it("throws when no LLM slot is configured", async () => {

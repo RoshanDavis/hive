@@ -1,6 +1,7 @@
 import CredentialPicker from "./CredentialPicker";
 import ModelPicker from "./ModelPicker";
 import CollapsibleSection from "../CollapsibleSection";
+import ToggleSwitch from "@/components/shared/ToggleSwitch";
 import { formLabelClass, formInputClass, formRangeClass } from "@/components/shared/FormField";
 import {
   PROVIDER_BASE_URL,
@@ -144,21 +145,11 @@ export default function LLMConfigFields({ values, onChange, workspacePath }: LLM
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className={formLabelClass}>Limit Chat History</span>
-            <button
-              onClick={() =>
-                onChange({ ...values, chatHistoryLimit: isLimited ? 0 : 10 })
-              }
-              className={`w-10 h-5.5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
-                isLimited ? "bg-accent" : "bg-border-subtle"
-              }`}
-              style={{ border: isLimited ? "none" : "1px solid var(--border-subtle)" }}
-            >
-              <div
-                className={`w-4.5 h-4.5 rounded-full bg-toggle-knob shadow-md transform transition-transform duration-200 ${
-                  isLimited ? "translate-x-4.5" : "translate-x-0"
-                }`}
-              />
-            </button>
+            <ToggleSwitch
+              checked={isLimited}
+              onChange={(next) => onChange({ ...values, chatHistoryLimit: next ? 10 : 0 })}
+              ariaLabel="Limit chat history"
+            />
           </div>
 
           {isLimited && (

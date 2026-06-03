@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import type { ToolDef } from "@/services/api";
 import type { AgentToolSettings } from "@/nodes/types";
 import { toolsService, type ToolCategory, type ToolsScope } from "@/services/toolsService";
-import { categoryIcon, isToolRunnable } from "@/services/builtInTools";
+import {
+  categoryIcon,
+  isToolRunnable,
+  builtinNeedsCredential,
+  getBuiltinCredentialId,
+} from "@/services/builtInTools";
 import NodeGridCard from "@/components/shared/NodeGridCard";
 import DashedAddCard from "@/components/shared/DashedAddCard";
 import { formLabelClass } from "@/components/shared/FormField";
@@ -84,7 +89,7 @@ export default function ToolsSelector({
     def: ToolDef | undefined,
     id: string
   ): string | undefined => {
-    if (id === "web_search" && !toolSettings?.webSearchCredentialId) return "⚠ needs key";
+    if (builtinNeedsCredential(id) && !getBuiltinCredentialId(toolSettings, id)) return "⚠ needs key";
     if (!def) return undefined;
     if (!isToolRunnable(category, def)) {
       if (category === "mcp") return "⚠ needs connection";

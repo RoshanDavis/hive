@@ -17,6 +17,7 @@ import InspectorActions from "./InspectorActions";
 import LLMConfigFields from "./shared/LLMConfigFields";
 import LastResponseSection from "./shared/LastResponseSection";
 import ToolsSelector, { type ToolsSelection } from "./shared/ToolsSelector";
+import ToggleSwitch from "@/components/shared/ToggleSwitch";
 import { actionButtonNeutralClass, actionButtonDangerClass } from "./actionButtonStyles";
 
 /** A fresh LLM slot seeded from the LLM node's defaults (sans its label). */
@@ -140,26 +141,18 @@ function ToolsSlotEditor({
       <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
         <div className="flex items-center justify-between gap-2">
           <label className="text-[11px] text-text-muted">Limit tool-call rounds</label>
-          <button
-            type="button"
-            onClick={() =>
-              onToolSettingsChange({ ...tools.toolSettings, limitToolRounds: !limitEnabled })
+          <ToggleSwitch
+            checked={limitEnabled}
+            onChange={(next) =>
+              onToolSettingsChange({ ...tools.toolSettings, limitToolRounds: next })
             }
             title={
               limitEnabled
                 ? "On — cap the number of model⇄tool rounds"
-                : "Off — the agent may run up to 25 rounds"
+                : "Off — no round limit (runs until the model stops calling tools)"
             }
-            className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 border-none cursor-pointer flex items-center ${
-              limitEnabled ? "bg-accent" : "bg-input"
-            }`}
-          >
-            <div
-              className={`w-4 h-4 rounded-full bg-primary shadow-md transform duration-200 ${
-                limitEnabled ? "translate-x-4" : "translate-x-0"
-              }`}
-            />
-          </button>
+            ariaLabel="Limit tool-call rounds"
+          />
         </div>
         {limitEnabled ? (
           <div className="flex items-center justify-between gap-2">
@@ -181,8 +174,9 @@ function ToolsSlotEditor({
             />
           </div>
         ) : (
-          <p className="text-[11px] text-text-muted/70 m-0">
-            Off — the agent may run up to 25 tool-call rounds.
+          <p className="text-[11px] text-warning/90 bg-warning/10 border border-warning/30 rounded-md px-2.5 py-1.5 m-0 leading-relaxed">
+            ⚠ No limit — the agent keeps running until it stops calling tools. Use Stop to
+            halt a run. May incur significant cost.
           </p>
         )}
       </div>

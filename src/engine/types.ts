@@ -11,6 +11,10 @@ export interface ExecutionContext {
   visited?: Set<string>;
   /** The workspace this execution belongs to. Needed for resolving local-scope credentials. */
   workspacePath: string;
+  /** Returns true once the run this node belongs to has been cancelled. Long-running
+   * executors (e.g. the Agent's tool loop) should poll this and bail gracefully so a
+   * Stop actually halts an in-flight node. Absent in non-run-loop callers (tests). */
+  isCancelled?: () => boolean;
 }
 
 export interface NodeExecutor {

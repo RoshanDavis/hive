@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { McpServerConfig } from "@/services/api";
-import { formInputClass, formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass, segmentedButtonClass } from "@/components/shared/FormField";
 import CredentialPicker from "./CredentialPicker";
 
 interface McpConnectionFieldsProps {
@@ -41,13 +41,6 @@ export function serializePairs(obj: Record<string, string> | undefined, sep: str
     .map(([k, v]) => `${k}${sep}${v}`)
     .join("\n");
 }
-
-const toggleClass = (active: boolean) =>
-  `flex-1 rounded-md border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${
-    active
-      ? "border-accent bg-accent-glow text-accent"
-      : "border-border-subtle bg-card text-text-secondary hover:bg-card-hover"
-  }`;
 
 /**
  * Editor for an MCP server's connection config, shared by the create form and the
@@ -108,10 +101,10 @@ export default function McpConnectionFields({
       <div className="flex flex-col gap-1">
         <label className={formLabelClass}>Transport</label>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setTransport("stdio")} className={toggleClass(transport === "stdio")}>
+          <button type="button" onClick={() => setTransport("stdio")} className={segmentedButtonClass(transport === "stdio")}>
             ⌨ stdio (local process)
           </button>
-          <button type="button" onClick={() => setTransport("http")} className={toggleClass(transport === "http")}>
+          <button type="button" onClick={() => setTransport("http")} className={segmentedButtonClass(transport === "http")}>
             🌐 HTTP (streamable)
           </button>
         </div>

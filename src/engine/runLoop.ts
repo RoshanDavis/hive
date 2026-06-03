@@ -491,6 +491,7 @@ export function createRunLoop(deps: RunLoopDeps): RunLoop {
             chatInput: isStartingPauseNode ? chatInput : undefined,
             visited,
             workspacePath,
+            isCancelled: () => isCancelled(runId),
           });
 
           if (isCancelled(runId)) break;

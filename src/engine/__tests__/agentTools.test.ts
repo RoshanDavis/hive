@@ -41,7 +41,7 @@ const calculatorDef: ToolDef = {
 };
 const webSearchDef: ToolDef = {
   id: "web_search",
-  label: "Web Search",
+  label: "Brave Web Search",
   description: "Search the web.",
   parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
 };
@@ -93,10 +93,13 @@ describe("executeToolCall", () => {
     expect(api.runNativeTool).toHaveBeenCalledWith("calculator", { expression: "1+1" }, "/ws", null);
   });
 
-  it("passes the bound credential only for web_search", async () => {
+  it("passes the bound credential for credential-requiring built-ins (web_search)", async () => {
     vi.mocked(api.runNativeTool).mockResolvedValue("results");
     const call: ToolCall = { id: "c2", name: "web_search", arguments: '{"query":"hive"}' };
-    await executeToolCall(call, lookup, { workspacePath: "/ws", webSearchCredentialId: "cred1" });
+    await executeToolCall(call, lookup, {
+      workspacePath: "/ws",
+      builtinCredentialIds: { web_search: "cred1" },
+    });
     expect(api.runNativeTool).toHaveBeenCalledWith("web_search", { query: "hive" }, "/ws", "cred1");
   });
 

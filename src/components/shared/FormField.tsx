@@ -30,3 +30,15 @@ export const formInputClass =
  */
 export const formRangeClass =
   "w-full accent-[var(--accent)] cursor-pointer outline-hidden focus:shadow-[0_0_0_2px_var(--accent-glow)] rounded";
+
+/**
+ * One segment of a horizontal segmented toggle (a row of mutually-exclusive
+ * choice buttons that fill their container, e.g. transport / scope / HTTP-vs-script
+ * pickers). `active` styles the selected segment with the accent treatment.
+ */
+export const segmentedButtonClass = (active: boolean): string =>
+  `flex-1 rounded-md border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${
+    active
+      ? "border-accent bg-accent-glow text-accent"
+      : "border-border-subtle bg-card text-text-secondary hover:bg-card-hover"
+  }`;

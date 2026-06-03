@@ -3,9 +3,9 @@ import { api, type McpServerConfig, type ToolDef } from "@/services/api";
 import type { AgentToolSettings } from "@/nodes/types";
 import type { NetworkGrant } from "@/types/customNodes";
 import { toolsService, type ToolCategory, type ToolsScope } from "@/services/toolsService";
-import { categoryIcon } from "@/services/builtInTools";
+import { categoryIcon, builtinCredentialSchema, getBuiltinCredentialId } from "@/services/builtInTools";
 import { slugify } from "@/utils/slugify";
-import { formInputClass, formLabelClass } from "@/components/shared/FormField";
+import { formInputClass, formLabelClass, segmentedButtonClass } from "@/components/shared/FormField";
 import McpConnectionFields, { parsePairs, serializePairs } from "./McpConnectionFields";
 import ToolParamsEditor, {
   type ToolParam,
@@ -36,13 +36,6 @@ const NOUNS: Record<ToolCategory, string> = {
   mcp: "MCP server",
   skills: "skill",
 };
-
-const toggleClass = (active: boolean) =>
-  `flex-1 rounded-md border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${
-    active
-      ? "border-accent bg-accent-glow text-accent"
-      : "border-border-subtle bg-card text-text-secondary hover:bg-card-hover"
-  }`;
 
 /** Map an HTTP tool's `allow` list ↔ the shared {@link NetworkGrant} editor.
  * Empty ⇒ "None" (the request still reaches its own URL host); `["*"]` ⇒ allow all. */
@@ -79,6 +72,8 @@ export default function ToolFormModal({
   const creating = !initial;
   const editing = Boolean(initial) && !isBuiltIn; // a user tool on disk
   const viewing = Boolean(initial) && isBuiltIn; // a built-in: read-only
+  // The credential schema a built-in requires (e.g. web_search → webSearch), or null.
+  const builtinCredSchema = def ? builtinCredentialSchema(def.id) : null;
 
   const [label, setLabel] = useState(def?.label ?? "");
   const [description, setDescription] = useState(def?.description ?? "");
@@ -353,10 +348,10 @@ export default function ToolFormModal({
                   <div className="flex flex-col gap-1">
                     <label className={formLabelClass}>How it runs</label>
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => setNativeKind("http")} className={toggleClass(nativeKind === "http")}>
+                      <button type="button" onClick={() => setNativeKind("http")} className={segmentedButtonClass(nativeKind === "http")}>
                         🌐 HTTP request
                       </button>
-                      <button type="button" onClick={() => setNativeKind("script")} className={toggleClass(nativeKind === "script")}>
+                      <button type="button" onClick={() => setNativeKind("script")} className={segmentedButtonClass(nativeKind === "script")}>
                         📜 Script (sandboxed)
                       </button>
                     </div>
@@ -474,11 +469,11 @@ export default function ToolFormModal({
                 {creating ? (
                   <div className="flex gap-2">
                     {workspacePath && (
-                      <button type="button" onClick={() => setScope("workspace")} className={toggleClass(scope === "workspace")}>
+                      <button type="button" onClick={() => setScope("workspace")} className={segmentedButtonClass(scope === "workspace")}>
                         📁 Workspace
                       </button>
                     )}
-                    <button type="button" onClick={() => setScope("global")} className={toggleClass(scope === "global")}>
+                    <button type="button" onClick={() => setScope("global")} className={segmentedButtonClass(scope === "global")}>
                       🌐 Global
                     </button>
                   </div>
@@ -491,16 +486,19 @@ export default function ToolFormModal({
             </>
           )}
 
-          {/* web_search credential binding (built-in config). */}
-          {def?.id === "web_search" && onToolSettingsChange && (
+          {/* Built-in credential binding — declaration-driven (e.g. Brave Web Search). */}
+          {def && builtinCredSchema && onToolSettingsChange && (
             <div className="flex flex-col gap-1.5">
-              <p className="text-[11px] text-text-muted m-0">🔎 Web Search uses a Brave Search API key:</p>
+              <p className="text-[11px] text-text-muted m-0">🔑 {def.label} uses a saved credential:</p>
               <CredentialPicker
-                schemaTypes={["webSearch"]}
-                selectedCredentialId={toolSettings?.webSearchCredentialId ?? null}
-                onSelect={(id) =>
-                  onToolSettingsChange({ ...toolSettings, webSearchCredentialId: id ?? undefined })
-                }
+                schemaTypes={[builtinCredSchema]}
+                selectedCredentialId={getBuiltinCredentialId(toolSettings, def.id)}
+                onSelect={(id) => {
+                  const credentialIds = { ...toolSettings?.credentialIds };
+                  if (id) credentialIds[def.id] = id;
+                  else delete credentialIds[def.id];
+                  onToolSettingsChange({ ...toolSettings, credentialIds });
+                }}
                 workspacePath={workspacePath || null}
               />
             </div>
