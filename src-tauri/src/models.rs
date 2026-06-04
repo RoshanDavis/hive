@@ -337,6 +337,14 @@ pub struct ToolCall {
     pub name: String,
     /// The model's function-call arguments as a JSON string.
     pub arguments: String,
+    /// Opaque provider passthrough that must be echoed back **verbatim** on the
+    /// next turn. Google's OpenAI-compatible endpoint carries its required
+    /// `{ google: { thought_signature } }` here; for OpenAI/Anthropic/Ollama it's
+    /// absent. Captured from the response and replayed on the assistant turn so a
+    /// multi-turn tool loop doesn't trip Gemini's `thought_signature` validation
+    /// (a 400 INVALID_ARGUMENT). Round-trips through the renderer untouched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_content: Option<serde_json::Value>,
 }
 
 /// One turn in the agent conversation. `role` is system | user | assistant | tool.

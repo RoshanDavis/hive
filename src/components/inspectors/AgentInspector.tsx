@@ -10,6 +10,7 @@ import type {
   AgentToolsSlot,
 } from "@/nodes/types";
 import type { ToolTraceStep } from "@/engine/agentTools";
+import { normalizeAgentStorage } from "@/engine/agentMemory";
 import { agentSlotFocus } from "@/nodes/agentSlotFocus";
 import { LLM_DEFAULT_DATA } from "@/nodes/llmDefaults";
 import CollapsibleSection from "./CollapsibleSection";
@@ -47,64 +48,105 @@ function SlotEmpty({
   );
 }
 
+/** One storage-section row: icon + label + count + a Clear button. */
+function StorageSection({
+  icon,
+  label,
+  hint,
+  count,
+  unit,
+  onClear,
+}: {
+  icon: string;
+  label: string;
+  hint: string;
+  count: number;
+  unit: string;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border-subtle bg-card/40 px-2.5 py-2">
+      <div className="flex flex-col min-w-0">
+        <span className="text-xs text-text-main font-semibold">
+          {icon} {label}{" "}
+          <span className="text-[10px] text-text-muted font-normal">
+            ({count} {unit}
+            {count === 1 ? "" : "s"})
+          </span>
+        </span>
+        <span className="text-[10px] text-text-muted">{hint}</span>
+      </div>
+      <button
+        type="button"
+        className="shrink-0 text-[11px] text-text-muted hover:text-danger border border-border-subtle rounded px-2 py-1 cursor-pointer bg-card hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed"
+        onClick={onClear}
+        disabled={count === 0}
+      >
+        Clear
+      </button>
+    </div>
+  );
+}
+
 function StorageSlotEditor({
   storage,
-  onClear,
+  onChange,
   onRemove,
 }: {
   storage: AgentStorageSlot;
-  onClear: () => void;
+  onChange: (next: AgentStorageSlot) => void;
   onRemove: () => void;
 }) {
-  const records = Array.isArray(storage.records) ? storage.records : [];
+  const norm = normalizeAgentStorage(storage);
+  const recentMemory = norm.memory.slice(-5).reverse();
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-text-main font-semibold">JSON Storage</span>
-        <span className="text-[10px] text-text-muted">
-          {records.length} record{records.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      {records.length > 0 ? (
-        <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
-          {records
-            .slice()
-            .reverse()
-            .map((r) => (
-              <div
-                key={r.id}
-                className="rounded-md border border-border-subtle bg-card/40 px-2 py-1.5"
-              >
-                <div className="flex justify-between gap-2 text-[10px] text-text-muted">
-                  <span className="truncate">{r.source}</span>
-                  <span className="shrink-0">{r.timestamp}</span>
-                </div>
-                <div className="text-[11px] text-text-main mt-0.5 line-clamp-2 wrap-break-word">
-                  {r.content}
-                </div>
+    <div className="flex flex-col gap-2.5">
+      <StorageSection
+        icon="💬"
+        label="Conversation"
+        hint="Dialogue history loaded into the model."
+        count={norm.conversation.length}
+        unit="turn"
+        onClear={() => onChange({ ...norm, conversation: [] })}
+      />
+      <StorageSection
+        icon="🧠"
+        label="Memory"
+        hint="Facts the agent saves/recalls via memory tools."
+        count={norm.memory.length}
+        unit="entry"
+        onClear={() => onChange({ ...norm, memory: [] })}
+      />
+      {recentMemory.length > 0 && (
+        <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+          {recentMemory.map((r) => (
+            <div
+              key={r.id}
+              className="rounded-md border border-border-subtle bg-card/40 px-2 py-1.5"
+            >
+              <div className="flex justify-between gap-2 text-[10px] text-text-muted">
+                <span className="truncate">{r.source}</span>
+                <span className="shrink-0">{r.timestamp}</span>
               </div>
-            ))}
+              <div className="text-[11px] text-text-main mt-0.5 line-clamp-2 wrap-break-word">
+                {r.content}
+              </div>
+            </div>
+          ))}
         </div>
-      ) : (
-        <p className="text-[11px] text-text-muted m-0">
-          No records yet. The agent appends one each run.
-        </p>
       )}
+      <StorageSection
+        icon="📊"
+        label="Run data"
+        hint="Structured record (input/output/trace) per run."
+        count={norm.runData.length}
+        unit="run"
+        onClear={() => onChange({ ...norm, runData: [] })}
+      />
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className={actionButtonNeutralClass}
-          onClick={onClear}
-          disabled={records.length === 0}
-        >
-          <span>Clear records</span>
-        </button>
-        <button type="button" className={actionButtonDangerClass} onClick={onRemove}>
-          <span>Remove</span>
-        </button>
-      </div>
+      <button type="button" className={actionButtonDangerClass} onClick={onRemove}>
+        <span>Remove</span>
+      </button>
     </div>
   );
 }
@@ -267,7 +309,7 @@ export default function AgentInspector({
           {storage ? (
             <StorageSlotEditor
               storage={storage}
-              onClear={() => onUpdate(node.id, { storage: { ...storage, records: [] } })}
+              onChange={(next) => onUpdate(node.id, { storage: next })}
               onRemove={() => onUpdate(node.id, { storage: null })}
             />
           ) : (
@@ -275,7 +317,9 @@ export default function AgentInspector({
               hint="No memory configured. Drag a JSON Storage node onto the slot, or add one here."
               addLabel="Add JSON Storage"
               onAdd={() =>
-                onUpdate(node.id, { storage: { kind: "jsonStorage", records: [] } })
+                onUpdate(node.id, {
+                  storage: { kind: "jsonStorage", conversation: [], memory: [], runData: [] },
+                })
               }
             />
           )}

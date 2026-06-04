@@ -1,11 +1,14 @@
 //! Native tool execution for the Agent node.
 //!
-//! Phase 1 ships three built-in native tools. Pure-compute tools (`calculator`,
-//! `current_time`) run inside the audited [`hive_sandbox`] QuickJS runtime with
-//! network disabled — no new dependency, and the same hard memory/time ceilings
-//! the custom script nodes use. `web_search` needs network + a key, so it makes a
-//! direct Brave Search call with the user's credential resolved server-side from
-//! the vault (the plaintext never reaches the renderer), mirroring `llm_chat`.
+//! Phase 1 ships three built-in native tools. `calculator` evaluates a user
+//! expression, so it runs inside the audited [`hive_sandbox`] QuickJS runtime with
+//! network disabled — the same hard memory/time ceilings the custom script nodes
+//! use. `current_time` is pure, deterministic, and needs a timezone database
+//! (which the sandbox lacks — QuickJS `Date` can only produce UTC), so it is
+//! computed directly in Rust via [`chrono`] / [`chrono_tz`]. `web_search` needs
+//! network + a key, so it makes a direct Brave Search call with the user's
+//! credential resolved server-side from the vault (the plaintext never reaches the
+//! renderer), mirroring `llm_chat`.
 //!
 //! The renderer only supplies the tool id + arguments (+ an optional credential id
 //! for `web_search`); which tools exist and how they run is fixed here, server-side.
@@ -16,6 +19,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use chrono::Utc;
+use chrono_tz::Tz;
 use serde_json::{json, Value};
 
 use crate::commands::credentials::resolve_credential_values;
@@ -51,6 +56,41 @@ fn run_sandbox_compute(source: &str, config: serde_json::Value) -> Result<String
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string())
+}
+
+/// Current real-world date + time, optionally localized to a named IANA timezone
+/// (e.g. `America/New_York`). Computed in Rust — **not** the QuickJS sandbox, which
+/// has no timezone database and so can only emit UTC. That UTC-only limitation is
+/// what pushed the model to (stale, cached) web search for "what time is it"
+/// questions; with a real local clock here it answers directly. An unrecognized
+/// zone returns an actionable error so the model can retry with a valid name.
+fn current_time(timezone: Option<&str>) -> Result<String, String> {
+    let now = Utc::now();
+    match timezone.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(name) => {
+            let tz: Tz = name.parse().map_err(|_| {
+                format!(
+                    "Unknown timezone '{}'. Use an IANA name like 'America/New_York', \
+                     'Europe/London', or 'Asia/Tokyo'.",
+                    name
+                )
+            })?;
+            let local = now.with_timezone(&tz);
+            // e.g. "It is currently 11:10:46 PM EDT on Tuesday, June 3, 2026
+            //       (America/New_York, UTC-04:00)."
+            Ok(format!(
+                "It is currently {} ({}, UTC{}).",
+                local.format("%-I:%M:%S %p %Z on %A, %B %-d, %Y"),
+                name,
+                local.format("%:z"),
+            ))
+        }
+        None => Ok(format!(
+            "It is currently {} (UTC). ISO 8601: {}.",
+            now.format("%-I:%M:%S %p on %A, %B %-d, %Y"),
+            now.format("%Y-%m-%dT%H:%M:%SZ"),
+        )),
+    }
 }
 
 /// Brave Search Web API. The key is resolved server-side from the vault and sent as
@@ -157,11 +197,10 @@ pub async fn run_native_tool(
             .map_err(|e| format!("Tool task failed: {}", e))?
         }
         "current_time" => {
-            tokio::task::spawn_blocking(|| {
-                run_sandbox_compute("return new Date().toISOString();", serde_json::json!({}))
-            })
-            .await
-            .map_err(|e| format!("Tool task failed: {}", e))?
+            // Pure + instant (no blocking I/O), so compute inline rather than on a
+            // blocking task. An optional IANA `timezone` localizes the result.
+            let timezone = arguments.get("timezone").and_then(|v| v.as_str());
+            current_time(timezone)
         }
         "web_search" => {
             let query = arguments
@@ -360,6 +399,15 @@ fn script_tool_dir(
     }
 }
 
+/// Result of a script-tool run: the textual output handed to the model plus the
+/// `ctx.log(...)` lines, so the Agent can surface them in its Logs section
+/// (mirroring how script *nodes* return `{ output, logs }`).
+#[derive(serde::Serialize)]
+pub struct ToolScriptResult {
+    pub output: String,
+    pub logs: Vec<String>,
+}
+
 /// Execute a sandboxed-script tool. The JS body lives on disk at
 /// `<scope>/tools/<id>/script.js`; the model's arguments arrive as `ctx.config` (and
 /// `ctx.input.data`). Runs in the same audited QuickJS sandbox as custom script nodes.
@@ -369,7 +417,7 @@ pub async fn run_tool_script(
     workspace_path: Option<String>,
     id: String,
     arguments: Value,
-) -> Result<String, String> {
+) -> Result<ToolScriptResult, String> {
     let (scope, def) = find_native_tool(&app, workspace_path.as_deref(), &id)?;
     let script = def
         .script
@@ -434,7 +482,12 @@ pub async fn run_tool_script(
         .map(|s| s.to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| out.to_string());
-    Ok(text)
+    let logs = result
+        .get("logs")
+        .and_then(|l| l.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    Ok(ToolScriptResult { output: text, logs })
 }
 
 /// Ensure a script tool's `script.js` exists (seeding the starter template if absent),

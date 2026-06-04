@@ -51,6 +51,8 @@ export interface ToolExecResult {
   content: string;
   /** Set when the tool failed; `content` then holds a human-readable error. */
   error?: string;
+  /** `ctx.log(...)` lines emitted by a script tool, surfaced in the Agent's Logs. */
+  logs?: string[];
 }
 
 /** One executed tool call, recorded on the output envelope's `data.toolTrace`. */
@@ -344,10 +346,10 @@ export async function executeToolCall(
         return { name: call.name, content: result };
       }
       case "scriptTool": {
-        const result = await concurrencyGovernor.enqueue("general", () =>
+        const { output, logs } = await concurrencyGovernor.enqueue("general", () =>
           api.runToolScript(opts.workspacePath, resolved.def.id, args)
         );
-        return { name: call.name, content: result };
+        return { name: call.name, content: output, logs };
       }
       case "loadSkill": {
         const skillId = typeof args.skill_id === "string" ? args.skill_id : "";

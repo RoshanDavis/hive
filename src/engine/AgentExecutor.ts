@@ -14,10 +14,15 @@ import {
   type ResolvedTool,
   type ToolTraceStep,
 } from "./agentTools";
-import { createMemoryHandler, makeStorageRecord, type MemoryHandler } from "./agentMemory";
+import {
+  createMemoryHandler,
+  makeRunRecord,
+  normalizeAgentStorage,
+  type MemoryHandler,
+} from "./agentMemory";
 import { builtinNeedsCredential, getBuiltinCredentialId } from "@/services/builtInTools";
 import type { AgentChatMessage, ToolSchema } from "@/services/api";
-import type { AgentNodeData, AgentStorageSlot, ChatMessage, JSONStorageRecord } from "@/nodes/types";
+import type { AgentNodeData, ChatMessage, JSONStorageRecord } from "@/nodes/types";
 
 /** Default cap on model⇄tool round-trips, so a model that keeps calling tools can't
  * loop forever. Each iteration is one model turn (+ any tools it requested). A per-agent
@@ -54,7 +59,7 @@ const LOG_RESULT_MAX = 300;
  * nothing, so an agent with no prompt/memory/tools yields "". */
 function composeAgentSystemPrompt(
   base: string,
-  storage: AgentStorageSlot | null,
+  memoryRecords: JSONStorageRecord[] | null,
   hasTools: boolean,
   skillCatalog: string
 ): string {
@@ -62,16 +67,15 @@ function composeAgentSystemPrompt(
   const trimmedBase = base.trim();
   if (trimmedBase) parts.push(trimmedBase);
 
-  // Frame the Storage slot as the agent's own memory so it knows the memory_* tools
-  // act on *its* store, and seed it with a digest of the most recent entries.
-  if (storage) {
-    const records = Array.isArray(storage.records) ? storage.records : [];
+  // Frame memory so the agent knows the memory_* tools act on *its own* store, and
+  // seed it with a digest of the most recent entries. `null` = no Storage slot.
+  if (memoryRecords) {
     let memo =
       "You have a persistent memory store that carries across runs. Call `memory_save` to " +
       "remember durable facts (names, preferences, decisions), and `memory_search` or " +
       "`memory_list` to recall them before you answer. This memory is your own.";
-    if (records.length > 0) {
-      const recent = records
+    if (memoryRecords.length > 0) {
+      const recent = memoryRecords
         .slice(-MEMORY_DIGEST_LIMIT)
         .map((r) => {
           const c = (r.content || "").replace(/\s+/g, " ").trim();
@@ -92,9 +96,13 @@ function composeAgentSystemPrompt(
 
   if (hasTools) {
     parts.push(
-      "You can call the provided tools when they help answer the request. " +
-        "Call a tool only when needed, then use its result to answer. " +
-        "If no tool is needed, answer directly."
+      "You have tools available. For each request, pick the tool best suited to it and " +
+        "use its result to answer — call a tool only when it helps, and answer directly " +
+        "when none is needed. If none of your tools is well-suited to the request (or the " +
+        "only applicable one returns information that may be stale or unreliable for it — " +
+        "for example, using web search to get the current time), still give your best " +
+        "answer, then end with a brief warning that you lacked the right tool and the " +
+        "result may be inaccurate, noting what kind of tool would let you answer reliably."
     );
   }
   return parts.join("\n\n");
@@ -132,13 +140,13 @@ export class AgentExecutor implements NodeExecutor {
       );
     }
 
-    // A Storage slot makes this agent "memory-capable": it gets the memory_* tools
-    // and a working copy of its records that the loop mutates and we persist below.
-    const storageSlot = data.storage ?? null;
-    const workingRecords: JSONStorageRecord[] =
-      storageSlot && Array.isArray(storageSlot.records) ? [...storageSlot.records] : [];
-    const memory: MemoryHandler | undefined = storageSlot
-      ? createMemoryHandler(workingRecords, String(data.label || "Agent"))
+    // A Storage slot makes this agent memory-capable: it gets the memory_* tools,
+    // contributes its own conversation history to the LLM, and records each run.
+    // Sections (conversation / memory / runData) are normalized + legacy-migrated.
+    const storage = data.storage ? normalizeAgentStorage(data.storage) : null;
+    const workingMemory: JSONStorageRecord[] = storage ? storage.memory : [];
+    const memory: MemoryHandler | undefined = storage
+      ? createMemoryHandler(workingMemory, String(data.label || "Agent"))
       : undefined;
 
     // Resolve selected tools into model-ready schemas, then compose the system
@@ -146,16 +154,25 @@ export class AgentExecutor implements NodeExecutor {
     const { schemas, lookup, notes, skillCatalog } = await buildAgentTools(
       data.tools ?? null,
       workspacePath,
-      { hasMemory: Boolean(storageSlot) }
+      { hasMemory: Boolean(storage) }
     );
     config.systemPrompt = composeAgentSystemPrompt(
       config.systemPrompt,
-      storageSlot,
+      storage ? workingMemory : null,
       schemas.length > 0,
       skillCatalog
     );
 
-    const inputMessages = resolveLlmInputMessages(context, config.chatHistoryLimit);
+    // Build the LLM messages: the triggering input is the latest upstream message;
+    // history comes from the agent's own conversation store (seeded from upstream on
+    // the first run, so a pre-existing Chat history isn't lost).
+    const upstream = resolveLlmInputMessages(context, config.chatHistoryLimit);
+    const newUser = upstream.length > 0 ? upstream[upstream.length - 1] : null;
+    const priorHistory =
+      storage && storage.conversation.length > 0 ? storage.conversation : upstream.slice(0, -1);
+    const limit = config.chatHistoryLimit;
+    const history = limit > 0 ? priorHistory.slice(-limit) : priorHistory;
+    const inputMessages: ChatMessage[] = newUser ? [...history, newUser] : [...history];
 
     try {
       const { envelope, logs } =
@@ -165,14 +182,23 @@ export class AgentExecutor implements NodeExecutor {
 
       const update: Record<string, unknown> = setOutputEnvelope(node.data, envelope);
       if (logs.length > 0) update.logs = logs;
-      if (storageSlot) {
-        // Persist the (possibly memory-tool-mutated) records plus the final answer.
-        const finalRecord = makeStorageRecord({
-          content: envelope.value,
-          source: String(data.label || "Agent"),
+      if (storage) {
+        // conversation: this turn (input + response); memory: memory_* writes during
+        // the run; runData: a structured record of the run.
+        const conversation = [...storage.conversation];
+        if (newUser) conversation.push(newUser);
+        conversation.push({ role: "assistant", content: envelope.value });
+        const runRecord = makeRunRecord({
+          input: newUser?.content ?? "",
           envelope,
+          toolCalls: Array.isArray(envelope.data?.toolTrace) ? envelope.data.toolTrace.length : 0,
         });
-        update.storage = { ...storageSlot, records: [...workingRecords, finalRecord] };
+        update.storage = {
+          kind: "jsonStorage",
+          conversation,
+          memory: workingMemory,
+          runData: [...storage.runData, runRecord],
+        };
       }
       updateNodeData(node.id, update);
     } catch (err) {
@@ -268,6 +294,10 @@ export class AgentExecutor implements NodeExecutor {
             result.error ? "error: " : ""
           }${truncate(result.content, LOG_RESULT_MAX)}`
         );
+        // Surface a script tool's ctx.log(...) lines under its call.
+        for (const line of result.logs ?? []) {
+          logs.push(`   ↳ ${result.name} log: ${truncate(line, LOG_RESULT_MAX)}`);
+        }
       }
     }
 

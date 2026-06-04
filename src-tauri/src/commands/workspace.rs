@@ -250,17 +250,31 @@ pub fn load_space(workspace_path: String, space_id: String) -> Result<SpaceData,
                 }
             }
         } else if node.node_type == "agent" {
-            // Reattach the agent's internal storage-slot records from disk. Only
-            // when a storage slot is present (it's an object); a null slot stays
-            // null. Missing/unparseable file degrades to an empty array.
+            // Reattach the agent's internal storage sections from disk. Only when a
+            // storage slot is present (an object); a null slot stays null. The file
+            // is `{ conversation, memory, runData }`; a legacy flat array migrates
+            // into `memory`. Missing/unparseable file degrades to empty sections.
             if let Some(obj) = node.data.as_object_mut() {
                 if let Some(storage) = obj.get_mut("storage").and_then(|s| s.as_object_mut()) {
                     let db_file = space_storage_dir.join(format!("{}.json", node.id));
-                    let records = fs::read_to_string(&db_file)
+                    let loaded = fs::read_to_string(&db_file)
                         .ok()
-                        .and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok())
-                        .unwrap_or_else(|| serde_json::json!([]));
-                    storage.insert("records".to_string(), records);
+                        .and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok());
+                    let empty = || serde_json::json!([]);
+                    let (conversation, memory, run_data) = match loaded {
+                        Some(serde_json::Value::Object(map)) => (
+                            map.get("conversation").cloned().unwrap_or_else(empty),
+                            map.get("memory").cloned().unwrap_or_else(empty),
+                            map.get("runData").cloned().unwrap_or_else(empty),
+                        ),
+                        // Legacy: a flat record array → migrate into `memory`.
+                        Some(arr @ serde_json::Value::Array(_)) => (empty(), arr, empty()),
+                        _ => (empty(), empty(), empty()),
+                    };
+                    storage.insert("conversation".to_string(), conversation);
+                    storage.insert("memory".to_string(), memory);
+                    storage.insert("runData".to_string(), run_data);
+                    storage.remove("records");
                 }
             }
         }
@@ -300,16 +314,23 @@ pub fn save_space(workspace_path: String, mut space: SpaceData) -> Result<(), St
                 obj.remove("messages");
             }
         } else if node.node_type == "agent" {
-            // Decouple the agent's internal storage-slot records to their own
-            // file (mirrors jsonStorage) so the space JSON stays small. The
-            // records live nested at data.storage.records.
+            // Decouple the agent's internal storage sections (conversation / memory /
+            // runData) to their own file (mirrors jsonStorage) so the space JSON stays
+            // small. Only the `kind` discriminator stays inline.
             if let Some(obj) = node.data.as_object_mut() {
                 if let Some(storage) = obj.get_mut("storage").and_then(|s| s.as_object_mut()) {
-                    if let Some(records) = storage.get("records") {
-                        let db_file = space_storage_dir.join(format!("{}.json", node.id));
-                        write_json(&db_file, records)?;
-                    }
-                    storage.remove("records");
+                    let empty = || serde_json::json!([]);
+                    let payload = serde_json::json!({
+                        "conversation": storage.get("conversation").cloned().unwrap_or_else(empty),
+                        "memory": storage.get("memory").cloned().unwrap_or_else(empty),
+                        "runData": storage.get("runData").cloned().unwrap_or_else(empty),
+                    });
+                    let db_file = space_storage_dir.join(format!("{}.json", node.id));
+                    write_json(&db_file, &payload)?;
+                    storage.remove("conversation");
+                    storage.remove("memory");
+                    storage.remove("runData");
+                    storage.remove("records"); // legacy field, if present
                 }
             }
         }

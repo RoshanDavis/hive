@@ -15,7 +15,10 @@ export const BUILT_IN_NATIVE_TOOLS: ToolDef[] = [
     id: "web_search",
     label: "Brave Web Search",
     icon: "🔎",
-    description: "Search the web with Brave and return the top results (title, URL, snippet).",
+    description:
+      "Search the web with Brave and return the top results (title, URL, snippet). " +
+      "Results come from a cached search index, so they may be out of date and may not " +
+      "reflect real-time or rapidly-changing information.",
     parameters: {
       type: "object",
       properties: {
@@ -44,8 +47,23 @@ export const BUILT_IN_NATIVE_TOOLS: ToolDef[] = [
     id: "current_time",
     label: "Current Time",
     icon: "🕐",
-    description: "Get the current date and time as an ISO-8601 (UTC) string.",
-    parameters: { type: "object", properties: {}, required: [] },
+    description:
+      "Get the current real-world date and time. Pass an IANA timezone name (e.g. " +
+      '"America/New_York" for Atlanta / US-Eastern, "Europe/London", "Asia/Tokyo") to get ' +
+      "the local time there; omit it for UTC. Always use this tool for \"what time is it\" " +
+      "questions — never use web search for the current time, which returns a stale cached clock.",
+    parameters: {
+      type: "object",
+      properties: {
+        timezone: {
+          type: "string",
+          description:
+            'Optional IANA timezone name, e.g. "America/New_York", "America/Los_Angeles", ' +
+            '"Europe/Paris", "Asia/Tokyo". Omit for UTC.',
+        },
+      },
+      required: [],
+    },
   },
 ];
 

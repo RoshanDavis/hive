@@ -59,6 +59,15 @@ fn resolve_key_and_url(
     }
 }
 
+/// Anthropic's Messages API rejects `temperature` outside `[0, 1]` with a 400
+/// (`temperature: must be <= 1`), unlike OpenAI's `[0, 2]`. The shared inspector
+/// slider historically allowed up to 2, so a config saved with a higher value
+/// would fail *every* Anthropic call — plain or tool-using. Clamp before dispatch
+/// so those configs keep working instead of erroring.
+fn clamp_anthropic_temperature(temperature: f64) -> f64 {
+    temperature.clamp(0.0, 1.0)
+}
+
 #[tauri::command]
 pub async fn ollama_chat(
     ollama_url: String,
@@ -208,7 +217,7 @@ pub async fn llm_chat(
         let mut req_body = serde_json::json!({
             "model": model_name,
             "messages": anthropic_messages,
-            "temperature": temperature,
+            "temperature": clamp_anthropic_temperature(temperature),
             "max_tokens": max_tokens,
         });
 
@@ -290,11 +299,18 @@ fn openai_messages(messages: &[AgentChatMessage]) -> Vec<Value> {
                 let calls: Vec<Value> = tcs
                     .iter()
                     .map(|tc| {
-                        json!({
+                        let mut call = json!({
                             "id": tc.id,
                             "type": "function",
                             "function": { "name": tc.name, "arguments": tc.arguments }
-                        })
+                        });
+                        // Replay Google's `thought_signature` passthrough verbatim so
+                        // Gemini accepts the follow-up turn; no-op for other providers
+                        // (extra_content is None there).
+                        if let Some(extra) = &tc.extra_content {
+                            call["extra_content"] = extra.clone();
+                        }
+                        call
                     })
                     .collect();
                 obj.insert("tool_calls".into(), json!(calls));
@@ -359,14 +375,36 @@ async fn openai_chat_tools(
                 .unwrap_or_else(|| format!("call_{}", i));
             let name = tc["function"]["name"].as_str().unwrap_or_default().to_string();
             let arguments = tc["function"]["arguments"].as_str().unwrap_or("{}").to_string();
+            // Google (OpenAI-compat) attaches a required `thought_signature` under
+            // `extra_content`; keep it verbatim so the next turn can replay it. Other
+            // providers omit the field, leaving this None.
+            let extra_content = tc.get("extra_content").cloned();
             if !name.is_empty() {
-                tool_calls.push(ToolCall { id, name, arguments });
+                tool_calls.push(ToolCall { id, name, arguments, extra_content });
             }
         }
     }
     let finish_reason = resp["choices"][0]["finish_reason"].as_str().map(|s| s.to_string());
 
     Ok(AgentChatResponse { content, tool_calls, finish_reason })
+}
+
+/// Coerce a tool's parameter schema into one Anthropic accepts. Anthropic 400s the
+/// **entire** request if any tool's `input_schema` isn't a JSON Schema object with
+/// `"type": "object"` (and it expects a `properties` map). OpenAI/Gemini/Ollama are
+/// lenient, so a tool — typically discovered from an MCP server — that under-specifies
+/// its schema works on those providers but sinks every Anthropic tool call. Normalize
+/// to a minimally-valid object schema, preserving the tool's own `properties`/`required`.
+fn anthropic_input_schema(parameters: &Value) -> Value {
+    let mut schema = match parameters {
+        Value::Object(map) => map.clone(),
+        _ => serde_json::Map::new(),
+    };
+    schema.insert("type".into(), json!("object"));
+    if !schema.contains_key("properties") {
+        schema.insert("properties".into(), json!({}));
+    }
+    Value::Object(schema)
 }
 
 /// Anthropic `tools` array (uses `input_schema`, not `parameters`).
@@ -377,7 +415,7 @@ fn anthropic_tools(tools: &[ToolSchema]) -> Vec<Value> {
             json!({
                 "name": t.name,
                 "description": t.description.clone().unwrap_or_default(),
-                "input_schema": t.parameters,
+                "input_schema": anthropic_input_schema(&t.parameters),
             })
         })
         .collect()
@@ -393,6 +431,14 @@ fn flush_tool_results(out: &mut Vec<Value>, pending: &mut Vec<Value>) {
 /// Translate neutral messages to Anthropic's shape (system handled separately).
 /// Coalesces consecutive tool results into one user message and expands assistant
 /// tool calls into `tool_use` blocks (arguments string → object).
+///
+/// NOTE — same class as Gemini's `thought_signature` (see `ToolCall::extra_content`):
+/// if extended thinking is ever enabled here (sending `thinking: { type: "enabled" }`
+/// in `anthropic_chat_tools`), Claude returns `thinking`/`redacted_thinking` blocks
+/// whose `signature` MUST be captured and replayed — verbatim, in order, before the
+/// `tool_use` blocks — on the assistant turn, or the next turn errors. We don't send
+/// the `thinking` param today, so no such blocks come back and this path is complete;
+/// add the capture/echo (a passthrough like `extra_content`) before turning it on.
 fn anthropic_messages(messages: &[AgentChatMessage]) -> Vec<Value> {
     let mut out = Vec::new();
     let mut pending: Vec<Value> = Vec::new();
@@ -460,7 +506,7 @@ async fn anthropic_chat_tools(
     let mut req_body = json!({
         "model": model_name,
         "messages": anthropic_messages(&messages),
-        "temperature": temperature,
+        "temperature": clamp_anthropic_temperature(temperature),
         "max_tokens": max_tokens,
     });
     if !system_prompt.is_empty() {
@@ -500,7 +546,7 @@ async fn anthropic_chat_tools(
                     let name = block["name"].as_str().unwrap_or_default().to_string();
                     let arguments = block["input"].to_string();
                     if !name.is_empty() {
-                        tool_calls.push(ToolCall { id, name, arguments });
+                        tool_calls.push(ToolCall { id, name, arguments, extra_content: None });
                     }
                 }
                 _ => {}
@@ -587,7 +633,12 @@ async fn ollama_chat_tools(
             let name = tc["function"]["name"].as_str().unwrap_or_default().to_string();
             let arguments = tc["function"]["arguments"].to_string();
             if !name.is_empty() {
-                tool_calls.push(ToolCall { id: format!("call_{}", i), name, arguments });
+                tool_calls.push(ToolCall {
+                    id: format!("call_{}", i),
+                    name,
+                    arguments,
+                    extra_content: None,
+                });
             }
         }
     }
@@ -637,5 +688,70 @@ pub async fn llm_chat_tools(
         anthropic_chat_tools(url, api_key, model_name, messages, temperature, max_tokens, tools).await
     } else {
         Err(format!("Unsupported provider: {}", provider))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{AgentChatMessage, ToolCall};
+
+    fn assistant_with_call(extra_content: Option<Value>) -> AgentChatMessage {
+        AgentChatMessage {
+            role: "assistant".into(),
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_0".into(),
+                name: "web_search".into(),
+                arguments: "{\"query\":\"hi\"}".into(),
+                extra_content,
+            }]),
+            tool_call_id: None,
+            name: None,
+        }
+    }
+
+    // Regression: Gemini (OpenAI-compat) rejects a follow-up turn whose assistant
+    // tool call omits the `thought_signature` it sent back in `extra_content`.
+    #[test]
+    fn openai_messages_echoes_google_thought_signature() {
+        let sig = json!({ "google": { "thought_signature": "sig-abc123" } });
+        let out = openai_messages(&[assistant_with_call(Some(sig.clone()))]);
+        assert_eq!(out[0]["tool_calls"][0]["extra_content"], sig);
+        assert_eq!(out[0]["tool_calls"][0]["function"]["name"], "web_search");
+    }
+
+    // Providers that don't use it (OpenAI/Ollama/Anthropic) must not gain an
+    // `extra_content` key — the wire shape stays exactly as before.
+    #[test]
+    fn openai_messages_omits_extra_content_when_absent() {
+        let out = openai_messages(&[assistant_with_call(None)]);
+        assert!(out[0]["tool_calls"][0].get("extra_content").is_none());
+    }
+
+    // Anthropic rejects temperature > 1; a config carried over from OpenAI's 0–2
+    // slider must be clamped so the request doesn't 400 (in-range values untouched).
+    #[test]
+    fn anthropic_temperature_is_clamped_to_unit_range() {
+        assert_eq!(clamp_anthropic_temperature(2.0), 1.0);
+        assert_eq!(clamp_anthropic_temperature(0.7), 0.7);
+        assert_eq!(clamp_anthropic_temperature(-0.5), 0.0);
+    }
+
+    // Anthropic 400s if any tool's input_schema isn't an object schema; a tool that
+    // under-specifies it (e.g. from MCP) must be coerced, valid ones left intact.
+    #[test]
+    fn anthropic_input_schema_coerces_to_object() {
+        // Missing `type` → filled in, existing properties preserved.
+        let s = anthropic_input_schema(&json!({ "properties": { "q": { "type": "string" } } }));
+        assert_eq!(s["type"], "object");
+        assert_eq!(s["properties"]["q"]["type"], "string");
+        // Non-object schema → minimal valid object schema.
+        let s2 = anthropic_input_schema(&json!("nonsense"));
+        assert_eq!(s2["type"], "object");
+        assert_eq!(s2["properties"], json!({}));
+        // Already-valid schema round-trips untouched (required preserved).
+        let s3 = anthropic_input_schema(&json!({ "type": "object", "properties": {}, "required": ["x"] }));
+        assert_eq!(s3["required"], json!(["x"]));
     }
 }

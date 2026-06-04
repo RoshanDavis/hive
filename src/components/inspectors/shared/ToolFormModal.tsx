@@ -17,7 +17,7 @@ import ToolParamsEditor, {
   paramsToJsonSchema,
   jsonSchemaToParams,
 } from "./ToolParamsEditor";
-import CredentialPicker from "./CredentialPicker";
+import CredentialField from "./CredentialField";
 import CredentialGrantList from "@/components/customNodes/CredentialGrantList";
 import NetworkAllowlistEditor from "@/components/shared/NetworkAllowlistEditor";
 
@@ -417,7 +417,7 @@ export default function ToolFormModal({
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className={formLabelClass}>Credential (optional, injected as a header)</label>
-                        <CredentialPicker
+                        <CredentialField
                           schemaTypes={["apiToken"]}
                           selectedCredentialId={httpCredId}
                           onSelect={setHttpCredId}
@@ -505,7 +505,7 @@ export default function ToolFormModal({
           {def && builtinCredSchema && onToolSettingsChange && (
             <div className="flex flex-col gap-1.5">
               <p className="text-[11px] text-text-muted m-0">🔑 {def.label} uses a saved credential:</p>
-              <CredentialPicker
+              <CredentialField
                 schemaTypes={[builtinCredSchema]}
                 selectedCredentialId={getBuiltinCredentialId(toolSettings, def.id)}
                 onSelect={(id) => {

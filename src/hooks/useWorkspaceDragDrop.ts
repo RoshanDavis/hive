@@ -73,9 +73,13 @@ function buildAgentSlotValue(
     return v;
   }
   if (slot === "storage") {
+    // Adopt a dragged jsonStorage node's existing records as the agent's memory;
+    // conversation + runData start empty.
     return {
       kind: "jsonStorage",
-      records: Array.isArray(sourceData.records) ? sourceData.records : [],
+      conversation: [],
+      memory: Array.isArray(sourceData.records) ? sourceData.records : [],
+      runData: [],
     };
   }
   const tools: Record<string, unknown> = {

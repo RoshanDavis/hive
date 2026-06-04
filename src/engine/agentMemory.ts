@@ -4,8 +4,63 @@
 // mutates a working records array in place; AgentExecutor persists it after the
 // run (records are decoupled to disk on save). See docs/agent-node.md.
 
-import type { JSONStorageRecord } from "@/nodes/types";
+import type {
+  AgentRunRecord,
+  AgentStorageSlot,
+  ChatMessage,
+  JSONStorageRecord,
+} from "@/nodes/types";
 import type { NodeOutputEnvelope } from "./types";
+
+/** A Storage slot with all sections guaranteed present (post-normalization). */
+export interface NormalizedAgentStorage {
+  kind: "jsonStorage";
+  conversation: ChatMessage[];
+  memory: JSONStorageRecord[];
+  runData: AgentRunRecord[];
+}
+
+/**
+ * Ensure a Storage slot has all three typed sections, migrating a legacy flat
+ * `records` list (pre-redesign: a mix of memory saves + responses) into `memory`.
+ * Returns fresh arrays so callers can mutate without touching the stored slot.
+ */
+export function normalizeAgentStorage(slot: AgentStorageSlot): NormalizedAgentStorage {
+  const conversation = Array.isArray(slot.conversation) ? slot.conversation : [];
+  const memory = Array.isArray(slot.memory)
+    ? slot.memory
+    : Array.isArray(slot.records)
+      ? slot.records
+      : [];
+  const runData = Array.isArray(slot.runData) ? slot.runData : [];
+  return {
+    kind: "jsonStorage",
+    conversation: [...conversation],
+    memory: [...memory],
+    runData: [...runData],
+  };
+}
+
+/** Build a structured per-run record for the Storage slot's `runData` log. */
+export function makeRunRecord(opts: {
+  input: string;
+  envelope: NodeOutputEnvelope;
+  toolCalls: number;
+}): AgentRunRecord {
+  return {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+    createdAt: new Date().toISOString(),
+    input: opts.input,
+    output: opts.envelope.value,
+    toolCalls: opts.toolCalls,
+    envelope: opts.envelope,
+  };
+}
 
 /** Default # of entries returned by memory_search / memory_list, and the hard cap. */
 const DEFAULT_RECALL = 10;

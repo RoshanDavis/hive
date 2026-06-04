@@ -32,6 +32,11 @@ export default function LLMConfigFields({ values, onChange, workspacePath }: LLM
   const limitValue = Number(values.chatHistoryLimit || 0);
   const isLimited = limitValue > 0;
 
+  // Anthropic rejects temperature > 1 (OpenAI/others allow up to 2). Cap the
+  // slider and the displayed value so an out-of-range temp can't be set or kept.
+  const maxTemperature = provider === "Anthropic" ? 1 : 2;
+  const temperatureValue = Math.min(Number(values.temperature || 0.7), maxTemperature);
+
   const handleProviderChange = (newProvider: ProviderType) => {
     const next = { ...values };
     next.provider = newProvider;
@@ -43,6 +48,12 @@ export default function LLMConfigFields({ values, onChange, workspacePath }: LLM
     // to the new provider; the user re-selects/creates one via the picker.
     if (credentialId && newProvider !== provider) {
       delete next.credentialId;
+    }
+
+    // Anthropic caps temperature at 1; clamp a carried-over higher value so the
+    // stored config is valid for the new provider (mirrors the server-side clamp).
+    if (newProvider === "Anthropic") {
+      next.temperature = Math.min(Number(next.temperature ?? 0.7), 1);
     }
 
     onChange(next);
@@ -116,15 +127,15 @@ export default function LLMConfigFields({ values, onChange, workspacePath }: LLM
 
           <div className="flex flex-col gap-2">
             <label className={formLabelClass}>
-              Temperature: {Number(values.temperature || 0.7).toFixed(2)}
+              Temperature: {temperatureValue.toFixed(2)}
             </label>
             <input
               className={formRangeClass}
               type="range"
               min="0"
-              max="2"
+              max={maxTemperature}
               step="0.05"
-              value={Number(values.temperature || 0.7)}
+              value={temperatureValue}
               onChange={(e) => onChange({ ...values, temperature: parseFloat(e.target.value) })}
             />
           </div>

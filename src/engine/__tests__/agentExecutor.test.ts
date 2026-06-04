@@ -115,7 +115,7 @@ describe("AgentExecutor", () => {
     const { ctx, store, agentId } = makeHarness({
       label: "Agent",
       llm: { ...LLM_SLOT },
-      storage: { kind: "jsonStorage", records: [] },
+      storage: { kind: "jsonStorage", conversation: [], memory: [], runData: [] },
       tools: null,
     });
     // A Storage slot makes the agent memory-capable, so it runs the tool loop (to
@@ -128,16 +128,20 @@ describe("AgentExecutor", () => {
 
     await new AgentExecutor().execute(ctx);
 
-    const storage = store[agentId].storage as { records: { content: string }[] };
-    expect(storage.records).toHaveLength(1);
-    expect(storage.records[0].content).toBe("agent reply");
+    const storage = store[agentId].storage as {
+      conversation: { role: string; content: string }[];
+      runData: { output: string }[];
+    };
+    expect(storage.conversation.at(-1)).toMatchObject({ role: "assistant", content: "agent reply" });
+    expect(storage.runData).toHaveLength(1);
+    expect(storage.runData[0].output).toBe("agent reply");
   });
 
   it("offers memory tools and persists a memory_save into storage", async () => {
     const { ctx, store, agentId } = makeHarness({
       label: "Agent",
       llm: { ...LLM_SLOT },
-      storage: { kind: "jsonStorage", records: [] },
+      storage: { kind: "jsonStorage", conversation: [], memory: [], runData: [] },
       tools: null,
     });
     // First turn saves a memory, second turn finalizes. memory_* runs renderer-side.
@@ -153,8 +157,13 @@ describe("AgentExecutor", () => {
 
     // memory_save ran renderer-side (proving the memory tool was offered + dispatched):
     // the saved memory + the final answer are both persisted (save runs before the append).
-    const storage = store[agentId].storage as { records: { content: string }[] };
-    expect(storage.records.map((r) => r.content)).toEqual(["my name is Roshan", "Noted."]);
+    const storage = store[agentId].storage as {
+      memory: { content: string }[];
+      conversation: { role: string; content: string }[];
+    };
+    // The saved fact lands in `memory`; the final answer lands in `conversation`.
+    expect(storage.memory.map((r) => r.content)).toEqual(["my name is Roshan"]);
+    expect(storage.conversation.at(-1)).toMatchObject({ role: "assistant", content: "Noted." });
   });
 
   it("runs unbounded when the limit is off and halts on cancellation", async () => {
@@ -212,7 +221,7 @@ describe("AgentExecutor", () => {
     const { ctx, store, agentId } = makeHarness({
       label: "Agent",
       llm: { ...LLM_SLOT },
-      storage: { kind: "jsonStorage", records: [] },
+      storage: { kind: "jsonStorage", conversation: [], memory: [], runData: [] },
       tools: { native: ["calculator"], mcp: [], skills: [] },
     });
 
@@ -256,11 +265,38 @@ describe("AgentExecutor", () => {
     expect(env.data.toolTrace).toHaveLength(1);
     expect(env.data.toolTrace[0]).toMatchObject({ name: "calculator", content: "35" });
 
-    // Final answer is appended to memory; the run log records the tool call.
-    const storage = store[agentId].storage as { records: { content: string }[] };
-    expect(storage.records[0].content).toBe("The answer is 35.");
+    // Final answer is recorded in run data; the run log records the tool call.
+    const storage = store[agentId].storage as { runData: { output: string }[] };
+    expect(storage.runData[0].output).toBe("The answer is 35.");
     const logs = store[agentId].logs as string[];
     expect(logs.some((l) => l.includes("calculator"))).toBe(true);
+  });
+
+  it("instructs the agent to warn when it lacks a suitable tool", async () => {
+    const { ctx } = makeHarness({
+      label: "Agent",
+      llm: { ...LLM_SLOT },
+      storage: null,
+      tools: { native: ["web_search"], mcp: [], skills: [] },
+    });
+
+    // The model answers without calling a tool; we only assert on the system prompt sent.
+    vi.mocked(api.llmChatTools).mockResolvedValue({
+      content: "It's about 11 PM.",
+      tool_calls: [],
+      finish_reason: "stop",
+    });
+
+    await new AgentExecutor().execute(ctx);
+
+    const messages = vi.mocked(api.llmChatTools).mock.calls[0][3] as {
+      role: string;
+      content: string;
+    }[];
+    const system = messages.find((m) => m.role === "system");
+    expect(system).toBeDefined();
+    // The tool guidance tells the agent to answer-then-warn when it lacks the right tool.
+    expect(system!.content.toLowerCase()).toContain("warn");
   });
 
   it("stops at the maximum iteration cap when the model never finalizes", async () => {

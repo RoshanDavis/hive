@@ -33,8 +33,17 @@ function llmSummary(slot: AgentLLMSlot): string {
 }
 
 function storageSummary(slot: AgentStorageSlot): string {
-  const n = Array.isArray(slot.records) ? slot.records.length : 0;
-  return `JSON · ${n} record${n === 1 ? "" : "s"}`;
+  const turns = Array.isArray(slot.conversation) ? slot.conversation.length : 0;
+  // Fall back to a legacy flat `records` list for its memory count.
+  const mem = Array.isArray(slot.memory)
+    ? slot.memory.length
+    : Array.isArray(slot.records)
+      ? slot.records.length
+      : 0;
+  const parts: string[] = [];
+  if (turns) parts.push(`${turns} turn${turns === 1 ? "" : "s"}`);
+  if (mem) parts.push(`${mem} memor${mem === 1 ? "y" : "ies"}`);
+  return parts.length > 0 ? parts.join(" · ") : "empty";
 }
 
 function toolsSummary(slot: AgentToolsSlot): string {

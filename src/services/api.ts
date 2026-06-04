@@ -137,6 +137,12 @@ export interface ToolCall {
   name: string;
   /** The model's function-call arguments as a JSON string. */
   arguments: string;
+  /** Opaque provider passthrough echoed back verbatim on the next turn. Google's
+   * OpenAI-compatible endpoint carries its required `thought_signature` here
+   * (`{ google: { thought_signature } }`); absent for other providers. The agent
+   * loop must feed this object back unchanged on the assistant turn, so don't
+   * rebuild ToolCall objects field-by-field and drop it. */
+  extra_content?: unknown;
 }
 
 /** One turn in the agent conversation. */
@@ -495,8 +501,8 @@ export const api = {
     workspacePath: string | null,
     id: string,
     args: Record<string, unknown>
-  ): Promise<string> {
-    return invoke<string>("run_tool_script", {
+  ): Promise<{ output: string; logs: string[] }> {
+    return invoke<{ output: string; logs: string[] }>("run_tool_script", {
       workspacePath: workspacePath ?? null,
       id,
       arguments: args,

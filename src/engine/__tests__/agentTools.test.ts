@@ -226,9 +226,9 @@ describe("executeToolCall — MCP / HTTP / script / load_skill", () => {
     expect(api.mcpCallTool).toHaveBeenCalledWith("/ws", "srv", "add", { a: 1, b: 2 });
   });
 
-  it("dispatches HTTP and script tools to their commands", async () => {
+  it("dispatches HTTP and script tools to their commands (and surfaces script logs)", async () => {
     vi.mocked(api.runHttpTool).mockResolvedValue("sunny");
-    vi.mocked(api.runToolScript).mockResolvedValue("munged");
+    vi.mocked(api.runToolScript).mockResolvedValue({ output: "munged", logs: ["debug: hi"] });
     const lookup = new Map<string, ResolvedTool>([
       ["weather", { kind: "httpTool", def: { id: "weather", label: "W" } }],
       ["munge", { kind: "scriptTool", def: { id: "munge", label: "M" } }],
@@ -244,6 +244,7 @@ describe("executeToolCall — MCP / HTTP / script / load_skill", () => {
       workspacePath: "/ws",
     });
     expect(r2.content).toBe("munged");
+    expect(r2.logs).toEqual(["debug: hi"]);
     expect(api.runToolScript).toHaveBeenCalledWith("/ws", "munge", {});
   });
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { McpServerConfig } from "@/services/api";
 import { formInputClass, formLabelClass, segmentedButtonClass } from "@/components/shared/FormField";
-import CredentialPicker from "./CredentialPicker";
+import CredentialField from "./CredentialField";
 
 interface McpConnectionFieldsProps {
   value: McpServerConfig;
@@ -172,7 +172,7 @@ export default function McpConnectionFields({
           time so the secret never lands in tools.json. */}
       <div className="flex flex-col gap-1 border-t border-border-subtle pt-3">
         <label className={formLabelClass}>Credential (optional, kept in the vault)</label>
-        <CredentialPicker
+        <CredentialField
           schemaTypes={["apiToken"]}
           selectedCredentialId={credentialId}
           onSelect={setCredentialId}

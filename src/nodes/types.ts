@@ -76,12 +76,40 @@ export interface JSONStorageNodeData {
  * (minus its label) so the shared inference path consumes it unchanged. */
 export type AgentLLMSlot = Omit<LLMNodeData, "label">;
 
-/** Storage backend embedded in an Agent's Storage slot. `kind` is open for
- * future backends (postgres/sqlite/mongo/yaml); only "jsonStorage" today.
- * `records` are decoupled to .hive/storage/<space>/<agentId>.json on save. */
+/** A structured record of one Agent run, kept in the Storage slot's `runData`. */
+export interface AgentRunRecord {
+  id: string;
+  /** Local HH:MM:SS for display. */
+  timestamp: string;
+  /** ISO timestamp for stable ordering. */
+  createdAt: string;
+  /** The user input that triggered the run. */
+  input: string;
+  /** The agent's final answer. */
+  output: string;
+  /** Number of tool calls made during the run. */
+  toolCalls: number;
+  /** The full output envelope (value + metadata + tool trace). */
+  envelope?: NodeOutputEnvelope;
+}
+
+/** The Agent's memory backend (its Storage slot). Organized into typed sections so
+ * each has a clear role; all three are decoupled to
+ * `.hive/storage/<space>/<agentId>.json` on save to keep the space file small.
+ * `kind` is open for future backends (postgres/sqlite/…); only "jsonStorage" today.
+ *
+ *  - `conversation` — dialogue turns; the recent tail is loaded into the LLM as history.
+ *  - `memory`       — durable facts the agent saves/recalls via the `memory_*` tools.
+ *  - `runData`      — structured per-run records (input/output/trace), for inspection
+ *                     and downstream consumers.
+ */
 export interface AgentStorageSlot {
   kind: "jsonStorage";
-  records: JSONStorageRecord[];
+  conversation: ChatMessage[];
+  memory: JSONStorageRecord[];
+  runData: AgentRunRecord[];
+  /** @deprecated Pre-redesign flat record list; migrated into `memory` on load. */
+  records?: JSONStorageRecord[];
   [key: string]: unknown;
 }
 
